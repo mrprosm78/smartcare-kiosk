@@ -16,15 +16,10 @@ function valid_pin(string $pin, int $length): bool {
     return ctype_digit($pin) && strlen($pin) === $length;
 }
 
-/**
- * Settings helpers (DB-backed)
- */
+/* ===== SETTINGS HELPERS ===== */
 function setting(PDO $pdo, string $key, $default = null) {
     static $cache = [];
-
-    if (array_key_exists($key, $cache)) {
-        return $cache[$key];
-    }
+    if (array_key_exists($key, $cache)) return $cache[$key];
 
     $stmt = $pdo->prepare("SELECT value FROM settings WHERE `key`=? LIMIT 1");
     $stmt->execute([$key]);
@@ -39,10 +34,9 @@ function setting_int(PDO $pdo, string $key, int $default): int {
 }
 
 function setting_bool(PDO $pdo, string $key, bool $default): bool {
-    $v = setting($pdo, $key, $default ? '1' : '0');
-    return ((string)$v === '1');
+    return setting($pdo, $key, $default ? '1' : '0') === '1';
 }
 
-function is_bcrypt_hash(string $s): bool {
-    return str_starts_with($s, '$2y$') || str_starts_with($s, '$2a$') || str_starts_with($s, '$2b$');
+function is_bcrypt(string $s): bool {
+    return str_starts_with($s,'$2y$') || str_starts_with($s,'$2a$') || str_starts_with($s,'$2b$');
 }

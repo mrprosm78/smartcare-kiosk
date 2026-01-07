@@ -280,6 +280,9 @@ pinDots.forEach((d, i) => d.style.display = (i < PIN_LENGTH) ? 'inline-block' : 
 function deviceToken() {
   return localStorage.getItem("kiosk_device_token") || "";
 }
+function pairingVersion() {
+  return localStorage.getItem("kiosk_pairing_version") || "0";
+}
 
 function setPairedUI(isPaired) {
   btnIn.disabled = !isPaired;
@@ -326,6 +329,7 @@ async function pairIfNeeded() {
     const out = await res.json().catch(() => ({}));
     if (out.ok && out.device_token) {
       localStorage.setItem("kiosk_device_token", out.device_token);
+      localStorage.setItem("kiosk_pairing_version", out.pairing_version);
       alert("Kiosk paired successfully.");
       setPairedUI(true);
       return;
@@ -456,7 +460,8 @@ async function postPunch(payload) {
     headers: {
       "Content-Type": "application/json",
       "X-Kiosk-Code": KIOSK_CODE,
-      "X-Device-Token": deviceToken()
+      "X-Device-Token": deviceToken(),
+      "X-Pairing-Version": pairingVersion()
     },
     body: JSON.stringify(payload)
   });
