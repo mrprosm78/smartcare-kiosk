@@ -16,7 +16,7 @@ if (!$eventUuid || !$action || !$pin || !$deviceTime || !$kioskCode) {
 }
 
 /* ---------- SETTINGS (PIN LENGTH) ---------- */
-$pinLength = 4; // later load from settings table
+$pinLength = setting_int($pdo, 'pin_length', 4); // later load from settings table
 
 if (!valid_pin($pin, $pinLength)) {
     json_response(['ok' => false, 'error' => 'invalid_pin_format'], 400);
@@ -42,22 +42,41 @@ if ($stmt->fetch()) {
 }
 
 /* ---------- EMPLOYEE ---------- */
-$stmt = $pdo->prepare("SELECT id, first_name, last_name FROM employees WHERE is_active = 1");
+/* ---------- EMPLOYEE ---------- */
+// IMPORTANT: select pin_hash so we can verify it
+$stmt = $pdo->prepare("SELECT id, first_name, last_name, pin_hash FROM employees WHERE is_active = 1");
 $stmt->execute();
 
 $employee = null;
+
 while ($row = $stmt->fetch()) {
-    if (password_verify($pin, $row['pin_hash'] ?? '')) {
+    $stored = trim((string)($row['pin_hash'] ?? ''));
+
+    if ($stored === '') {
+        continue;
+    }
+
+    // Dual mode:
+    // 1) bcrypt hash (preferred)
+    // 2) plain PIN stored in pin_hash (temporary / dev)
+    $isBcrypt = (strpos($stored, '$2y$') === 0 || strpos($stored, '$2a$') === 0 || strpos($stored, '$2b$') === 0);
+
+    $pinValid = $isBcrypt
+        ? password_verify($pin, $stored)
+        : hash_equals($stored, (string)$pin);
+
+    if ($pinValid) {
         $employee = $row;
         break;
     }
 }
 
 if (!$employee) {
-    json_response(['ok' => false, 'error' => 'invalid_pin']);
+    json_response(['ok' => false, 'error' => 'invalid_pin'], 401);
 }
 
 $employeeId = $employee['id'];
+
 
 /* ---------- TIME ---------- */
 $receivedAt  = now_utc();
