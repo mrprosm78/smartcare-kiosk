@@ -1,0 +1,630 @@
+<!-- logs-review.html
+     Care Home Digital Time Clock — Manager: Daily/Weekly/Monthly Logs Review (Responsive Prototype)
+     - Shows all logs in a list/table for selected date range
+     - Filters: Day / Week / Month, Employee, Status
+     - Highlights missing clock-out in RED
+     - Adds: Worked (HH:MM) column
+     - "Manage" button opens side drawer to edit + approve (UI-only)
+     NOTE: UI-only (no API). Uses sample data and JS filtering.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Logs Review • Manager</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    html, body { height: 100%; }
+    .min-h-dvh { min-height: 100dvh; }
+  </style>
+</head>
+
+<body class="bg-slate-50 text-slate-900 min-h-dvh">
+  <div class="min-h-dvh flex flex-col">
+
+    <!-- Top bar -->
+    <header class="bg-white border-b border-slate-200">
+      <div class="px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
+        <div class="min-w-0">
+          <h1 class="text-lg sm:text-xl font-bold tracking-tight truncate">Logs Review</h1>
+          <div class="text-xs sm:text-sm text-slate-500">View, filter, edit and approve daily clock logs</div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button class="hidden sm:inline-flex rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm font-semibold hover:bg-slate-50">
+            Export CSV
+          </button>
+          <button class="rounded-xl bg-slate-900 text-white px-3 py-2 text-sm font-semibold hover:bg-slate-800">
+            Approve selected
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="flex-1 px-4 sm:px-6 py-6">
+      <div class="mx-auto max-w-6xl space-y-5">
+
+        <!-- Filters -->
+        <section class="rounded-2xl bg-white border border-slate-200 p-4 sm:p-5">
+          <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 flex-1">
+              <!-- Range type -->
+              <label class="block">
+                <div class="text-xs text-slate-500 mb-1">Range</div>
+                <select id="rangeType" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                  <option value="day">Day</option>
+                  <option value="week">Week</option>
+                  <option value="month">Month</option>
+                </select>
+              </label>
+
+              <!-- Date -->
+              <label class="block">
+                <div class="text-xs text-slate-500 mb-1">Date</div>
+                <input id="rangeDate" type="date" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+              </label>
+
+              <!-- Employee -->
+              <label class="block">
+                <div class="text-xs text-slate-500 mb-1">Employee</div>
+                <select id="employeeFilter" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                  <option value="all">All employees</option>
+                </select>
+              </label>
+
+              <!-- Status -->
+              <label class="block">
+                <div class="text-xs text-slate-500 mb-1">Status</div>
+                <select id="statusFilter" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                  <option value="all">All</option>
+                  <option value="open">Missing clock-out</option>
+                  <option value="closed">Closed</option>
+                  <option value="approved">Approved</option>
+                  <option value="unapproved">Unapproved</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <div class="hidden sm:flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" class="text-slate-500">
+                  <path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  <path d="M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                <input id="searchQ" class="w-56 bg-transparent outline-none text-sm" placeholder="Search name or log id…" />
+              </div>
+
+              <button id="btnToday" class="rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm font-semibold hover:bg-slate-50">
+                Today
+              </button>
+              <button id="btnApply" class="rounded-xl bg-slate-900 text-white px-4 py-2 text-sm font-semibold hover:bg-slate-800">
+                Apply
+              </button>
+            </div>
+          </div>
+
+          <!-- Summary pills -->
+          <div class="mt-4 flex flex-wrap items-center gap-2">
+            <span class="rounded-full bg-slate-100 text-slate-700 px-3 py-1 text-xs font-semibold">
+              Total: <span id="sumTotal">0</span>
+            </span>
+            <span class="rounded-full bg-rose-100 text-rose-800 px-3 py-1 text-xs font-semibold">
+              Missing out: <span id="sumOpen">0</span>
+            </span>
+            <span class="rounded-full bg-emerald-100 text-emerald-800 px-3 py-1 text-xs font-semibold">
+              Closed: <span id="sumClosed">0</span>
+            </span>
+            <span class="rounded-full bg-sky-100 text-sky-800 px-3 py-1 text-xs font-semibold">
+              Approved: <span id="sumApproved">0</span>
+            </span>
+          </div>
+        </section>
+
+        <!-- Logs table -->
+        <section class="rounded-2xl bg-white border border-slate-200 overflow-hidden">
+          <div class="p-4 border-b border-slate-200 flex items-center justify-between gap-3">
+            <div>
+              <div class="text-sm font-semibold">Logs</div>
+              <div class="text-xs text-slate-500" id="rangeLabel">—</div>
+            </div>
+
+            <div class="text-xs text-slate-500 hidden sm:block">
+              Red rows need attention (missing clock-out)
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead class="bg-slate-50 text-slate-600">
+                <tr>
+                  <th class="text-left px-4 py-3 font-semibold">
+                    <input type="checkbox" id="checkAll" class="h-4 w-4 rounded border-slate-300" />
+                  </th>
+                  <th class="text-left px-4 py-3 font-semibold">Log ID</th>
+                  <th class="text-left px-4 py-3 font-semibold">Employee</th>
+                  <th class="text-left px-4 py-3 font-semibold">Clock In</th>
+                  <th class="text-left px-4 py-3 font-semibold">Clock Out</th>
+
+                  <!-- ✅ NEW -->
+                  <th class="text-left px-4 py-3 font-semibold">Worked</th>
+
+                  <th class="text-left px-4 py-3 font-semibold">Status</th>
+                  <th class="text-right px-4 py-3 font-semibold">Action</th>
+                </tr>
+              </thead>
+              <tbody id="rows" class="divide-y divide-slate-100">
+                <!-- JS -->
+              </tbody>
+            </table>
+          </div>
+
+          <div class="p-4 bg-slate-50 border-t border-slate-200 text-xs text-slate-600">
+            Tip: Use filters to quickly find missing clock-outs and approve once corrected.
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Manage Drawer -->
+  <div id="drawerWrap" class="hidden fixed inset-0 z-[80]">
+    <div id="drawerBackdrop" class="absolute inset-0 bg-black/40"></div>
+
+    <div class="absolute inset-y-0 right-0 w-full max-w-xl bg-white border-l border-slate-200 shadow-2xl overflow-hidden">
+      <div class="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3">
+        <div>
+          <div class="text-xs uppercase tracking-wider text-slate-500">Manage log</div>
+          <div class="mt-1 text-base font-bold" id="dTitle">—</div>
+          <div class="text-sm text-slate-600 mt-1" id="dSub">—</div>
+        </div>
+        <button id="drawerClose" class="rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold hover:bg-slate-200">Close</button>
+      </div>
+
+      <div class="p-5 space-y-5 overflow-y-auto h-[calc(100%-140px)]">
+        <div class="flex flex-wrap items-center gap-2">
+          <span id="dStatusPill" class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold">—</span>
+          <span id="dApprovedPill" class="hidden inline-flex items-center rounded-full bg-emerald-100 text-emerald-800 px-3 py-1 text-xs font-semibold">Approved</span>
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <label class="block">
+            <div class="text-xs text-slate-500 mb-1">Clock In</div>
+            <input id="dIn" type="datetime-local"
+              class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20" />
+          </label>
+          <label class="block">
+            <div class="text-xs text-slate-500 mb-1">Clock Out</div>
+            <input id="dOut" type="datetime-local"
+              class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20" />
+            <div class="mt-1 text-xs text-slate-500">Leave blank = missing clock-out</div>
+          </label>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button id="dSetNow" class="rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm font-semibold hover:bg-slate-50">
+            Set clock-out = now
+          </button>
+          <button id="dClearOut" class="rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm font-semibold hover:bg-slate-50">
+            Clear clock-out
+          </button>
+        </div>
+
+        <label class="block">
+          <div class="text-xs text-slate-500 mb-1">Reason / Notes (required if changing times)</div>
+          <textarea id="dReason" rows="3"
+            class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20"
+            placeholder="E.g. Staff forgot to clock out; confirmed with rota."></textarea>
+        </label>
+
+        <div id="dWarn" class="hidden rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">
+          Please add a reason before saving changes.
+        </div>
+
+        <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
+          <div class="text-sm font-semibold">Audit preview</div>
+          <div class="text-sm text-slate-600 mt-1">Real build logs who/when/what changed.</div>
+          <div class="mt-3 grid gap-2 text-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-slate-600">Edited at</span>
+              <span class="font-semibold" id="dEditedAt">—</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-slate-600">Approved</span>
+              <span class="font-semibold" id="dApproved">No</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="px-5 py-4 border-t border-slate-200 flex items-center justify-between gap-2">
+        <button id="dUnapprove" class="hidden rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm font-semibold hover:bg-slate-50">
+          Unapprove
+        </button>
+        <div class="ml-auto flex items-center gap-2">
+          <button id="dApprove" class="rounded-xl bg-emerald-600 text-white px-3 py-2 text-sm font-semibold hover:bg-emerald-500">
+            Approve
+          </button>
+          <button id="dSave" class="rounded-xl bg-slate-900 text-white px-4 py-2 text-sm font-semibold hover:bg-slate-800">
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // -----------------------------
+    // Sample data
+    // -----------------------------
+    const employees = [
+      { id: 1, name: "Sarah Brown" },
+      { id: 2, name: "Imran Khan" },
+      { id: 3, name: "Maria Patel" },
+      { id: 4, name: "John Smith" }
+    ];
+
+    const logs = [
+      { id: 201, employee_id: 1, employee: "Sarah Brown", in_at: "2026-01-06T08:02", out_at: "2026-01-06T20:10", approved: true,  source: "kiosk" },
+      { id: 202, employee_id: 2, employee: "Imran Khan",  in_at: "2026-01-06T07:55", out_at: "2026-01-06T14:11", approved: false, source: "kiosk" },
+      { id: 203, employee_id: 3, employee: "Maria Patel",  in_at: "2026-01-06T19:55", out_at: "",               approved: false, source: "kiosk" },
+      { id: 204, employee_id: 1, employee: "Sarah Brown", in_at: "2026-01-05T08:00", out_at: "",               approved: false, source: "kiosk" },
+      { id: 205, employee_id: 4, employee: "John Smith",  in_at: "2026-01-04T09:10", out_at: "2026-01-04T17:05", approved: true, source: "kiosk" },
+    ];
+
+    // -----------------------------
+    // Elements
+    // -----------------------------
+    const rangeType = document.getElementById("rangeType");
+    const rangeDate = document.getElementById("rangeDate");
+    const employeeFilter = document.getElementById("employeeFilter");
+    const statusFilter = document.getElementById("statusFilter");
+    const searchQ = document.getElementById("searchQ");
+    const btnApply = document.getElementById("btnApply");
+    const btnToday = document.getElementById("btnToday");
+    const rangeLabel = document.getElementById("rangeLabel");
+    const rowsEl = document.getElementById("rows");
+
+    const sumTotal = document.getElementById("sumTotal");
+    const sumOpen = document.getElementById("sumOpen");
+    const sumClosed = document.getElementById("sumClosed");
+    const sumApproved = document.getElementById("sumApproved");
+
+    const checkAll = document.getElementById("checkAll");
+
+    // Drawer
+    const drawerWrap = document.getElementById("drawerWrap");
+    const drawerBackdrop = document.getElementById("drawerBackdrop");
+    const drawerClose = document.getElementById("drawerClose");
+
+    const dTitle = document.getElementById("dTitle");
+    const dSub = document.getElementById("dSub");
+    const dStatusPill = document.getElementById("dStatusPill");
+    const dApprovedPill = document.getElementById("dApprovedPill");
+    const dIn = document.getElementById("dIn");
+    const dOut = document.getElementById("dOut");
+    const dReason = document.getElementById("dReason");
+    const dWarn = document.getElementById("dWarn");
+    const dEditedAt = document.getElementById("dEditedAt");
+    const dApproved = document.getElementById("dApproved");
+
+    const dSetNow = document.getElementById("dSetNow");
+    const dClearOut = document.getElementById("dClearOut");
+    const dSave = document.getElementById("dSave");
+    const dApprove = document.getElementById("dApprove");
+    const dUnapprove = document.getElementById("dUnapprove");
+
+    let currentId = null;
+    let snapIn = "";
+    let snapOut = "";
+
+    // -----------------------------
+    // Helpers
+    // -----------------------------
+    function pad(n){ return String(n).padStart(2,"0"); }
+
+    function toLocalLabel(dtLocal){
+      if (!dtLocal) return "NULL";
+      const d = new Date(dtLocal);
+      return d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+    }
+
+    // ✅ NEW: minutes difference between in/out (handles overnight too)
+    function diffMinutes(inLocal, outLocal) {
+      if (!inLocal || !outLocal) return null;
+      const a = new Date(inLocal).getTime();
+      const b = new Date(outLocal).getTime();
+      if (!isFinite(a) || !isFinite(b)) return null;
+      const mins = Math.round((b - a) / 60000);
+      // if negative (bad data), return null
+      return mins >= 0 ? mins : null;
+    }
+
+    // ✅ NEW: format minutes => HH:MM
+    function fmtHM(mins) {
+      if (mins == null) return "—";
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+    }
+
+    function startOfWeek(d){
+      const x = new Date(d);
+      const day = (x.getDay() + 6) % 7; // Monday=0
+      x.setDate(x.getDate() - day);
+      x.setHours(0,0,0,0);
+      return x;
+    }
+    function endOfWeek(d){
+      const s = startOfWeek(d);
+      const e = new Date(s);
+      e.setDate(e.getDate() + 6);
+      e.setHours(23,59,59,999);
+      return e;
+    }
+    function startOfMonth(d){
+      const x = new Date(d);
+      x.setDate(1); x.setHours(0,0,0,0);
+      return x;
+    }
+    function endOfMonth(d){
+      const x = new Date(d);
+      x.setMonth(x.getMonth()+1, 0);
+      x.setHours(23,59,59,999);
+      return x;
+    }
+    function inRange(log, a, b){
+      const t = new Date(log.in_at).getTime();
+      return t >= a.getTime() && t <= b.getTime();
+    }
+
+    function statusPill(log){
+      const open = !log.out_at;
+      const base = "inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold";
+      if (open) return `<span class="${base} bg-rose-100 text-rose-800">Missing out</span>`;
+      if (log.approved) return `<span class="${base} bg-emerald-100 text-emerald-800">Approved</span>`;
+      return `<span class="${base} bg-slate-100 text-slate-700">Unapproved</span>`;
+    }
+
+    function rowClasses(log){
+      if (!log.out_at) return "bg-rose-50";
+      return "";
+    }
+
+    // -----------------------------
+    // Populate employee filter
+    // -----------------------------
+    employees.forEach(e => {
+      const opt = document.createElement("option");
+      opt.value = String(e.id);
+      opt.textContent = e.name;
+      employeeFilter.appendChild(opt);
+    });
+
+    // Default date = today
+    (function initDate(){
+      const now = new Date();
+      const v = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+      rangeDate.value = v;
+    })();
+
+    function getRange() {
+      const d = new Date(rangeDate.value + "T00:00");
+      let a, b;
+      if (rangeType.value === "day") {
+        a = new Date(d); a.setHours(0,0,0,0);
+        b = new Date(d); b.setHours(23,59,59,999);
+        rangeLabel.textContent = a.toLocaleDateString([], { weekday:"long", year:"numeric", month:"long", day:"numeric" });
+      } else if (rangeType.value === "week") {
+        a = startOfWeek(d);
+        b = endOfWeek(d);
+        rangeLabel.textContent = `Week: ${a.toLocaleDateString([], { month:"short", day:"2-digit" })} – ${b.toLocaleDateString([], { month:"short", day:"2-digit" })}`;
+      } else {
+        a = startOfMonth(d);
+        b = endOfMonth(d);
+        rangeLabel.textContent = d.toLocaleDateString([], { year:"numeric", month:"long" });
+      }
+      return { a, b };
+    }
+
+    function applyFilters() {
+      const { a, b } = getRange();
+      const emp = employeeFilter.value;
+      const st = statusFilter.value;
+      const q = (searchQ.value || "").toLowerCase().trim();
+
+      let rows = logs.filter(l => inRange(l, a, b));
+
+      if (emp !== "all") rows = rows.filter(l => String(l.employee_id) === emp);
+
+      if (st === "open") rows = rows.filter(l => !l.out_at);
+      if (st === "closed") rows = rows.filter(l => !!l.out_at);
+      if (st === "approved") rows = rows.filter(l => l.approved);
+      if (st === "unapproved") rows = rows.filter(l => !l.approved);
+
+      if (q) rows = rows.filter(l =>
+        String(l.id).includes(q) ||
+        l.employee.toLowerCase().includes(q)
+      );
+
+      sumTotal.textContent = rows.length;
+      sumOpen.textContent = rows.filter(r => !r.out_at).length;
+      sumClosed.textContent = rows.filter(r => !!r.out_at).length;
+      sumApproved.textContent = rows.filter(r => r.approved).length;
+
+      rowsEl.innerHTML = rows.map(l => {
+        const mins = diffMinutes(l.in_at, l.out_at);
+        const worked = fmtHM(mins);
+
+        return `
+          <tr class="${rowClasses(l)}">
+            <td class="px-4 py-3">
+              <input class="rowCheck h-4 w-4 rounded border-slate-300" type="checkbox" data-id="${l.id}">
+            </td>
+            <td class="px-4 py-3 font-mono text-xs text-slate-700">#${l.id}</td>
+            <td class="px-4 py-3 font-medium">${l.employee}</td>
+            <td class="px-4 py-3 text-slate-700">${toLocalLabel(l.in_at)}</td>
+            <td class="px-4 py-3 text-slate-700">${l.out_at ? toLocalLabel(l.out_at) : '<span class="text-rose-700 font-semibold">NULL</span>'}</td>
+
+            <!-- ✅ NEW -->
+            <td class="px-4 py-3 font-semibold text-slate-900">${worked}</td>
+
+            <td class="px-4 py-3">${statusPill(l)}</td>
+            <td class="px-4 py-3 text-right">
+              <button class="rounded-xl bg-white border border-slate-200 px-3 py-2 text-xs font-semibold hover:bg-slate-50"
+                onclick="openDrawer(${l.id})">
+                Manage
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join("") || `
+        <tr><td colspan="8" class="px-4 py-10 text-center text-slate-500">No logs found for this filter</td></tr>
+      `;
+
+      checkAll.checked = false;
+    }
+
+    // -----------------------------
+    // Drawer (Manage)
+    // -----------------------------
+    function openDrawer(id){
+      const l = logs.find(x => x.id === id);
+      if (!l) return;
+
+      currentId = id;
+      snapIn = l.in_at || "";
+      snapOut = l.out_at || "";
+
+      dTitle.textContent = `${l.employee} • Log #${l.id}`;
+      dSub.textContent = `Source: ${l.source}`;
+
+      dIn.value = l.in_at || "";
+      dOut.value = l.out_at || "";
+      dReason.value = "";
+      dWarn.classList.add("hidden");
+
+      updateDrawerStatus(l);
+
+      drawerWrap.classList.remove("hidden");
+      document.body.style.overflow = "hidden";
+    }
+
+    function closeDrawer(){
+      drawerWrap.classList.add("hidden");
+      document.body.style.overflow = "";
+      currentId = null;
+    }
+
+    function updateDrawerStatus(l){
+      const open = !dOut.value;
+      dStatusPill.className = open
+        ? "inline-flex items-center rounded-full bg-rose-100 text-rose-800 px-3 py-1 text-xs font-semibold"
+        : "inline-flex items-center rounded-full bg-slate-100 text-slate-700 px-3 py-1 text-xs font-semibold";
+      dStatusPill.textContent = open ? "Missing clock-out" : "Closed";
+
+      dApprovedPill.classList.toggle("hidden", !l.approved);
+      dApproved.textContent = l.approved ? "Yes" : "No";
+
+      dApprove.classList.toggle("hidden", l.approved);
+      dUnapprove.classList.toggle("hidden", !l.approved);
+    }
+
+    function saveDrawer(){
+      const l = logs.find(x => x.id === currentId);
+      if (!l) return;
+
+      const changed = (dIn.value !== snapIn) || (dOut.value !== snapOut);
+      if (changed && !dReason.value.trim()){
+        dWarn.classList.remove("hidden");
+        dReason.focus();
+        return;
+      }
+      dWarn.classList.add("hidden");
+
+      l.in_at = dIn.value;
+      l.out_at = dOut.value;
+
+      snapIn = l.in_at || "";
+      snapOut = l.out_at || "";
+      dEditedAt.textContent = new Date().toLocaleString([], { dateStyle:"medium", timeStyle:"short" });
+
+      updateDrawerStatus(l);
+      applyFilters();
+
+      const old = dSave.textContent;
+      dSave.textContent = "Saved ✓";
+      setTimeout(() => dSave.textContent = old, 900);
+    }
+
+    function approveDrawer(on){
+      const l = logs.find(x => x.id === currentId);
+      if (!l) return;
+
+      const changed = (dIn.value !== snapIn) || (dOut.value !== snapOut);
+      if (changed) {
+        saveDrawer();
+        const stillChanged = (dIn.value !== snapIn) || (dOut.value !== snapOut);
+        if (stillChanged) return;
+      }
+
+      l.approved = !!on;
+      updateDrawerStatus(l);
+      applyFilters();
+    }
+
+    drawerBackdrop.addEventListener("click", closeDrawer);
+    drawerClose.addEventListener("click", closeDrawer);
+
+    dIn.addEventListener("input", () => {
+      const l = logs.find(x => x.id === currentId);
+      if (l) updateDrawerStatus(l);
+    });
+    dOut.addEventListener("input", () => {
+      const l = logs.find(x => x.id === currentId);
+      if (l) updateDrawerStatus(l);
+    });
+
+    dSetNow.addEventListener("click", () => {
+      const now = new Date();
+      const v = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+      dOut.value = v;
+      const l = logs.find(x => x.id === currentId);
+      if (l) updateDrawerStatus(l);
+    });
+    dClearOut.addEventListener("click", () => {
+      dOut.value = "";
+      const l = logs.find(x => x.id === currentId);
+      if (l) updateDrawerStatus(l);
+    });
+
+    dSave.addEventListener("click", saveDrawer);
+    dApprove.addEventListener("click", () => approveDrawer(true));
+    dUnapprove.addEventListener("click", () => approveDrawer(false));
+
+    checkAll.addEventListener("change", () => {
+      document.querySelectorAll(".rowCheck").forEach(cb => cb.checked = checkAll.checked);
+    });
+
+    btnApply.addEventListener("click", applyFilters);
+    btnToday.addEventListener("click", () => {
+      const now = new Date();
+      rangeType.value = "day";
+      rangeDate.value = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+      applyFilters();
+    });
+
+    [rangeType, rangeDate, employeeFilter, statusFilter].forEach(el => {
+      el.addEventListener("change", applyFilters);
+    });
+    if (searchQ) searchQ.addEventListener("input", () => applyFilters());
+
+    applyFilters();
+    window.openDrawer = openDrawer;
+  </script>
+</body>
+</html>
