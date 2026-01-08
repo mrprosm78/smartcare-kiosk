@@ -24,6 +24,28 @@ $tokHash    = $deviceTok !== '' ? hash('sha256', $deviceTok) : null;
 
 $now = now_utc(); // server truth time (Y-m-d H:i:s)
 
+// ---- helper: parse ISO8601 device_time into MySQL DATETIME (UTC) ----
+function parse_device_time_to_sql(string $deviceTime): ?string {
+    $deviceTime = trim($deviceTime);
+    if ($deviceTime === '') return null;
+
+    // Accept common kiosk formats:
+    // - ISO8601 from JS: 2026-01-08T21:30:12.123Z
+    // - ISO8601 without millis: 2026-01-08T21:30:12Z
+    // - MySQL DATETIME already: 2026-01-08 21:30:12
+    try {
+        // If it already looks like MySQL DATETIME, trust it.
+        if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $deviceTime)) {
+            return $deviceTime;
+        }
+
+        $dt = new DateTimeImmutable($deviceTime);
+        return $dt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+    } catch (Throwable $e) {
+        return null;
+    }
+}
+
 // ---- helper: log punch attempt result (update row) ----
 function punch_mark(PDO $pdo, string $eventUuid, string $status, ?string $errorCode = null, ?int $shiftId = null): void {
     $stmt = $pdo->prepare("
@@ -38,6 +60,12 @@ function punch_mark(PDO $pdo, string $eventUuid, string $status, ?string $errorC
 // ---- basic required ----
 if ($eventUuid === '' || $action === '' || $pin === '' || $deviceTime === '') {
     json_response(['ok'=>false,'error'=>'missing_fields'], 400);
+}
+
+// device_time must be parseable into MySQL DATETIME
+$deviceTimeSql = parse_device_time_to_sql($deviceTime);
+if (!$deviceTimeSql) {
+    json_response(['ok'=>false,'error'=>'invalid_device_time'], 400);
 }
 
 // action validation
@@ -77,7 +105,7 @@ if ($chk->fetchColumn()) {
 }
 
 // employee lookup
-$allowPlain = setting_bool($pdo,'allow_plain_pin', true);
+$allowPlain = setting_bool($pdo,'allow_plain_pin', false);
 
 $stmt = $pdo->query("SELECT id, first_name, last_name, pin_hash FROM employees WHERE is_active=1");
 $employee = null;
@@ -103,6 +131,7 @@ if (!$employee) {
 }
 
 $employeeId = (int)$employee['id'];
+$employeeName = trim(((string)($employee['first_name'] ?? '')) . ' ' . ((string)($employee['last_name'] ?? '')));
 
 // anti-spam: min seconds between punches
 $minSeconds = setting_int($pdo,'min_seconds_between_punches', 20);
@@ -130,7 +159,7 @@ if ($minSeconds > 0) {
                 (event_uuid, employee_id, action, device_time, received_at, effective_time,
                  result_status, error_code, kiosk_code, device_token_hash, ip_address, user_agent)
                 VALUES (?, ?, ?, ?, ?, ?, 'received', NULL, ?, ?, ?, ?)
-            ")->execute([$eventUuid,$employeeId,$action,$deviceTime,$now,$now,$kioskCode,$tokHash,$ipAddress,$userAgent]);
+            ")->execute([$eventUuid,$employeeId,$action,$deviceTimeSql,$now,$now,$kioskCode,$tokHash,$ipAddress,$userAgent]);
 
             punch_mark($pdo, $eventUuid, 'rejected', 'too_soon', null);
             json_response(['ok'=>false,'error'=>'too_soon'], 429);
@@ -148,7 +177,7 @@ $pdo->prepare("
     $eventUuid,
     $employeeId,
     $action,
-    $deviceTime,
+    $deviceTimeSql,
     $now,
     $now,
     $kioskCode,
@@ -176,7 +205,12 @@ try {
         $shiftId = (int)$pdo->lastInsertId();
 
         punch_mark($pdo, $eventUuid, 'processed', null, $shiftId);
-        json_response(['ok'=>true,'status'=>'processed','action'=>'IN']);
+        json_response([
+  'ok' => true,
+  'status' => 'processed',
+  'action' => 'IN',
+  'employee_name' => $employeeName
+]);
     }
 
     if ($action === 'OUT') {
@@ -219,7 +253,12 @@ try {
         $upd->execute([$now, $mins, (int)$s['id']]);
 
         punch_mark($pdo, $eventUuid, 'processed', null, (int)$s['id']);
-        json_response(['ok'=>true,'status'=>'processed','action'=>'OUT']);
+        json_response([
+  'ok' => true,
+  'status' => 'processed',
+  'action' => 'OUT',
+  'employee_name' => $employeeName
+]);
     }
 
     // should never reach here
