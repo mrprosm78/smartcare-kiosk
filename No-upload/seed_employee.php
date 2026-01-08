@@ -7,17 +7,16 @@ require __DIR__ . '/db.php';
 header('Content-Type: text/plain; charset=utf-8');
 
 $employees = [
-    ['EMP-001', 'Sarah',  'Brown',  '1234'],
-    ['EMP-002', 'John',   'Ahmed',  '2345'],
-    ['EMP-003', 'Maria',  'Patel',  '3456'],
-    ['EMP-004', 'David',  'Wilson', '4567'],
-    ['EMP-005', 'Aisha',  'Khan',   '5678'],
-    ['EMP-006', 'Michael','Smith',  '6789'],
-    ['EMP-007', 'Fatima', 'Ali',    '7890'],
-    ['EMP-008', 'James',  'Taylor', '8901'],
-    ['EMP-009', 'Lucy',   'Green',  '9012'],
-    ['EMP-010', 'Omar',   'Hussain', '0123'],
+    ['EMP-001', 'Moiz', '', '1234'],
+    ['EMP-002', 'Ali', '', '2345'],
+    ['EMP-003', 'Anisha', '', '3456'],
+    ['EMP-004', 'Salika', '', '4567'],
+    ['EMP-005', 'Sandhya', '', '5678'],
+    ['EMP-006', 'Siraj Dev', '', '6789'],
+    ['EMP-007', 'Shayam', '', '7890'],
+    ['EMP-008', 'Siraj', '', '8901'],
 ];
+
 
 $stmt = $pdo->prepare("
     INSERT INTO employees

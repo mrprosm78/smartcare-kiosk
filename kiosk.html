@@ -221,21 +221,41 @@
 
 <script>
 /* =========================
-   CONFIG
+   CONFIG (only deployment stays hard-coded)
 ========================= */
-const THANK_MS = 1500;
-const PIN_LENGTH = 4;
-
 // same-domain base (works for your deployment)
-const API_BASE = "https://zapsite.co.uk/kiosk-site-1";
+const API_BASE = "https://zapsite.co.uk/kiosk-dev";
 
-const API_STATUS = `${API_BASE}/api/kiosk/status.php`;
-const API_PAIR   = `${API_BASE}/api/kiosk/pair.php`;
+const API_STATUS     = `${API_BASE}/api/kiosk/status.php`;
+const API_PAIR       = `${API_BASE}/api/kiosk/pair.php`;
 const ENDPOINT_PUNCH = `${API_BASE}/api/kiosk/punch.php`;
 const ENDPOINT_PING  = `${API_BASE}/api/kiosk/ping.php`;
 
 // must match settings.kiosk_code in DB
-const KIOSK_CODE = "KIOSK-9F3A6C2D8A71";
+const KIOSK_CODE = "KIOSK-1";
+
+/* =========================
+   SETTINGS-DRIVEN RUNTIME CONFIG (defaults)
+   Overwritten by status.php safely.
+========================= */
+let THANK_MS = 1500;
+let PIN_LENGTH = 4;
+
+let PING_INTERVAL_MS = 60000;
+let SYNC_INTERVAL_MS = 30000;
+let SYNC_COOLDOWN_MS = 8000;
+
+let SYNC_BATCH_SIZE = 20;
+let MAX_SYNC_ATTEMPTS = 10;
+
+let SYNC_BACKOFF_BASE_MS = 2000;
+let SYNC_BACKOFF_CAP_MS  = 300000;
+
+let UI_SHOW_CLOCK = true;
+
+// reload control
+let CLIENT_VERSION = "1";
+const STATUS_REFRESH_MS = 60000; // fetch status/config every 60s (safe)
 
 /* =========================
    UI ELEMENTS
@@ -267,12 +287,15 @@ const pairHint     = document.getElementById('pairHint');
 
 // keypad labels
 document.querySelectorAll('button.key').forEach(btn => {
-  btn.className = "key rounded-2xl bg-white/5 border border-white/10 px-4 py-4 text-2xl font-bold text-white/90 hover:bg-white/10 active:bg-white/15";
+  btn.className =
+    "key rounded-2xl bg-white/5 border border-white/10 px-4 py-4 text-2xl font-bold text-white/90 hover:bg-white/10 active:bg-white/15";
   btn.textContent = btn.dataset.key;
 });
 
-// show exactly 4 dots
-pinDots.forEach((d, i) => d.style.display = (i < PIN_LENGTH) ? 'inline-block' : 'none');
+function applyPinDots() {
+  pinDots.forEach((d, i) => d.style.display = (i < PIN_LENGTH) ? 'inline-block' : 'none');
+}
+applyPinDots();
 
 /* =========================
    DEVICE TOKEN + PAIRING
@@ -290,11 +313,98 @@ function setPairedUI(isPaired) {
   pairHint.classList.toggle('hidden', !!isPaired);
 }
 
+/* =========================
+   AUTO-RELOAD (Option A: best)
+   - Server controls kiosk_client_version and kiosk_force_reload
+   - When changed, we reload kiosk.html
+========================= */
+function canReloadNow() {
+  const last = Number(localStorage.getItem("kiosk_last_reload_at") || "0");
+  return (Date.now() - last) > 15000; // 15s guard (prevents loops)
+}
+
+function scheduleReload(reason) {
+  try {
+    if (!canReloadNow()) return;
+    localStorage.setItem("kiosk_last_reload_at", String(Date.now()));
+    console.log("[KIOSK] Reloading:", reason);
+  } catch {}
+  // Standard reload is enough if server sets no-cache headers for kiosk.html (best practice)
+  location.reload();
+}
+
+/**
+ * Fetch status + apply safe server config.
+ * Returns: boolean paired
+ */
 async function getStatus() {
   try {
     const r = await fetch(API_STATUS, { cache: "no-store" });
     const d = await r.json();
-    return !!d.paired;
+
+    // -------------------------
+    // AUTO-RELOAD CHECKS
+    // -------------------------
+    // These two keys must be added in settings + returned by status.php:
+    // - kiosk_client_version (string/number)
+    // - kiosk_force_reload (bool)
+    const serverVer = String(d?.kiosk_client_version ?? "");
+    const forceReload = !!d?.kiosk_force_reload;
+
+    const localVer = String(localStorage.getItem("kiosk_client_version") || "");
+
+    if (serverVer && serverVer !== localVer) {
+      localStorage.setItem("kiosk_client_version", serverVer);
+      scheduleReload("version_changed");
+      // return, page will reload
+      return false;
+    }
+
+    if (forceReload) {
+      scheduleReload("force_reload");
+      return false;
+    }
+
+    // -------------------------
+    // APPLY SAFE SERVER SETTINGS (never secrets)
+    // -------------------------
+    if (d && typeof d === "object") {
+      // pin + UI
+      if (Number.isFinite(+d.pin_length)) {
+        PIN_LENGTH = Math.max(2, Math.min(8, parseInt(d.pin_length, 10)));
+      }
+      if (Number.isFinite(+d.ui_thank_ms)) {
+        THANK_MS = Math.max(500, Math.min(10000, parseInt(d.ui_thank_ms, 10)));
+      }
+      UI_SHOW_CLOCK = (typeof d.ui_show_clock === "boolean") ? d.ui_show_clock : UI_SHOW_CLOCK;
+
+      // sync tuning
+      if (Number.isFinite(+d.ping_interval_ms)) {
+        PING_INTERVAL_MS = Math.max(5000, Math.min(600000, parseInt(d.ping_interval_ms, 10)));
+      }
+      if (Number.isFinite(+d.sync_interval_ms)) {
+        SYNC_INTERVAL_MS = Math.max(5000, Math.min(600000, parseInt(d.sync_interval_ms, 10)));
+      }
+      if (Number.isFinite(+d.sync_cooldown_ms)) {
+        SYNC_COOLDOWN_MS = Math.max(0, Math.min(600000, parseInt(d.sync_cooldown_ms, 10)));
+      }
+      if (Number.isFinite(+d.sync_batch_size)) {
+        SYNC_BATCH_SIZE = Math.max(1, Math.min(100, parseInt(d.sync_batch_size, 10)));
+      }
+      if (Number.isFinite(+d.max_sync_attempts)) {
+        MAX_SYNC_ATTEMPTS = Math.max(1, Math.min(50, parseInt(d.max_sync_attempts, 10)));
+      }
+      if (Number.isFinite(+d.sync_backoff_base_ms)) {
+        SYNC_BACKOFF_BASE_MS = Math.max(250, Math.min(60000, parseInt(d.sync_backoff_base_ms, 10)));
+      }
+      if (Number.isFinite(+d.sync_backoff_cap_ms)) {
+        SYNC_BACKOFF_CAP_MS = Math.max(SYNC_BACKOFF_BASE_MS, Math.min(3600000, parseInt(d.sync_backoff_cap_ms, 10)));
+      }
+
+      applyPinDots();
+    }
+
+    return !!d?.paired;
   } catch {
     return false;
   }
@@ -329,7 +439,7 @@ async function pairIfNeeded() {
     const out = await res.json().catch(() => ({}));
     if (out.ok && out.device_token) {
       localStorage.setItem("kiosk_device_token", out.device_token);
-      localStorage.setItem("kiosk_pairing_version", out.pairing_version);
+      localStorage.setItem("kiosk_pairing_version", String(out.pairing_version ?? "1"));
       alert("Kiosk paired successfully.");
       setPairedUI(true);
       return;
@@ -395,12 +505,11 @@ async function deleteEvent(event_uuid) {
   });
 }
 
-const MAX_SYNC_ATTEMPTS = 10;
-
 function retryBackoffMs(attempts) {
-  const base = 2000;
+  const base = SYNC_BACKOFF_BASE_MS || 2000;
+  const cap  = SYNC_BACKOFF_CAP_MS || 300000;
   const ms = base * Math.pow(2, Math.max(0, attempts || 0));
-  return Math.min(ms, 5 * 60 * 1000);
+  return Math.min(ms, cap);
 }
 
 function shouldRetry(evt) {
@@ -411,7 +520,7 @@ function shouldRetry(evt) {
   return Date.now() - last >= retryBackoffMs(attempts);
 }
 
-async function listQueuedEvents(limit = 20) {
+async function listQueuedEvents(limit = SYNC_BATCH_SIZE) {
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_QUEUE, "readonly");
@@ -478,10 +587,6 @@ let syncing = false;
 let lastPingAt = 0;
 let lastSyncAt = 0;
 
-const PING_INTERVAL_MS = 60000;
-const SYNC_INTERVAL_MS = 30000;
-const SYNC_COOLDOWN_MS = 8000;
-
 async function hasQueueItems() {
   const items = await listQueuedEvents(1);
   return items.length > 0;
@@ -518,7 +623,7 @@ async function syncQueueIfNeeded(force = false) {
   lastSyncAt = now;
 
   try {
-    const items = await listQueuedEvents(20);
+    const items = await listQueuedEvents(SYNC_BATCH_SIZE);
     if (!items.length) return;
 
     setNetUI(true, `Syncing (${items.length})…`);
@@ -564,7 +669,12 @@ async function syncQueueIfNeeded(force = false) {
 
 window.addEventListener("online", () => { updateNetworkUIOnly(); syncQueueIfNeeded(true); });
 window.addEventListener("offline", () => updateNetworkUIOnly());
-setInterval(() => syncQueueIfNeeded(false), SYNC_INTERVAL_MS);
+
+async function syncLoop() {
+  await syncQueueIfNeeded(false);
+  setTimeout(syncLoop, SYNC_INTERVAL_MS);
+}
+syncLoop();
 
 /* =========================
    UI FUNCTIONS
@@ -747,6 +857,7 @@ document.querySelectorAll('button.key').forEach(btn => {
    CLOCK DISPLAY
 ========================= */
 function tickClock() {
+  if (!UI_SHOW_CLOCK) return;
   const now = new Date();
   nowDateEl.textContent = now.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   nowTimeEl.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -754,10 +865,24 @@ function tickClock() {
 tickClock();
 tickTimer = setInterval(tickClock, 1000);
 
+/* =========================
+   STATUS REFRESH LOOP (applies config changes + reload trigger)
+========================= */
+async function statusRefreshLoop() {
+  await getStatus(); // applies config + checks reload flags
+  setTimeout(statusRefreshLoop, STATUS_REFRESH_MS);
+}
+
+/* =========================
+   BOOT
+========================= */
 setScreen('home');
 updateNetworkUIOnly();
 pairIfNeeded();
+statusRefreshLoop();
 </script>
+
+
 
 </body>
 </html>
