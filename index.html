@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <!-- Optimized for Android tablets -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Clock Kiosk</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    /* Tablet-optimized styles */
+    html, body { 
+      height: 100%;
+      -webkit-text-size-adjust: 100%; /* Prevent font scaling */
+      touch-action: manipulation; /* Remove 300ms delay on touch */
+    }
+    body { 
+      -webkit-tap-highlight-color: transparent;
+      -webkit-font-smoothing: antialiased;
+    }
+    .no-select { 
+      user-select: none; 
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    .min-h-dvh { min-height: 100dvh; }
+    
+    /* Larger touch targets for tablets */
+    button, .key {
+      min-height: 64px; /* Larger touch target */
+    }
+    
+    /* Prevent zoom on input */
+    input, textarea, select {
+      font-size: 16px; /* Prevents iOS zoom */
+    }
+    
+    /* Smooth transitions */
+    * {
+      transition: background-color 0.2s ease, transform 0.1s ease;
+    }
+    
+    /* Active state for better touch feedback */
+    button:active, .key:active {
+      transform: scale(0.98);
+    }
+  </style>
+</head>
+
+<body class="no-select bg-slate-950 text-white min-h-dvh">
+  <div class="min-h-dvh flex flex-col">
+    <!-- Header - Adjusted for tablet -->
+    <header class="px-6 pt-7 pb-5">
+      <div class="mx-auto max-w-5xl flex items-center justify-between gap-4">
+        <div class="flex items-center gap-4">
+          <div class="h-14 w-14 rounded-2xl bg-white/10 flex items-center justify-center">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" class="opacity-90">
+              <path d="M12 8v5l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="2"/>
+            </svg>
+          </div>
+          <div>
+            <div class="text-lg font-semibold leading-tight">Care Home Digital Time Clock</div>
+            <div class="text-sm text-white/60 leading-tight">Kiosk Mode</div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <span id="netDot" class="inline-block h-3 w-3 rounded-full bg-amber-400"></span>
+          <span id="netText" class="text-sm text-white/70">Checking…</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content - Optimized for tablet landscape/portrait -->
+    <main class="flex-1 px-6 pb-8">
+      <div class="mx-auto max-w-5xl">
+        <!-- Home Screen -->
+        <section id="homeScreen" class="rounded-3xl bg-white/5 border border-white/10 p-8 shadow-xl shadow-black/30">
+          <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
+            <div class="flex-1">
+              <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Tap to Clock In or Clock Out</h1>
+              <p class="text-base md:text-lg text-white/60 mt-2">
+                Enter your <span class="font-semibold text-white/80">4-digit PIN</span> on the next screen.
+              </p>
+              <p id="pairHint" class="hidden mt-3 text-base text-amber-200/90">
+                This kiosk is not paired yet. Manager pairing is required.
+              </p>
+            </div>
+
+            <div class="text-base md:text-lg text-white/60 shrink-0">
+              <div id="nowDate" class="text-lg md:text-xl"></div>
+              <div class="font-semibold text-white/80 text-3xl md:text-4xl leading-tight" id="nowTime"></div>
+            </div>
+          </div>
+
+          <!-- Action Buttons - Larger for tablet -->
+          <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <button
+              id="btnIn"
+              class="w-full rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 transition px-6 py-8 text-left shadow-lg shadow-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <div class="text-xl md:text-2xl font-bold">Clock In</div>
+                  <div class="text-base text-emerald-50/90 mt-2">Start your shift</div>
+                </div>
+                <div class="h-16 w-16 rounded-2xl bg-white/15 flex items-center justify-center">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" class="text-white">
+                    <path d="M12 2v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M7 4h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="2"/>
+                    <path d="m12 7v5l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+              </div>
+            </button>
+
+            <button
+              id="btnOut"
+              class="w-full rounded-2xl bg-sky-500 hover:bg-sky-400 active:bg-sky-600 transition px-6 py-8 text-left shadow-lg shadow-sky-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <div class="text-xl md:text-2xl font-bold">Clock Out</div>
+                  <div class="text-base text-sky-50/90 mt-2">Finish your shift</div>
+                </div>
+                <div class="h-16 w-16 rounded-2xl bg-white/15 flex items-center justify-center">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" class="text-white">
+                    <path d="M9 12h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M15 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M4 4v16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                </div>
+              </div>
+            </button>
+          </div>
+
+          <!-- Reminder Box -->
+          <div class="mt-6 rounded-2xl bg-white/5 border border-white/10 px-5 py-4 text-base text-white/70">
+            <div class="flex items-start gap-4">
+              <div class="mt-0.5 h-10 w-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" class="opacity-90">
+                  <path d="M12 9v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  <path d="M12 17h.01" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                  <path d="M10.29 3.86h3.42c.43 0 .82.23 1.02.61l7.35 13.76A1.16 1.16 0 0 1 22.06 20H1.94a1.16 1.16 0 0 1-1.02-1.77L8.27 4.47c.2-.38.59-.61 1.02-.61Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div>
+                <div class="font-semibold text-white/85">Staff reminder</div>
+                <div class="mt-2">
+                  Please clock in at the start of your shift and clock out at the end. If you need help, ask the manager.
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Thank You Screen -->
+        <section id="thankScreen" class="hidden rounded-3xl bg-white/5 border border-white/10 p-8 md:p-12 shadow-xl shadow-black/30 text-center">
+          <div class="mx-auto max-w-lg">
+            <div class="mx-auto h-20 w-20 rounded-3xl bg-emerald-500/20 flex items-center justify-center">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" class="text-emerald-200">
+                <path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+
+            <h2 class="mt-6 text-3xl md:text-4xl font-extrabold tracking-tight">Thank you</h2>
+            <p id="thankMsg" class="mt-3 text-white/70 text-lg md:text-xl">Saved.</p>
+            <p id="thankName" class="hidden mt-3 text-white/85 text-lg md:text-xl font-semibold"></p>
+
+            <div class="mt-8 rounded-2xl bg-white/5 border border-white/10 p-5 text-left">
+              <div class="text-sm text-white/50">Details</div>
+              <div class="mt-2 text-base md:text-lg">
+                <div class="flex items-center justify-between">
+                  <span class="text-white/70">Action</span>
+                  <span id="thankAction" class="font-semibold">Clock In</span>
+                </div>
+                <div class="flex items-center justify-between mt-3">
+                  <span class="text-white/70">Time</span>
+                  <span id="thankTime" class="font-semibold"></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-8 text-base text-white/60">
+              Returning to home screen…
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="px-6 pb-6">
+      <div class="mx-auto max-w-5xl text-center text-sm text-white/40">
+        SmartCare • Kiosk
+      </div>
+    </footer>
+  </div>
+
+  <!-- PIN Overlay - Optimized for tablet -->
+  <div id="pinOverlay" class="hidden fixed inset-0 z-50">
+    <div class="absolute inset-0 bg-black/70"></div>
+
+    <div class="absolute inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center p-4 md:p-8">
+      <div class="w-full md:max-w-lg rounded-3xl bg-slate-900 border border-white/10 shadow-2xl shadow-black/40 overflow-hidden">
+        <div class="px-6 pt-6 pb-5 border-b border-white/10">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <div class="text-sm uppercase tracking-wider text-white/50">Enter PIN</div>
+              <div class="mt-2 text-xl font-bold" id="pinTitle">Clock In</div>
+              <div class="text-base text-white/60 mt-2" id="pinHelp">Enter your 4-digit PIN to continue.</div>
+            </div>
+            <button id="pinCancel" class="rounded-xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-3 text-base text-white/80 min-h-[44px]">
+              Cancel
+            </button>
+          </div>
+        </div>
+
+        <div class="px-6 py-6">
+          <!-- PIN Dots -->
+          <div class="flex items-center justify-center gap-3">
+            <span class="pinDot h-4 w-4 rounded-full bg-white/15"></span>
+            <span class="pinDot h-4 w-4 rounded-full bg-white/15"></span>
+            <span class="pinDot h-4 w-4 rounded-full bg-white/15"></span>
+            <span class="pinDot h-4 w-4 rounded-full bg-white/15"></span>
+            <span class="pinDot h-4 w-4 rounded-full bg-white/15"></span>
+            <span class="pinDot h-4 w-4 rounded-full bg-white/15"></span>
+          </div>
+
+          <!-- Error Message -->
+          <div id="pinError" class="hidden mt-4 text-center text-base text-rose-300">
+            Invalid PIN. Please try again.
+          </div>
+
+          <!-- Keypad - Larger for tablet -->
+          <div class="mt-8 grid grid-cols-3 gap-4">
+            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="1">1</button>
+            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="2">2</button>
+            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="3">3</button>
+            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="4">4</button>
+            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="5">5</button>
+            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="6">6</button>
+            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="7">7</button>
+            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="8">8</button>
+            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="9">9</button>
+
+            <button class="rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 px-4 py-6 text-lg text-white/70 min-h-[80px]" id="keyClear">Clear</button>
+            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="0">0</button>
+            <button class="rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 px-4 py-6 text-2xl text-white/70 min-h-[80px]" id="keyBack">⌫</button>
+          </div>
+
+          <div class="mt-6 text-center text-sm text-white/50">
+            For help, ask the manager.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./js/kiosk.config.js"></script>
+  <script src="./js/kiosk.dom.js"></script>
+  <script src="./js/kiosk.idb.js"></script>
+  <script src="./js/kiosk.crypto.js"></script>
+  <script src="./js/kiosk.api.js"></script>
+  <script src="./js/kiosk.sync.js"></script>
+  <script src="./js/kiosk.ui.js"></script>
+  <script src="./js/kiosk.main.js"></script>
+</body>
+</html>
