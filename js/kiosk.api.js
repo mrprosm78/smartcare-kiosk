@@ -56,7 +56,7 @@ function maybeReloadFromStatus(d) {
 async function getStatusAndApply() {
   try {
     const r = await fetch(API_STATUS, { cache: "no-store" });
-    const d = await r.json();
+    const d = await r.json().catch(() => ({}));
 
     if (d && typeof d === "object") {
       // NOTE: you said JS only — so we DO NOT override SHOW_NAME from server.
@@ -94,12 +94,27 @@ async function getStatusAndApply() {
       maybeReloadFromStatus(d);
     }
 
-    return {
-      paired: !!d?.paired,
-      pairing_version: Number.isFinite(+d?.pairing_version) ? parseInt(d.pairing_version, 10) : 1,
-    };
+    // ✅ IMPORTANT CHANGE:
+    // Return the FULL payload (so kiosk.ui.js can read open_shifts + toggles),
+    // but also normalize paired + pairing_version so existing code keeps working.
+    const out = (d && typeof d === "object") ? { ...d } : {};
+
+    out.paired = !!out.paired;
+    out.pairing_version = Number.isFinite(+out.pairing_version)
+      ? parseInt(out.pairing_version, 10)
+      : 1;
+
+    return out;
+
   } catch {
-    return { paired: false, pairing_version: 1 };
+    // Return safe defaults (and include new fields so UI won’t crash)
+    return {
+      paired: false,
+      pairing_version: 1,
+      ui_show_open_shifts: false,
+      ui_open_shifts_count: 6,
+      open_shifts: []
+    };
   }
 }
 
@@ -132,23 +147,13 @@ async function pairIfNeeded() {
     const out = await res.json().catch(() => ({}));
     if (out.ok && out.device_token) {
       localStorage.setItem("kiosk_device_token", out.device_token);
-      localStorage.setItem("kiosk_pairing_version", String(out.pairing_version ?? "1"));
-      alert("Kiosk paired successfully.");
+      localStorage.setItem("kiosk_pairing_version", String(out.pairing_version || 1));
       setPairedUI(true);
       return;
     }
 
-    alert("Pairing failed: " + (out.error || "unknown"));
-    return;
+    alert(out.error || "Pairing failed");
   }
-
-  alert("This device is not authorised for kiosk use.");
-}
-
-function setNetUI(online, label) {
-  netDot.className =
-    "inline-block h-2.5 w-2.5 rounded-full " + (online ? "bg-emerald-400" : "bg-amber-400");
-  netText.textContent = label || (online ? "Online" : "Offline");
 }
 
 async function pingServer() {

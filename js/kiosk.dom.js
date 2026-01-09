@@ -1,39 +1,71 @@
 // kiosk.dom.js
 
-// UI elements
-const homeScreen   = document.getElementById('homeScreen');
-const thankScreen  = document.getElementById('thankScreen');
-const pinOverlay   = document.getElementById('pinOverlay');
+// Main screens
+const homeScreen  = document.getElementById('homeScreen');
+const thankScreen = document.getElementById('thankScreen');
 
-const btnIn        = document.getElementById('btnIn');
-const btnOut       = document.getElementById('btnOut');
+// Header / network
+const netDot  = document.getElementById('netDot');
+const netText = document.getElementById('netText');
 
-const pinTitle     = document.getElementById('pinTitle');
-const pinHelp      = document.getElementById('pinHelp');
-const pinCancel    = document.getElementById('pinCancel');
-const pinError     = document.getElementById('pinError');
-const pinDots      = Array.from(document.querySelectorAll('.pinDot'));
+// Date/Time
+const nowDateEl = document.getElementById('nowDate');
+const nowTimeEl = document.getElementById('nowTime');
 
-const thankMsg     = document.getElementById('thankMsg');
-const thankName    = document.getElementById('thankName');
-const thankAction  = document.getElementById('thankAction');
-const thankTime    = document.getElementById('thankTime');
+// Pairing hint + primary buttons
+const pairHint = document.getElementById('pairHint');
+const btnIn    = document.getElementById('btnIn');
+const btnOut   = document.getElementById('btnOut');
 
-const nowDateEl    = document.getElementById('nowDate');
-const nowTimeEl    = document.getElementById('nowTime');
+// Thank you screen elements
+const thankMsg    = document.getElementById('thankMsg');
+const thankName   = document.getElementById('thankName');
+const thankAction = document.getElementById('thankAction');
+const thankTime   = document.getElementById('thankTime');
 
-const netDot       = document.getElementById('netDot');
-const netText      = document.getElementById('netText');
+// PIN overlay elements
+const pinOverlay = document.getElementById('pinOverlay');
+const pinTitle   = document.getElementById('pinTitle');
+const pinHelp    = document.getElementById('pinHelp');
+const pinCancel  = document.getElementById('pinCancel');
 
-const pairHint     = document.getElementById('pairHint');
+const pinError   = document.getElementById('pinError');
 
-// Keypad labels
-document.querySelectorAll('button.key').forEach(btn => {
-  btn.className =
-    "key rounded-2xl bg-white/5 border border-white/10 px-4 py-4 text-2xl font-bold text-white/90 hover:bg-white/10 active:bg-white/15";
-  btn.textContent = btn.dataset.key;
-});
+// PIN dots (array)
+const pinDotsWrap = document.getElementById('pinDots');
+const pinDots = pinDotsWrap ? Array.from(pinDotsWrap.querySelectorAll('.pinDot')) : [];
 
+// Keypad buttons
+const keyButtons = Array.from(document.querySelectorAll('button.key'));
+const keyClear   = document.getElementById('keyClear');
+const keyBack    = document.getElementById('keyBack');
+
+// NEW: Open shifts panel (currently clocked-in staff)
+const openShiftsWrap  = document.getElementById('openShiftsWrap');
+const openShiftsList  = document.getElementById('openShiftsList');
+const openShiftsEmpty = document.getElementById('openShiftsEmpty');
+
+/**
+ * Rebuild PIN dots UI if PIN_LENGTH changes from status.php
+ * Ensures kiosk.ui.js can call applyPinDots() safely.
+ */
 function applyPinDots() {
-  pinDots.forEach((d, i) => d.style.display = (i < PIN_LENGTH) ? 'inline-block' : 'none');
+  if (!pinDotsWrap) return;
+
+  // clear
+  pinDotsWrap.innerHTML = '';
+
+  const count = (typeof PIN_LENGTH === 'number' && PIN_LENGTH > 0) ? PIN_LENGTH : 4;
+
+  for (let i = 0; i < count; i++) {
+    const d = document.createElement('div');
+    d.className = 'pinDot h-3.5 w-3.5 rounded-full bg-white/15';
+    pinDotsWrap.appendChild(d);
+  }
+
+  // refresh pinDots array reference
+  // (kiosk.ui.js reads pinDots)
+  const newDots = Array.from(pinDotsWrap.querySelectorAll('.pinDot'));
+  pinDots.length = 0;
+  newDots.forEach(x => pinDots.push(x));
 }

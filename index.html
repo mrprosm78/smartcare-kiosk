@@ -14,34 +14,35 @@
     html, body { 
       height: 100%;
       -webkit-text-size-adjust: 100%; /* Prevent font scaling */
-      touch-action: manipulation; /* Remove 300ms delay on touch */
     }
-    body { 
+
+    body {
       -webkit-tap-highlight-color: transparent;
-      -webkit-font-smoothing: antialiased;
-    }
-    .no-select { 
-      user-select: none; 
-      -webkit-user-select: none;
+      -webkit-user-select: none; 
+      user-select: none;
       -webkit-touch-callout: none;
     }
-    .min-h-dvh { min-height: 100dvh; }
-    
-    /* Larger touch targets for tablets */
+
+    /* Better touch targets */
     button, .key {
-      min-height: 64px; /* Larger touch target */
+      touch-action: manipulation;
     }
-    
-    /* Prevent zoom on input */
+
+    .min-h-dvh { min-height: 100dvh; }
+
+    /* Smooth scrolling for lists */
+    * { scroll-behavior: smooth; }
+
+    /* Remove blue highlight on tap */
+    a, button, input, textarea {
+      -webkit-tap-highlight-color: rgba(0,0,0,0);
+    }
+
+    /* Prevent zoom on input focus (Android) */
     input, textarea, select {
-      font-size: 16px; /* Prevents iOS zoom */
+      font-size: 16px;
     }
-    
-    /* Smooth transitions */
-    * {
-      transition: background-color 0.2s ease, transform 0.1s ease;
-    }
-    
+
     /* Active state for better touch feedback */
     button:active, .key:active {
       transform: scale(0.98);
@@ -100,7 +101,7 @@
           <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
             <button
               id="btnIn"
-              class="w-full rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 transition px-6 py-8 text-left shadow-lg shadow-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+              class="w-full rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white px-7 py-7 text-left shadow-lg shadow-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <div class="flex items-center justify-between gap-4">
                 <div>
@@ -109,10 +110,9 @@
                 </div>
                 <div class="h-16 w-16 rounded-2xl bg-white/15 flex items-center justify-center">
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" class="text-white">
-                    <path d="M12 2v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                    <path d="M7 4h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                    <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="2"/>
-                    <path d="m12 7v5l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M15 12H3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M9 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M20 4v16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                   </svg>
                 </div>
               </div>
@@ -120,7 +120,7 @@
 
             <button
               id="btnOut"
-              class="w-full rounded-2xl bg-sky-500 hover:bg-sky-400 active:bg-sky-600 transition px-6 py-8 text-left shadow-lg shadow-sky-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+              class="w-full rounded-2xl bg-sky-500 hover:bg-sky-400 text-white px-7 py-7 text-left shadow-lg shadow-sky-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <div class="flex items-center justify-between gap-4">
                 <div>
@@ -138,6 +138,22 @@
             </button>
           </div>
 
+          <!-- Currently On Shift (Open Shifts) -->
+          <div id="openShiftsWrap" class="hidden mt-8 rounded-2xl bg-white/5 border border-white/10 p-5">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <div class="text-base md:text-lg font-semibold text-white/85">Currently on shift</div>
+                <div class="text-sm text-white/50 mt-1">Staff who are clocked in right now</div>
+              </div>
+              <div class="shrink-0 rounded-full bg-emerald-500/15 text-emerald-200 px-3 py-1 text-xs font-semibold">LIVE</div>
+            </div>
+
+            <div id="openShiftsEmpty" class="mt-4 text-sm text-white/50">No one is currently clocked in.</div>
+
+            <!-- Scroll area: keeps list inside view on small screens -->
+            <div id="openShiftsList" class="mt-4 space-y-3 max-h-56 overflow-y-auto pr-1"></div>
+          </div>
+
           <!-- Reminder Box -->
           <div class="mt-6 rounded-2xl bg-white/5 border border-white/10 px-5 py-4 text-base text-white/70">
             <div class="flex items-start gap-4">
@@ -145,7 +161,7 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" class="opacity-90">
                   <path d="M12 9v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                   <path d="M12 17h.01" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-                  <path d="M10.29 3.86h3.42c.43 0 .82.23 1.02.61l7.35 13.76A1.16 1.16 0 0 1 22.06 20H1.94a1.16 1.16 0 0 1-1.02-1.77L8.27 4.47c.2-.38.59-.61 1.02-.61Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                  <path d="M10.29 3.86h3.42c.43 0 .82.23 1.03.6l8.09 14.02c.46.8-.12 1.8-1.03 1.8H3.23c-.91 0-1.49-1-.03-1.8l8.09-14.02c.21-.37.6-.6 1.03-.6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
                 </svg>
               </div>
               <div>
@@ -199,62 +215,47 @@
         SmartCare • Kiosk
       </div>
     </footer>
-  </div>
 
-  <!-- PIN Overlay - Optimized for tablet -->
-  <div id="pinOverlay" class="hidden fixed inset-0 z-50">
-    <div class="absolute inset-0 bg-black/70"></div>
-
-    <div class="absolute inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center p-4 md:p-8">
-      <div class="w-full md:max-w-lg rounded-3xl bg-slate-900 border border-white/10 shadow-2xl shadow-black/40 overflow-hidden">
-        <div class="px-6 pt-6 pb-5 border-b border-white/10">
+    <!-- PIN Overlay -->
+    <div id="pinOverlay" class="hidden fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md">
+      <div class="min-h-dvh px-6 py-10 flex items-center justify-center">
+        <div class="w-full max-w-2xl rounded-3xl bg-white/5 border border-white/10 p-8 shadow-2xl shadow-black/40">
           <div class="flex items-start justify-between gap-4">
             <div>
-              <div class="text-sm uppercase tracking-wider text-white/50">Enter PIN</div>
-              <div class="mt-2 text-xl font-bold" id="pinTitle">Clock In</div>
-              <div class="text-base text-white/60 mt-2" id="pinHelp">Enter your 4-digit PIN to continue.</div>
+              <div id="pinTitle" class="text-2xl md:text-3xl font-extrabold tracking-tight">Clock In</div>
+              <div id="pinHelp" class="mt-2 text-white/60 text-base md:text-lg">Enter your PIN to continue.</div>
             </div>
-            <button id="pinCancel" class="rounded-xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-3 text-base text-white/80 min-h-[44px]">
+
+            <button id="pinCancel" class="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-3 text-sm font-semibold">
               Cancel
             </button>
           </div>
-        </div>
 
-        <div class="px-6 py-6">
-          <!-- PIN Dots -->
-          <div class="flex items-center justify-center gap-3">
-            <span class="pinDot h-4 w-4 rounded-full bg-white/15"></span>
-            <span class="pinDot h-4 w-4 rounded-full bg-white/15"></span>
-            <span class="pinDot h-4 w-4 rounded-full bg-white/15"></span>
-            <span class="pinDot h-4 w-4 rounded-full bg-white/15"></span>
-            <span class="pinDot h-4 w-4 rounded-full bg-white/15"></span>
-            <span class="pinDot h-4 w-4 rounded-full bg-white/15"></span>
+          <div class="mt-8 flex justify-center gap-3" id="pinDots">
+            <div class="pinDot h-3.5 w-3.5 rounded-full bg-white/15"></div>
+            <div class="pinDot h-3.5 w-3.5 rounded-full bg-white/15"></div>
+            <div class="pinDot h-3.5 w-3.5 rounded-full bg-white/15"></div>
+            <div class="pinDot h-3.5 w-3.5 rounded-full bg-white/15"></div>
           </div>
 
-          <!-- Error Message -->
-          <div id="pinError" class="hidden mt-4 text-center text-base text-rose-300">
+          <div id="pinError" class="hidden mt-5 rounded-2xl bg-rose-500/10 border border-rose-500/20 px-5 py-4 text-rose-100">
             Invalid PIN. Please try again.
           </div>
 
-          <!-- Keypad - Larger for tablet -->
           <div class="mt-8 grid grid-cols-3 gap-4">
-            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="1">1</button>
-            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="2">2</button>
-            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="3">3</button>
-            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="4">4</button>
-            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="5">5</button>
-            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="6">6</button>
-            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="7">7</button>
-            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="8">8</button>
-            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="9">9</button>
+            <button class="key rounded-2xl bg-white/10 hover:bg-white/15 px-6 py-6 text-2xl font-bold">1</button>
+            <button class="key rounded-2xl bg-white/10 hover:bg-white/15 px-6 py-6 text-2xl font-bold">2</button>
+            <button class="key rounded-2xl bg-white/10 hover:bg-white/15 px-6 py-6 text-2xl font-bold">3</button>
+            <button class="key rounded-2xl bg-white/10 hover:bg-white/15 px-6 py-6 text-2xl font-bold">4</button>
+            <button class="key rounded-2xl bg-white/10 hover:bg-white/15 px-6 py-6 text-2xl font-bold">5</button>
+            <button class="key rounded-2xl bg-white/10 hover:bg-white/15 px-6 py-6 text-2xl font-bold">6</button>
+            <button class="key rounded-2xl bg-white/10 hover:bg-white/15 px-6 py-6 text-2xl font-bold">7</button>
+            <button class="key rounded-2xl bg-white/10 hover:bg-white/15 px-6 py-6 text-2xl font-bold">8</button>
+            <button class="key rounded-2xl bg-white/10 hover:bg-white/15 px-6 py-6 text-2xl font-bold">9</button>
 
-            <button class="rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 px-4 py-6 text-lg text-white/70 min-h-[80px]" id="keyClear">Clear</button>
-            <button class="key rounded-2xl bg-white/5 hover:bg-white/10 active:bg-white/15 px-4 py-6 text-xl font-semibold text-white/90 min-h-[80px]" data-key="0">0</button>
-            <button class="rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 px-4 py-6 text-2xl text-white/70 min-h-[80px]" id="keyBack">⌫</button>
-          </div>
-
-          <div class="mt-6 text-center text-sm text-white/50">
-            For help, ask the manager.
+            <button id="keyClear" class="rounded-2xl bg-white/10 hover:bg-white/15 px-6 py-6 text-lg font-semibold">Clear</button>
+            <button class="key rounded-2xl bg-white/10 hover:bg-white/15 px-6 py-6 text-2xl font-bold">0</button>
+            <button id="keyBack" class="rounded-2xl bg-white/10 hover:bg-white/15 px-6 py-6 text-lg font-semibold">Back</button>
           </div>
         </div>
       </div>

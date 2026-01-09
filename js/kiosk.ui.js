@@ -6,6 +6,18 @@ let thankTimeout = null;
 let tickTimer = null;
 let isSubmitting = false;
 
+// Open shifts (currently clocked-in staff)
+let OPEN_SHIFTS = [];              // array of { shift_id, employee_id, clock_in_at, label }
+let UI_SHOW_OPEN_SHIFTS = false;   // controlled by status.php (we will wire this next)
+let UI_OPEN_SHIFTS_COUNT = 6;      // controlled by status.php (we will wire this next)
+
+/**
+ * Safe DOM getters (so we don’t break if elements don’t exist yet)
+ */
+function el(id) {
+  return document.getElementById(id);
+}
+
 function setScreen(screen) {
   if (screen === 'home') {
     homeScreen.classList.remove('hidden');
@@ -53,7 +65,95 @@ function closePin() {
   isSubmitting = false;
 }
 
-function showThank(action, msgOverride, staffName) {
+/**
+ * Render open shifts list if UI elements exist.
+ * NOTE: We’ll add these elements in index.html + kiosk.dom.js next.
+ *
+ * Expected IDs (we’ll create them):
+ * - openShiftsWrap  (container, can be hidden when toggle off)
+ * - openShiftsList  (list container)
+ * - openShiftsEmpty (empty message)
+ */
+function renderOpenShifts(list) {
+  OPEN_SHIFTS = Array.isArray(list) ? list.slice(0) : [];
+
+  const wrap = el('openShiftsWrap');
+  const listEl = el('openShiftsList');
+  const emptyEl = el('openShiftsEmpty');
+
+  // If HTML not added yet, do nothing (safe)
+  if (!wrap || !listEl) return;
+
+  // Toggle visibility based on setting
+  wrap.classList.toggle('hidden', !UI_SHOW_OPEN_SHIFTS);
+
+  // If disabled, stop here
+  if (!UI_SHOW_OPEN_SHIFTS) return;
+
+  // Clear list
+  listEl.innerHTML = '';
+
+  const max = Math.max(1, Math.min(UI_OPEN_SHIFTS_COUNT || 6, 50));
+  const items = OPEN_SHIFTS.slice(0, max);
+
+  if (emptyEl) {
+    emptyEl.classList.toggle('hidden', items.length > 0);
+  }
+
+  // Build rows
+  items.forEach(item => {
+    const row = document.createElement('div');
+    row.className =
+      "flex items-center justify-between gap-3 rounded-xl bg-white/5 border border-white/10 px-4 py-3";
+
+    const left = document.createElement('div');
+    left.className = "min-w-0";
+
+    const name = document.createElement('div');
+    name.className = "font-semibold text-white/90 truncate";
+    name.textContent = (item?.label || "Staff").toString();
+
+    const meta = document.createElement('div');
+    meta.className = "text-xs text-white/50 mt-0.5";
+    meta.textContent = "Clocked in";
+
+    left.appendChild(name);
+    left.appendChild(meta);
+
+    const badge = document.createElement('div');
+    badge.className = "shrink-0 rounded-full bg-emerald-500/15 text-emerald-200 px-3 py-1 text-xs font-semibold";
+    badge.textContent = "ON SHIFT";
+
+    row.appendChild(left);
+    row.appendChild(badge);
+
+    listEl.appendChild(row);
+  });
+}
+
+/**
+ * Apply open-shifts settings from a status payload (optional).
+ * We will wire status.php → kiosk.api.js → here next.
+ */
+function applyOpenShiftsFromStatus(d) {
+  if (!d || typeof d !== "object") return;
+
+  if (typeof d.ui_show_open_shifts !== "undefined") {
+    UI_SHOW_OPEN_SHIFTS = !!d.ui_show_open_shifts;
+  }
+  if (Number.isFinite(+d.ui_open_shifts_count)) {
+    UI_OPEN_SHIFTS_COUNT = Math.max(1, Math.min(50, parseInt(d.ui_open_shifts_count, 10)));
+  }
+
+  if (Array.isArray(d.open_shifts)) {
+    renderOpenShifts(d.open_shifts);
+  } else {
+    // still re-render with current state (toggle changes)
+    renderOpenShifts(OPEN_SHIFTS);
+  }
+}
+
+function showThank(action, msgOverride, staffLabel) {
   setScreen('thank');
   thankAction.textContent = action === 'IN' ? 'Clock In' : 'Clock Out';
 
@@ -61,8 +161,9 @@ function showThank(action, msgOverride, staffName) {
   thankTime.textContent = now.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
   thankMsg.textContent = msgOverride || (action === 'IN' ? "Your clock-in has been saved." : "Your clock-out has been saved.");
 
-  if (SHOW_NAME && staffName) {
-    thankName.textContent = staffName;
+  // Show name label only if enabled and we have it
+  if (SHOW_NAME && staffLabel) {
+    thankName.textContent = staffLabel;
     thankName.classList.remove('hidden');
   } else {
     thankName.textContent = "";
@@ -123,15 +224,26 @@ async function submitPin() {
   if (online) {
     const res = await postPunch({ event_uuid, action: currentAction, pin, device_time });
 
+    // Success
     if (res.ok && (res.status === "processed" || res.status === "duplicate")) {
       try { await deleteEvent(event_uuid); } catch {}
       closePin();
-      const staffName = (res.name || res.employee_name || "").toString();
-      showThank(currentAction, null, staffName);
+
+      // Prefer new employee_label (nickname-friendly), fallback to old fields
+      const staffLabel = (res.employee_label || res.name || res.employee_name || "").toString();
+
+      // Update open shifts list immediately if server returned it
+      if (Array.isArray(res.open_shifts)) {
+        // if server returns list, show it (but only if setting enabled)
+        renderOpenShifts(res.open_shifts);
+      }
+
+      showThank(currentAction, null, staffLabel);
       syncQueueIfNeeded(true);
       return;
     }
 
+    // Known failures: show message and do NOT keep queued event
     if (!res.ok) {
       const msgMap = {
         invalid_pin: "Invalid PIN. Please try again.",
@@ -139,6 +251,7 @@ async function submitPin() {
         no_open_shift: "No open shift found. Please contact manager.",
         shift_too_long_needs_review: "Shift needs manager review (missing punch).",
         too_soon: "Please wait a moment and try again.",
+        too_many_attempts: "Too many attempts. Please wait and try again.",
         device_not_authorized: "This device is not authorised.",
         device_revoked: "This device has been revoked. Please re-pair.",
         kiosk_not_paired: "Kiosk not paired (manager required).",
@@ -153,12 +266,14 @@ async function submitPin() {
       }
     }
 
+    // Anything else: treat as offline save
     closePin();
     showThank(currentAction, "Saved offline — will sync automatically.", "");
     syncQueueIfNeeded(true);
     return;
   }
 
+  // Offline: keep queued and sync later
   closePin();
   showThank(currentAction, "Saved offline — will sync automatically.", "");
   syncQueueIfNeeded(true);
@@ -171,6 +286,14 @@ function tickClock() {
 }
 
 async function statusLoop() {
-  await getStatusAndApply();
+  // Existing call (we will enhance getStatusAndApply next to pass through open_shifts)
+  const st = await getStatusAndApply();
+
+  // If in the next step we update getStatusAndApply() to return extra fields,
+  // this will start working automatically.
+  if (st && typeof st === 'object') {
+    applyOpenShiftsFromStatus(st);
+  }
+
   setTimeout(statusLoop, UI_RELOAD_CHECK_MS || 60000);
 }
