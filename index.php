@@ -1,3 +1,62 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * Kiosk UI (index.php)
+ * - Adds server-controlled cache-busting via ui_version (settings table)
+ * - Removes Tailwind CDN (expects compiled CSS at /assets/kiosk.css)
+ *
+ * REQUIREMENTS:
+ * - settings key: ui_version (defaults to "1")
+ * - compiled css file: /assets/kiosk.css
+ */
+
+// Try to load DB + helpers (supports common folder layouts)
+$loaded = false;
+
+$paths = [
+  __DIR__ . '/db.php',
+  dirname(__DIR__) . '/db.php',
+];
+
+foreach ($paths as $p) {
+  if (is_file($p)) {
+    require_once $p;
+    $loaded = true;
+    break;
+  }
+}
+
+// helpers.php is usually in the same project root as db.php.
+// If you already include helpers in db.php, you can ignore this.
+$helperPaths = [
+  __DIR__ . '/helpers.php',
+  dirname(__DIR__) . '/helpers.php',
+];
+foreach ($helperPaths as $p) {
+  if (is_file($p)) {
+    require_once $p;
+    break;
+  }
+}
+
+// Determine UI version from settings (fallback to 1)
+$ui_version = '1';
+try {
+  if (isset($pdo) && $pdo instanceof PDO && function_exists('setting')) {
+    $ui_version = (string)setting($pdo, 'ui_version', '1');
+    $ui_version = trim($ui_version) !== '' ? trim($ui_version) : '1';
+  }
+} catch (Throwable $e) {
+  $ui_version = '1';
+}
+
+// escape for safe HTML output
+function h(string $s): string {
+  return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+}
+$v = h($ui_version);
+?>
 <!doctype html>
 <html lang="en">
 <head>
@@ -7,52 +66,38 @@
   <meta name="theme-color" content="#0f172a" />
   <title>Clock Kiosk</title>
 
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- ✅ Compiled Tailwind CSS (replace CDN) -->
+  <link rel="stylesheet" href="./assets/kiosk.css?v=<?=$v?>">
 
   <style>
     /* Tablet-optimized styles */
-    html, body { 
+    html, body {
       height: 100%;
-      -webkit-text-size-adjust: 100%; /* Prevent font scaling */
+      -webkit-text-size-adjust: 100%;
     }
 
     body {
       -webkit-tap-highlight-color: transparent;
-      -webkit-user-select: none; 
+      -webkit-user-select: none;
       user-select: none;
       -webkit-touch-callout: none;
     }
 
-    /* Better touch targets */
-    button, .key {
-      touch-action: manipulation;
-    }
-
+    button, .key { touch-action: manipulation; }
     .min-h-dvh { min-height: 100dvh; }
-
-    /* Smooth scrolling for lists */
     * { scroll-behavior: smooth; }
 
-    /* Remove blue highlight on tap */
-    a, button, input, textarea {
-      -webkit-tap-highlight-color: rgba(0,0,0,0);
-    }
+    a, button, input, textarea { -webkit-tap-highlight-color: rgba(0,0,0,0); }
 
-    /* Prevent zoom on input focus (Android) */
-    input, textarea, select {
-      font-size: 16px;
-    }
+    input, textarea, select { font-size: 16px; }
 
-    /* Active state for better touch feedback */
-    button:active, .key:active {
-      transform: scale(0.98);
-    }
+    button:active, .key:active { transform: scale(0.98); }
   </style>
 </head>
 
 <body class="no-select bg-slate-950 text-white min-h-dvh">
   <div class="min-h-dvh flex flex-col">
-    <!-- Header - Adjusted for tablet -->
+    <!-- Header -->
     <header class="px-6 pt-7 pb-5">
       <div class="mx-auto max-w-5xl flex items-center justify-between gap-4">
         <div class="flex items-center gap-4">
@@ -75,7 +120,7 @@
       </div>
     </header>
 
-    <!-- Main Content - Optimized for tablet landscape/portrait -->
+    <!-- Main -->
     <main class="flex-1 px-6 pb-8">
       <div class="mx-auto max-w-5xl">
         <!-- Home Screen -->
@@ -97,7 +142,7 @@
             </div>
           </div>
 
-          <!-- Action Buttons - Larger for tablet -->
+          <!-- Action Buttons -->
           <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
             <button
               id="btnIn"
@@ -150,11 +195,11 @@
 
             <div id="openShiftsEmpty" class="mt-4 text-sm text-white/50">No one is currently clocked in.</div>
 
-            <!-- Scroll area: keeps list inside view on small screens -->
+            <!-- Scroll area -->
             <div id="openShiftsList" class="mt-4 space-y-3 max-h-56 overflow-y-auto pr-1"></div>
           </div>
 
-          <!-- Reminder Box -->
+          <!-- Reminder -->
           <div class="mt-6 rounded-2xl bg-white/5 border border-white/10 px-5 py-4 text-base text-white/70">
             <div class="flex items-start gap-4">
               <div class="mt-0.5 h-10 w-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
@@ -174,7 +219,7 @@
           </div>
         </section>
 
-        <!-- Thank You Screen -->
+        <!-- Thank Screen -->
         <section id="thankScreen" class="hidden rounded-3xl bg-white/5 border border-white/10 p-8 md:p-12 shadow-xl shadow-black/30 text-center">
           <div class="mx-auto max-w-lg">
             <div class="mx-auto h-20 w-20 rounded-3xl bg-emerald-500/20 flex items-center justify-center">
@@ -262,13 +307,14 @@
     </div>
   </div>
 
-  <script src="./js/kiosk.config.js"></script>
-  <script src="./js/kiosk.dom.js"></script>
-  <script src="./js/kiosk.idb.js"></script>
-  <script src="./js/kiosk.crypto.js"></script>
-  <script src="./js/kiosk.api.js"></script>
-  <script src="./js/kiosk.sync.js"></script>
-  <script src="./js/kiosk.ui.js"></script>
-  <script src="./js/kiosk.main.js"></script>
+  <!-- ✅ Versioned JS assets -->
+  <script src="./js/kiosk.config.js?v=<?=$v?>"></script>
+  <script src="./js/kiosk.dom.js?v=<?=$v?>"></script>
+  <script src="./js/kiosk.idb.js?v=<?=$v?>"></script>
+  <script src="./js/kiosk.crypto.js?v=<?=$v?>"></script>
+  <script src="./js/kiosk.api.js?v=<?=$v?>"></script>
+  <script src="./js/kiosk.sync.js?v=<?=$v?>"></script>
+  <script src="./js/kiosk.ui.js?v=<?=$v?>"></script>
+  <script src="./js/kiosk.main.js?v=<?=$v?>"></script>
 </body>
 </html>
