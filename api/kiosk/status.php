@@ -5,29 +5,40 @@ require __DIR__ . '/../../db.php';
 require __DIR__ . '/../../helpers.php';
 
 /**
- * status.php
+ * status.php (SECURED)
  * - Returns SAFE settings only (no secrets)
- * - Used by kiosk.html to tune runtime behaviour
- * - Optional: returns list of staff currently clocked-in (open shifts)
+ * - Adds `authorised` flag (based on X-Kiosk-Token header vs paired_device_token_hash)
+ * - Only returns open_shifts when authorised + ui_show_open_shifts enabled
  */
 
 function s(PDO $pdo, string $key, string $default = ''): string {
     return (string) setting($pdo, $key, $default);
 }
-
 function s_int(PDO $pdo, string $key, int $default): int {
     $v = trim(s($pdo, $key, (string)$default));
     return (is_numeric($v) ? (int)$v : $default);
 }
-
 function s_bool(PDO $pdo, string $key, bool $default): bool {
     $v = strtolower(trim(s($pdo, $key, $default ? '1' : '0')));
     return in_array($v, ['1','true','yes','on'], true);
 }
 
-/**
- * Check if a column exists (used to safely support optional 'nickname' column).
- */
+/** Get request header (works across Apache/nginx/FastCGI) */
+function get_header(string $name): string {
+    $key = 'HTTP_' . strtoupper(str_replace('-', '_', $name));
+    if (isset($_SERVER[$key])) return (string)$_SERVER[$key];
+
+    // Fallback for some environments
+    if (function_exists('getallheaders')) {
+        $h = getallheaders();
+        foreach ($h as $k => $v) {
+            if (strcasecmp((string)$k, $name) === 0) return (string)$v;
+        }
+    }
+    return '';
+}
+
+/** Check if a column exists (supports optional 'nickname' column). */
 function column_exists(PDO $pdo, string $table, string $column): bool {
     try {
         $stmt = $pdo->prepare("
@@ -41,22 +52,17 @@ function column_exists(PDO $pdo, string $table, string $column): bool {
         $stmt->execute([$table, $column]);
         return ((int)$stmt->fetchColumn() > 0);
     } catch (Throwable $e) {
-        // If information_schema is restricted for some reason, fail safe.
         return false;
     }
 }
 
-/**
- * Fetch staff with open shifts (clocked in, not clocked out).
- * Returns most recent clock-ins first.
- */
+/** Fetch staff with open shifts (clocked in, not clocked out). */
 function fetch_open_shifts(PDO $pdo, int $limit): array {
     $limit = max(1, min($limit, 50));
-
     $hasNickname = column_exists($pdo, 'employees', 'nickname');
 
-    if ($hasNickname) {
-        $sql = "
+    $sql = $hasNickname
+        ? "
             SELECT
                 s.id            AS shift_id,
                 s.employee_id   AS employee_id,
@@ -71,9 +77,8 @@ function fetch_open_shifts(PDO $pdo, int $limit): array {
               AND e.is_active = 1
             ORDER BY s.clock_in_at DESC
             LIMIT {$limit}
-        ";
-    } else {
-        $sql = "
+        "
+        : "
             SELECT
                 s.id            AS shift_id,
                 s.employee_id   AS employee_id,
@@ -88,32 +93,41 @@ function fetch_open_shifts(PDO $pdo, int $limit): array {
             ORDER BY s.clock_in_at DESC
             LIMIT {$limit}
         ";
-    }
 
     $rows = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-    // Build a safe display label (privacy-friendly default).
     $out = [];
     foreach ($rows as $r) {
         $first = trim((string)($r['first_name'] ?? ''));
         $last  = trim((string)($r['last_name'] ?? ''));
         $nick  = trim((string)($r['nickname'] ?? ''));
 
-        // Prefer nickname if present, otherwise first name.
         $primary = $nick !== '' ? $nick : ($first !== '' ? $first : 'Staff');
-
-        // Add last initial if available (e.g., "Sarah B.")
         $initial = ($last !== '') ? (mb_substr($last, 0, 1) . '.') : '';
 
         $out[] = [
-            'shift_id'    => (int)$r['shift_id'],
-            'employee_id' => (int)$r['employee_id'],
-            'clock_in_at' => (string)$r['clock_in_at'],
+            // Keeping these fields to avoid breaking any existing UI that expects them.
+            // If you want stricter privacy, we can remove shift_id/employee_id later.
+            'shift_id'    => (int)($r['shift_id'] ?? 0),
+            'employee_id' => (int)($r['employee_id'] ?? 0),
+
+            'clock_in_at' => (string)($r['clock_in_at'] ?? ''),
             'label'       => trim($primary . ' ' . $initial),
         ];
     }
-
     return $out;
+}
+
+/** Determine pairing + authorisation */
+$storedHash = trim(s($pdo, 'paired_device_token_hash', ''));
+$paired     = ($storedHash !== '');
+
+$tokenHeader = trim(get_header('X-Kiosk-Token'));
+$authorised  = false;
+
+if ($paired && $tokenHeader !== '') {
+    $givenHash = hash('sha256', $tokenHeader);
+    $authorised = hash_equals($storedHash, $givenHash);
 }
 
 // Settings
@@ -124,7 +138,8 @@ $payload = [
     'ok' => true,
 
     // pairing state (safe)
-    'paired' => s_bool($pdo, 'is_paired', false),
+    'paired'          => $paired,
+    'authorised'      => $authorised,
     'pairing_version' => s_int($pdo, 'pairing_version', 1),
 
     // kiosk policy (safe)
@@ -143,21 +158,21 @@ $payload = [
     'ui_thank_ms'   => s_int($pdo, 'ui_thank_ms', 1500),
     'ui_show_clock' => s_bool($pdo, 'ui_show_clock', true),
 
-    // optional: server-driven kiosk auto-reload
+    // server-driven kiosk auto-reload
     'ui_reload_enabled'  => s_bool($pdo, 'ui_reload_enabled', false),
     'ui_reload_check_ms' => s_int($pdo, 'ui_reload_check_ms', 60000),
     'ui_version'         => trim(s($pdo, 'ui_version', '1')),
 
-    // NEW: open-shifts list controls
-    'ui_show_open_shifts' => $uiShowOpen,
-    'ui_open_shifts_count'=> $openCount,
+    // open-shifts list controls (safe toggle only)
+    'ui_show_open_shifts'  => $uiShowOpen,
+    'ui_open_shifts_count' => $openCount,
 
     // diagnostics (safe)
     'debug_mode' => s_bool($pdo, 'debug_mode', false),
 ];
 
-// NEW: include open shifts list only when enabled
-if ($uiShowOpen) {
+// ✅ Only include staff/open shifts if this request is AUTHORISED
+if ($authorised && $uiShowOpen) {
     $payload['open_shifts'] = fetch_open_shifts($pdo, $openCount);
 } else {
     $payload['open_shifts'] = [];
