@@ -127,6 +127,9 @@ async function getStatusAndApply() {
     // Ensure these always exist
     out.ui_show_open_shifts = !!out.ui_show_open_shifts;
     if (!Number.isFinite(+out.ui_open_shifts_count)) out.ui_open_shifts_count = 6;
+    out.ui_open_shifts_show_time = typeof out.ui_open_shifts_show_time === "undefined"
+      ? true
+      : !!out.ui_open_shifts_show_time;
     if (!Array.isArray(out.open_shifts)) out.open_shifts = [];
 
     return out;
@@ -138,6 +141,7 @@ async function getStatusAndApply() {
       pairing_version: 1,
       ui_show_open_shifts: false,
       ui_open_shifts_count: 6,
+      ui_open_shifts_show_time: true,
       open_shifts: []
     };
   }

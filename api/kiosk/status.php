@@ -133,6 +133,7 @@ if ($paired && $tokenHeader !== '') {
 // Settings
 $uiShowOpen = s_bool($pdo, 'ui_show_open_shifts', false);
 $openCount  = s_int($pdo, 'ui_open_shifts_count', 6);
+$uiOpenShiftsShowTime = s_bool($pdo, 'ui_open_shifts_show_time', true);
 
 $payload = [
     'ok' => true,
@@ -182,6 +183,7 @@ $payload = [
     // open-shifts list controls (safe toggle only)
     'ui_show_open_shifts'  => $uiShowOpen,
     'ui_open_shifts_count' => $openCount,
+    'ui_open_shifts_show_time' => $uiOpenShiftsShowTime,
 
     // diagnostics (safe)
     'debug_mode' => s_bool($pdo, 'debug_mode', false),

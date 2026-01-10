@@ -285,6 +285,17 @@ function seed_settings(PDO $pdo): void {
       'secret' => 0,
     ],
     [
+      'key' => 'ui_open_shifts_show_time',
+      'value' => '1',
+      'group' => 'ui',
+      'label' => 'Open Shifts: Show Time & Duration',
+      'description' => 'If 1, the open shifts panel shows clock-in time and elapsed duration. If 0, it only shows the name/status.',
+      'type' => 'bool',
+      'editable_by' => 'manager',
+      'sort' => 345,
+      'secret' => 0,
+    ],
+    [
       'key' => 'ui_reload_enabled',
       'value' => '0',
       'group' => 'ui',

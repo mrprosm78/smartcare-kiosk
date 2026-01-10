@@ -10,6 +10,27 @@ let isSubmitting = false;
 let OPEN_SHIFTS = [];              // array of { shift_id, employee_id, clock_in_at, label }
 let UI_SHOW_OPEN_SHIFTS = false;   // controlled by status.php (we will wire this next)
 let UI_OPEN_SHIFTS_COUNT = 6;      // controlled by status.php (we will wire this next)
+let UI_OPEN_SHIFTS_SHOW_TIME = true; // if false, hide time + elapsed on rows
+
+function fmtTimeFromIso(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function fmtElapsedFromIso(iso) {
+  if (!iso) return "";
+  const start = new Date(iso);
+  if (isNaN(start.getTime())) return "";
+  const diffMs = Date.now() - start.getTime();
+  if (diffMs < 0) return "";
+  const totalMin = Math.floor(diffMs / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h <= 0) return `${m}m`;
+  return `${h}h ${m}m`;
+}
 
 /**
  * Safe DOM getters (so we don’t break if elements don’t exist yet)
@@ -140,7 +161,16 @@ function renderOpenShifts(list) {
 
     const meta = document.createElement('div');
     meta.className = "text-xs text-white/50 mt-0.5";
-    meta.textContent = "Clocked in";
+    if (UI_OPEN_SHIFTS_SHOW_TIME) {
+      const t = fmtTimeFromIso(item?.clock_in_at);
+      const e = fmtElapsedFromIso(item?.clock_in_at);
+      const parts = ["Clocked in"];
+      if (t) parts.push(t);
+      if (e) parts.push(e);
+      meta.textContent = parts.join(" • ");
+    } else {
+      meta.textContent = "Clocked in";
+    }
 
     left.appendChild(name);
     left.appendChild(meta);
@@ -168,6 +198,9 @@ function applyOpenShiftsFromStatus(d) {
   }
   if (Number.isFinite(+d.ui_open_shifts_count)) {
     UI_OPEN_SHIFTS_COUNT = Math.max(1, Math.min(50, parseInt(d.ui_open_shifts_count, 10)));
+  }
+  if (typeof d.ui_open_shifts_show_time !== "undefined") {
+    UI_OPEN_SHIFTS_SHOW_TIME = !!d.ui_open_shifts_show_time;
   }
 
   if (Array.isArray(d.open_shifts)) {
