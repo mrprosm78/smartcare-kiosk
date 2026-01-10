@@ -44,6 +44,9 @@ async function syncQueueIfNeeded(force = false) {
     const items = await listQueuedEvents(SYNC_BATCH_SIZE);
     if (!items.length) return;
 
+    // Process in chronological order (older device_time first)
+    items.sort((a, b) => String(a.device_time || '').localeCompare(String(b.device_time || '')));
+
     setNetUI(true, `Syncing (${items.length})…`);
 
     const NON_RETRYABLE = new Set([
@@ -57,22 +60,37 @@ async function syncQueueIfNeeded(force = false) {
     for (const evt of items) {
       let pinToSend = null;
 
-      try {
-        pinToSend = await decryptPin(evt.pin_enc);
-      } catch (e) {
+      // Prefer encrypted PIN (default). If unavailable and plaintext PIN is present (server-controlled), use it.
+      if (evt.pin_enc) {
+        try {
+          pinToSend = await decryptPin(evt.pin_enc);
+        } catch (e) {
+          evt.status = "dead";
+          evt.last_error = "decrypt_failed";
+          evt.last_attempt_at = new Date().toISOString();
+          evt.attempts = (evt.attempts || 0) + 1;
+          await queueEvent(evt);
+          continue;
+        }
+      } else if (typeof evt.pin_plain === "string" && evt.pin_plain.length) {
+        pinToSend = evt.pin_plain;
+      } else {
         evt.status = "dead";
-        evt.last_error = "decrypt_failed";
+        evt.last_error = "missing_pin_payload";
         evt.last_attempt_at = new Date().toISOString();
         evt.attempts = (evt.attempts || 0) + 1;
         await queueEvent(evt);
         continue;
       }
 
+
       const res = await postPunch({
         event_uuid: evt.event_uuid,
         action: evt.action,
         pin: pinToSend,
-        device_time: evt.device_time
+        device_time: evt.device_time,
+        was_offline: true,
+        source: 'offline_sync'
       });
 
       if (res.ok && (res.status === "processed" || res.status === "duplicate")) {

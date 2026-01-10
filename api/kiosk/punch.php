@@ -11,6 +11,8 @@ $eventUuid  = (string)($input['event_uuid'] ?? '');
 $action     = strtoupper((string)($input['action'] ?? ''));
 $pin        = (string)($input['pin'] ?? '');
 $deviceTime = (string)($input['device_time'] ?? '');
+$wasOfflineIn = (bool)($input['was_offline'] ?? false);
+$sourceIn    = (string)($input['source'] ?? '');
 
 // headers
 $kioskCode  = (string)($_SERVER['HTTP_X_KIOSK_CODE'] ?? '');
@@ -161,15 +163,19 @@ function log_kiosk_event(
     }
 }
 
-// ---- helper: parse device_time (ISO) -> SQL datetime ----
-function parse_device_time(?string $deviceTimeIso): ?string {
+// ---- helper: parse device_time (ISO) -> DateTimeImmutable (UTC) ----
+function parse_device_time_dt(?string $deviceTimeIso): ?DateTimeImmutable {
     if (!$deviceTimeIso) return null;
     try {
         $dt = new DateTimeImmutable($deviceTimeIso);
-        return $dt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+        return $dt->setTimezone(new DateTimeZone('UTC'));
     } catch (Throwable $e) {
         return null;
     }
+}
+
+function dt_sql(DateTimeImmutable $dt): string {
+    return $dt->format('Y-m-d H:i:s');
 }
 
 // ---- helper: log punch attempt result (update row) ----
@@ -279,9 +285,45 @@ try {
             json_response(['ok'=>false,'error'=>'too_many_attempts'], 429);
         }
     }
-
     // parse device time (optional)
-    $deviceTimeSql = parse_device_time($deviceTime) ?? $now;
+    $serverNowDt = new DateTimeImmutable($now, new DateTimeZone('UTC'));
+    $deviceDt    = parse_device_time_dt($deviceTime);
+
+    // Normalise source
+    $source = strtolower(trim($sourceIn));
+    if ($source !== '' && strlen($source) > 20) $source = substr($source, 0, 20);
+    if ($source === '') $source = $wasOfflineIn ? 'offline_sync' : 'online';
+
+    $wasOffline = $wasOfflineIn || ($source === 'offline_sync');
+
+    // Device time is optional for online punches, required for offline sync punches
+    if ($wasOffline && !$deviceDt) {
+        // cannot trust / cannot process offline punches without a device_time
+        json_response(['ok'=>false,'error'=>'invalid_device_time'], 400);
+    }
+
+    // Store raw device time if present
+    $deviceTimeSql = $deviceDt ? dt_sql($deviceDt) : null;
+
+    // Effective time: server time for online; validated device time for offline sync
+    $effectiveDt = $serverNowDt;
+    if ($wasOffline && $deviceDt) {
+        $maxBackMins   = s_int($pdo, 'offline_max_backdate_minutes', 2880);
+        $maxFutureSecs = s_int($pdo, 'offline_max_future_seconds', 120);
+
+        $minAllowed = $serverNowDt->sub(new DateInterval('PT' . max(0, $maxBackMins) . 'M'));
+        $maxAllowed = $serverNowDt->add(new DateInterval('PT' . max(0, $maxFutureSecs) . 'S'));
+
+        if ($deviceDt < $minAllowed) {
+            $effectiveDt = $minAllowed;
+        } elseif ($deviceDt > $maxAllowed) {
+            $effectiveDt = $maxAllowed;
+        } else {
+            $effectiveDt = $deviceDt;
+        }
+    }
+
+    $effectiveTimeSql = dt_sql($effectiveDt);
 
     // employee lookup (current method; we’ll improve this later as part of your “performance fix”)
     $allowPlain = setting_bool($pdo,'allow_plain_pin', false);
@@ -314,6 +356,7 @@ try {
 
     $employeeId   = (int)$employee['id'];
 
+
     // Build display names (nickname support is future-ready)
     $hasNickname  = column_exists($pdo, 'kiosk_employees', 'nickname');
     if ($hasNickname) {
@@ -327,6 +370,23 @@ try {
 
     $employeeName  = trim(((string)($employeeFull['first_name'] ?? '')) . ' ' . ((string)($employeeFull['last_name'] ?? '')));
     $employeeLabel = employee_label($employeeFull, $hasNickname);
+
+    // Log device/server time mismatch (audit)
+    if ($deviceDt) {
+        $threshold = s_int($pdo, 'offline_time_mismatch_log_sec', 300);
+        $delta = abs($deviceDt->getTimestamp() - $serverNowDt->getTimestamp());
+        if ($threshold > 0 && $delta > $threshold) {
+            log_kiosk_event($pdo, $kioskCode, $versionHdr, $tokHash, $ipAddress, $userAgent, $employeeId, 'time_mismatch', 'info', 'device_time_skew', 'Device time differs from server', [
+                'delta_seconds'   => $delta,
+                'device_time_iso' => (string)$deviceTime,
+                'device_time_utc' => $deviceTimeSql,
+                'server_time_utc' => $now,
+                'effective_time'  => $effectiveTimeSql,
+                'was_offline'     => $wasOffline ? 1 : 0,
+                'source'          => $source,
+            ]);
+        }
+    }
 
     // anti-spam: min seconds between punches
     $minSeconds = setting_int($pdo,'min_seconds_between_punches', 20);
@@ -343,7 +403,7 @@ try {
 
         if ($last) {
             $diffStmt = $pdo->prepare("SELECT TIMESTAMPDIFF(SECOND, ?, ?) AS diff_sec");
-            $diffStmt->execute([$last, $now]);
+            $diffStmt->execute([$last, $effectiveTimeSql]);
             $diff = (int)$diffStmt->fetchColumn();
 
             if ($diff >= 0 && $diff < $minSeconds) {
@@ -351,9 +411,9 @@ try {
                 $pdo->prepare("
                     INSERT INTO kiosk_punch_events
                     (event_uuid, employee_id, action, device_time, received_at, effective_time,
-                     result_status, error_code, kiosk_code, device_token_hash, ip_address, user_agent)
-                    VALUES (?, ?, ?, ?, ?, ?, 'received', NULL, ?, ?, ?, ?)
-                ")->execute([$eventUuid,$employeeId,$action,$deviceTimeSql,$now,$now,$kioskCode,$tokHash,$ipAddress,$userAgent]);
+                     result_status, error_code, source, was_offline, kiosk_code, device_token_hash, ip_address, user_agent)
+                    VALUES (?, ?, ?, ?, ?, ?, 'received', NULL, ?, ?, ?, ?, ?, ?)
+                ")->execute([$eventUuid,$employeeId,$action,$deviceTimeSql,$now,$effectiveTimeSql,$source,(int)$wasOffline,$kioskCode,$tokHash,$ipAddress,$userAgent]);
 
                 punch_mark($pdo, $eventUuid, 'rejected', 'too_soon', null);
                 json_response(['ok'=>false,'error'=>'too_soon'], 429);
@@ -365,15 +425,17 @@ try {
     $pdo->prepare("
         INSERT INTO kiosk_punch_events
         (event_uuid, employee_id, action, device_time, received_at, effective_time,
-         result_status, error_code, kiosk_code, device_token_hash, ip_address, user_agent)
-        VALUES (?, ?, ?, ?, ?, ?, 'received', NULL, ?, ?, ?, ?)
+         result_status, error_code, source, was_offline, kiosk_code, device_token_hash, ip_address, user_agent)
+        VALUES (?, ?, ?, ?, ?, ?, 'received', NULL, ?, ?, ?, ?, ?, ?)
     ")->execute([
         $eventUuid,
         $employeeId,
         $action,
         $deviceTimeSql,
         $now,
-        $now,
+        $effectiveTimeSql,
+        $source,
+        (int)$wasOffline,
         $kioskCode,
         $tokHash,
         $ipAddress,
@@ -392,7 +454,7 @@ try {
         }
 
         $pdo->prepare("INSERT INTO kiosk_shifts (employee_id, clock_in_at, is_closed) VALUES (?, ?, 0)")
-            ->execute([$employeeId, $now]);
+            ->execute([$employeeId, $effectiveTimeSql]);
 
         $shiftId = (int)$pdo->lastInsertId();
 
@@ -431,7 +493,7 @@ try {
         }
 
         $minsStmt = $pdo->prepare("SELECT TIMESTAMPDIFF(MINUTE, ?, ?) AS mins");
-        $minsStmt->execute([$s['clock_in_at'], $now]);
+        $minsStmt->execute([$s['clock_in_at'], $effectiveTimeSql]);
         $mins = (int)$minsStmt->fetchColumn();
 
         if ($mins < 0) {
@@ -450,7 +512,7 @@ try {
             SET clock_out_at=?, is_closed=1, duration_minutes=?
             WHERE id=?
         ");
-        $upd->execute([$now, $mins, (int)$s['id']]);
+        $upd->execute([$effectiveTimeSql, $mins, (int)$s['id']]);
 
         punch_mark($pdo, $eventUuid, 'processed', null, (int)$s['id']);
 

@@ -368,7 +368,15 @@ window.pairWithManagerCode = pairWithManagerCode;
 
 async function pingServer() {
   try {
-    const r = await fetch(ENDPOINT_PING, { cache: "no-store" });
+    const headers = { "Accept": "application/json" };
+    // If we have a token, send headers so server can record heartbeat
+    const tok = getDeviceToken();
+    if (tok) {
+      headers["X-Kiosk-Code"] = KIOSK_CODE;
+      headers["X-Device-Token"] = tok;
+      headers["X-Pairing-Version"] = pairingVersion();
+    }
+    const r = await fetch(ENDPOINT_PING, { cache: "no-store", headers });
     return r.ok;
   } catch {
     return false;

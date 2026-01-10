@@ -12,6 +12,9 @@ let UI_SHOW_OPEN_SHIFTS = false;   // controlled by status.php (we will wire thi
 let UI_OPEN_SHIFTS_COUNT = 6;      // controlled by status.php (we will wire this next)
 let UI_OPEN_SHIFTS_SHOW_TIME = true; // if false, hide time + elapsed on rows
 
+// Offline storage security
+let OFFLINE_ALLOW_UNENCRYPTED_PIN = false;
+
 function fmtTimeFromIso(iso) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -203,6 +206,10 @@ function applyOpenShiftsFromStatus(d) {
     UI_OPEN_SHIFTS_SHOW_TIME = !!d.ui_open_shifts_show_time;
   }
 
+  if (typeof d.offline_allow_unencrypted_pin !== "undefined") {
+    OFFLINE_ALLOW_UNENCRYPTED_PIN = !!d.offline_allow_unencrypted_pin;
+  }
+
   if (Array.isArray(d.open_shifts)) {
     renderOpenShifts(d.open_shifts);
   } else {
@@ -254,11 +261,15 @@ async function submitPin() {
     if (online) online = await pingServer();
 
     if (!online) {
-      closePin();
-      showThank(currentAction, "This device can't save offline punches yet. Please try again when online or ask manager to re-pair.", "");
-      isSubmitting = false;
-      setKeypadDisabled(false);
-      return;
+      if (!OFFLINE_ALLOW_UNENCRYPTED_PIN) {
+        closePin();
+        showThank(currentAction, "This device can't save offline punches yet. Please try again when online or ask manager to re-pair.", "");
+        isSubmitting = false;
+        setKeypadDisabled(false);
+        return;
+      }
+      // Allow plaintext PIN storage (server-controlled) when WebCrypto is unavailable
+      pin_enc = null;
     }
   }
 
@@ -266,6 +277,7 @@ async function submitPin() {
     event_uuid,
     action: currentAction,
     pin_enc,
+    pin_plain: (!pin_enc && OFFLINE_ALLOW_UNENCRYPTED_PIN) ? pin : null,
     device_time,
     created_at: new Date().toISOString(),
     status: "queued",
@@ -280,7 +292,7 @@ async function submitPin() {
   if (online) online = await pingServer();
 
   if (online) {
-    const res = await postPunch({ event_uuid, action: currentAction, pin, device_time });
+    const res = await postPunch({ event_uuid, action: currentAction, pin, device_time, was_offline: false, source: 'online' });
 
     // Success
     if (res.ok && (res.status === "processed" || res.status === "duplicate")) {

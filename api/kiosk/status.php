@@ -118,6 +118,31 @@ function fetch_open_shifts(PDO $pdo, int $limit): array {
     return $out;
 }
 
+function upsert_device(PDO $pdo, array $row): void {
+    try {
+        $stmt = $pdo->prepare(
+            "
+            INSERT INTO kiosk_devices
+                (kiosk_code, device_token_hash, pairing_version, last_seen_at, last_seen_kind, last_authorised, last_error_code, last_ip, last_user_agent)
+            VALUES
+                (:kiosk_code, :device_token_hash, :pairing_version, NOW(), :kind, :authorised, :error_code, :ip, :ua)
+            ON DUPLICATE KEY UPDATE
+                device_token_hash = VALUES(device_token_hash),
+                pairing_version   = VALUES(pairing_version),
+                last_seen_at      = NOW(),
+                last_seen_kind    = VALUES(last_seen_kind),
+                last_authorised   = VALUES(last_authorised),
+                last_error_code   = VALUES(last_error_code),
+                last_ip           = VALUES(last_ip),
+                last_user_agent   = VALUES(last_user_agent)
+            "
+        );
+        $stmt->execute($row);
+    } catch (Throwable $e) {
+        // never break status
+    }
+}
+
 /** Determine pairing + authorisation */
 $storedHash = trim(s($pdo, 'paired_device_token_hash', ''));
 $paired     = ($storedHash !== '');
@@ -128,6 +153,33 @@ $authorised  = false;
 if ($paired && $tokenHeader !== '') {
     $givenHash = hash('sha256', $tokenHeader);
     $authorised = hash_equals($storedHash, $givenHash);
+}
+
+$kioskCode = trim(s($pdo, 'kiosk_code', ''));
+$pairingVersion = s_int($pdo, 'pairing_version', 1);
+$tokHash = ($tokenHeader !== '') ? hash('sha256', $tokenHeader) : null;
+
+// record heartbeat
+if ($kioskCode !== '') {
+    $err = null;
+    if (!$paired) {
+        $err = 'kiosk_not_paired';
+    } elseif ($tokenHeader === '') {
+        $err = 'device_not_authorized';
+    } elseif (!$authorised) {
+        $err = 'device_not_authorized';
+    }
+
+    upsert_device($pdo, [
+        'kiosk_code'        => $kioskCode,
+        'device_token_hash' => $tokHash,
+        'pairing_version'   => $pairingVersion,
+        'kind'             => 'status',
+        'authorised'       => $authorised ? 1 : 0,
+        'error_code'       => $err,
+        'ip'               => (string)($_SERVER['REMOTE_ADDR'] ?? ''),
+        'ua'               => (string)($_SERVER['HTTP_USER_AGENT'] ?? ''),
+    ]);
 }
 
 // Settings
@@ -160,6 +212,9 @@ $payload = [
     'max_sync_attempts'    => s_int($pdo, 'max_sync_attempts', 10),
     'sync_backoff_base_ms' => s_int($pdo, 'sync_backoff_base_ms', 2000),
     'sync_backoff_cap_ms'  => s_int($pdo, 'sync_backoff_cap_ms', 300000),
+
+    // offline storage security
+    'offline_allow_unencrypted_pin' => s_bool($pdo, 'offline_allow_unencrypted_pin', false),
 
     // optional UI behaviour (safe)
     'ui_thank_ms'   => s_int($pdo, 'ui_thank_ms', 1500),

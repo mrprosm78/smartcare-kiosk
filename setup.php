@@ -345,6 +345,17 @@ function seed_settings(PDO $pdo): void {
       'secret' => 0,
     ],
     [
+      'key' => 'device_offline_after_sec',
+      'value' => '300',
+      'group' => 'health',
+      'label' => 'Device Offline After (sec)',
+      'description' => 'Consider the kiosk device offline if no authorised ping/status is received within this many seconds.',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 415,
+      'secret' => 0,
+    ],
+    [
       'key' => 'sync_interval_ms',
       'value' => '30000',
       'group' => 'sync',
@@ -412,6 +423,43 @@ function seed_settings(PDO $pdo): void {
     ],
 
     // ---------------------------
+    // Offline time handling
+    // ---------------------------
+    [
+      'key' => 'offline_max_backdate_minutes',
+      'value' => '2880',
+      'group' => 'sync',
+      'label' => 'Offline Max Backdate (minutes)',
+      'description' => 'When syncing offline punches, accept device_time up to this many minutes in the past (will clamp beyond this).',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 465,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'offline_max_future_seconds',
+      'value' => '120',
+      'group' => 'sync',
+      'label' => 'Offline Max Future (seconds)',
+      'description' => 'When syncing offline punches, allow device_time to be up to this many seconds in the future (will clamp beyond this).',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 466,
+      'secret' => 0,
+    ],
+     [
+      'key' => 'offline_time_mismatch_log_sec',
+      'value' => '300',
+      'group' => 'sync',
+      'label' => 'Time Mismatch Log Threshold (sec)',
+      'description' => 'Log a time_mismatch event when device time differs from server time by more than this many seconds.',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 467,
+      'secret' => 0,
+    ],
+
+    // ---------------------------
     // Diagnostics
     // ---------------------------
     [
@@ -427,6 +475,22 @@ function seed_settings(PDO $pdo): void {
     ],
 
     // ---------------------------
+
+
+    // ---------------------------
+    // Offline storage security
+    // ---------------------------
+    [
+      'key' => 'offline_allow_unencrypted_pin',
+      'value' => '1',
+      'group' => 'sync',
+      'label' => 'Allow Unencrypted Offline PIN',
+      'description' => 'If 1, allow storing PIN in plaintext in the local offline queue when WebCrypto encryption is unavailable. Use only on trusted/locked-down devices.',
+      'type' => 'bool',
+      'editable_by' => 'superadmin',
+      'sort' => 468,
+      'secret' => 0,
+    ],
     // UI Text (move hardcoded copy here)
     // ---------------------------
     [
@@ -539,6 +603,26 @@ function create_tables(PDO $pdo): void {
       KEY idx_group (group_name),
       KEY idx_editable (editable_by),
       KEY idx_sort (sort_order)
+    ) ENGINE=InnoDB;
+  ");
+
+
+  // DEVICES (heartbeat / last seen)
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS kiosk_devices (
+      kiosk_code VARCHAR(50) PRIMARY KEY,
+      device_token_hash CHAR(64) NULL,
+      pairing_version INT NULL,
+      last_seen_at DATETIME NOT NULL,
+      last_seen_kind VARCHAR(20) NULL,
+      last_authorised TINYINT(1) NOT NULL DEFAULT 0,
+      last_error_code VARCHAR(50) NULL,
+      last_ip VARCHAR(45) NULL,
+      last_user_agent VARCHAR(255) NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      KEY idx_seen (last_seen_at),
+      KEY idx_auth (last_authorised)
     ) ENGINE=InnoDB;
   ");
 
@@ -657,6 +741,7 @@ function create_tables(PDO $pdo): void {
 function drop_all(PDO $pdo): void {
   $pdo->exec("SET FOREIGN_KEY_CHECKS=0");
   foreach ([
+    'kiosk_devices',
     'kiosk_health_log',
     'kiosk_event_log',
     'kiosk_punch_events',
