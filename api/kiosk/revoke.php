@@ -78,12 +78,11 @@ try {
     $currentVersion = (int)setting($pdo, 'pairing_version', '1');
     $newVersion = $currentVersion + 1;
 
-    $pdo->prepare("REPLACE INTO settings (`key`,`value`) VALUES ('is_paired','0')")->execute();
-    $pdo->prepare("REPLACE INTO settings (`key`,`value`) VALUES ('paired_device_token_hash','')")->execute();
+    setting_set($pdo, 'is_paired', '0');
+    setting_set($pdo, 'paired_device_token_hash', '');
     // legacy clean-up
-    try { $pdo->prepare("DELETE FROM settings WHERE `key`='paired_device_token'")->execute(); } catch (Throwable $e) {}
-    $stmt = $pdo->prepare("REPLACE INTO settings (`key`,`value`) VALUES ('pairing_version', ?)");
-    $stmt->execute([(string)$newVersion]);
+    try { $pdo->prepare("DELETE FROM kiosk_settings WHERE `key`='paired_device_token'")->execute(); } catch (Throwable $e) {}
+    $stmt = setting_set($pdo, 'pairing_version', (string)((string)$newVersion));
 
     log_kiosk_event(
         $pdo,

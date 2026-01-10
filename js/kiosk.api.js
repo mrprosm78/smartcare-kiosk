@@ -170,7 +170,7 @@ async function kioskBootstrap() {
       window.setKioskOverlay("not_paired", {
         badge: "Not paired",
         title: "This kiosk is not set up",
-        message: "A manager must authorise this device before staff can clock in/out.",
+        message: (st?.ui_text?.not_paired_message || "A manager must authorise this device before staff can clock in/out."),
         actionText: "Enter Manager PIN",
         action: "pair",
       });
@@ -211,7 +211,7 @@ async function kioskBootstrap() {
     window.setKioskOverlay("not_authorised", {
       badge: "Unauthorised",
       title: "Device not authorised",
-      message: "This kiosk needs manager approval before staff can clock in/out.",
+      message: (st?.ui_text?.not_authorised_message || "This kiosk needs manager approval before staff can clock in/out."),
       actionText: "Enter Manager PIN",
       action: "pair",
     });
@@ -323,6 +323,10 @@ async function statusLoop() {
       try { applyOpenShiftsFromStatus(st); } catch {}
     }
 
+    if (typeof applyUiTextFromStatus === "function") {
+      try { applyUiTextFromStatus(st); } catch {}
+    }
+
     const tok = deviceToken();
     const localVer = parseInt(pairingVersion() || "0", 10) || 0;
     const serverVer = parseInt(st.pairing_version || "0", 10) || 0;
@@ -333,7 +337,7 @@ async function statusLoop() {
         window.setKioskOverlay("not_paired", {
           badge: "Not paired",
           title: "This kiosk is not set up",
-          message: "A manager must authorise this device before staff can clock in/out.",
+          message: (st?.ui_text?.not_paired_message || "A manager must authorise this device before staff can clock in/out."),
           actionText: "Enter Manager PIN",
           action: "pair",
         });
@@ -355,7 +359,7 @@ async function statusLoop() {
         window.setKioskOverlay("not_authorised", {
           badge: "Unauthorised",
           title: "Device not authorised",
-          message: "This kiosk needs manager approval before staff can clock in/out.",
+          message: (st?.ui_text?.not_authorised_message || "This kiosk needs manager approval before staff can clock in/out."),
           actionText: "Enter Manager PIN",
           action: "pair",
         });

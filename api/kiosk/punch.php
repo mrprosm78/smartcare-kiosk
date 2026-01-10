@@ -68,7 +68,7 @@ function employee_label(array $emp, bool $hasNickname): string {
 
 function fetch_open_shifts(PDO $pdo, int $limit): array {
     $limit = max(1, min($limit, 50));
-    $hasNickname = column_exists($pdo, 'employees', 'nickname');
+    $hasNickname = column_exists($pdo, 'kiosk_employees', 'nickname');
 
     if ($hasNickname) {
         $sql = "
@@ -79,8 +79,8 @@ function fetch_open_shifts(PDO $pdo, int $limit): array {
                 e.first_name    AS first_name,
                 e.last_name     AS last_name,
                 e.nickname      AS nickname
-            FROM shifts s
-            INNER JOIN employees e ON e.id = s.employee_id
+            FROM kiosk_shifts s
+            INNER JOIN kiosk_employees e ON e.id = s.employee_id
             WHERE s.is_closed = 0
               AND s.clock_out_at IS NULL
               AND e.is_active = 1
@@ -95,8 +95,8 @@ function fetch_open_shifts(PDO $pdo, int $limit): array {
                 s.clock_in_at   AS clock_in_at,
                 e.first_name    AS first_name,
                 e.last_name     AS last_name
-            FROM shifts s
-            INNER JOIN employees e ON e.id = s.employee_id
+            FROM kiosk_shifts s
+            INNER JOIN kiosk_employees e ON e.id = s.employee_id
             WHERE s.is_closed = 0
               AND s.clock_out_at IS NULL
               AND e.is_active = 1
@@ -175,7 +175,7 @@ function parse_device_time(?string $deviceTimeIso): ?string {
 // ---- helper: log punch attempt result (update row) ----
 function punch_mark(PDO $pdo, string $eventUuid, string $status, ?string $errorCode = null, ?int $shiftId = null): void {
     $stmt = $pdo->prepare("
-        UPDATE punch_events
+        UPDATE kiosk_punch_events
         SET result_status = ?, error_code = ?, shift_id = ?
         WHERE event_uuid = ?
         LIMIT 1
@@ -218,8 +218,8 @@ try {
 
         // migrate
         try {
-            $pdo->prepare("REPLACE INTO settings (`key`,`value`) VALUES ('paired_device_token_hash', ?)")->execute([hash('sha256', $deviceTok)]);
-            $pdo->prepare("DELETE FROM settings WHERE `key`='paired_device_token'")->execute();
+            setting_set($pdo, 'paired_device_token_hash', (string)(hash('sha256', $deviceTok)));
+            $pdo->prepare("DELETE FROM kiosk_settings WHERE `key`='paired_device_token'")->execute();
         } catch (Throwable $e) {
             // ignore
         }
@@ -247,7 +247,7 @@ try {
     }
 
     // idempotency
-    $chk = $pdo->prepare("SELECT id FROM punch_events WHERE event_uuid=? LIMIT 1");
+    $chk = $pdo->prepare("SELECT id FROM kiosk_punch_events WHERE event_uuid=? LIMIT 1");
     $chk->execute([$eventUuid]);
     if ($chk->fetchColumn()) {
         // keep your existing behaviour
@@ -286,7 +286,7 @@ try {
     // employee lookup (current method; we’ll improve this later as part of your “performance fix”)
     $allowPlain = setting_bool($pdo,'allow_plain_pin', false);
 
-    $stmt = $pdo->query("SELECT id, first_name, last_name, pin_hash FROM employees WHERE is_active=1");
+    $stmt = $pdo->query("SELECT id, first_name, last_name, pin_hash FROM kiosk_employees WHERE is_active=1");
     $employee = null;
 
     while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -315,10 +315,10 @@ try {
     $employeeId   = (int)$employee['id'];
 
     // Build display names (nickname support is future-ready)
-    $hasNickname  = column_exists($pdo, 'employees', 'nickname');
+    $hasNickname  = column_exists($pdo, 'kiosk_employees', 'nickname');
     if ($hasNickname) {
         // refetch with nickname for label
-        $es = $pdo->prepare("SELECT id, first_name, last_name, nickname FROM employees WHERE id=? LIMIT 1");
+        $es = $pdo->prepare("SELECT id, first_name, last_name, nickname FROM kiosk_employees WHERE id=? LIMIT 1");
         $es->execute([$employeeId]);
         $employeeFull = $es->fetch(PDO::FETCH_ASSOC) ?: $employee;
     } else {
@@ -333,7 +333,7 @@ try {
     if ($minSeconds > 0) {
         $lastStmt = $pdo->prepare("
             SELECT effective_time
-            FROM punch_events
+            FROM kiosk_punch_events
             WHERE employee_id=?
             ORDER BY id DESC
             LIMIT 1
@@ -349,7 +349,7 @@ try {
             if ($diff >= 0 && $diff < $minSeconds) {
                 // Insert first, then mark rejected (keeps your audit trail consistent)
                 $pdo->prepare("
-                    INSERT INTO punch_events
+                    INSERT INTO kiosk_punch_events
                     (event_uuid, employee_id, action, device_time, received_at, effective_time,
                      result_status, error_code, kiosk_code, device_token_hash, ip_address, user_agent)
                     VALUES (?, ?, ?, ?, ?, ?, 'received', NULL, ?, ?, ?, ?)
@@ -363,7 +363,7 @@ try {
 
     // ---- INSERT the punch attempt FIRST (always) ----
     $pdo->prepare("
-        INSERT INTO punch_events
+        INSERT INTO kiosk_punch_events
         (event_uuid, employee_id, action, device_time, received_at, effective_time,
          result_status, error_code, kiosk_code, device_token_hash, ip_address, user_agent)
         VALUES (?, ?, ?, ?, ?, ?, 'received', NULL, ?, ?, ?, ?)
@@ -383,7 +383,7 @@ try {
     // ---- PROCESS (shift logic remains same) ----
     if ($action === 'IN') {
 
-        $open = $pdo->prepare("SELECT id FROM shifts WHERE employee_id=? AND is_closed=0 LIMIT 1");
+        $open = $pdo->prepare("SELECT id FROM kiosk_shifts WHERE employee_id=? AND is_closed=0 LIMIT 1");
         $open->execute([$employeeId]);
 
         if ($open->fetchColumn()) {
@@ -391,7 +391,7 @@ try {
             json_response(['ok'=>false,'error'=>'already_clocked_in'], 409);
         }
 
-        $pdo->prepare("INSERT INTO shifts (employee_id, clock_in_at, is_closed) VALUES (?, ?, 0)")
+        $pdo->prepare("INSERT INTO kiosk_shifts (employee_id, clock_in_at, is_closed) VALUES (?, ?, 0)")
             ->execute([$employeeId, $now]);
 
         $shiftId = (int)$pdo->lastInsertId();
@@ -417,7 +417,7 @@ try {
 
         $shift = $pdo->prepare("
             SELECT id, clock_in_at
-            FROM shifts
+            FROM kiosk_shifts
             WHERE employee_id=? AND is_closed=0
             ORDER BY clock_in_at DESC
             LIMIT 1
@@ -446,7 +446,7 @@ try {
         }
 
         $upd = $pdo->prepare("
-            UPDATE shifts
+            UPDATE kiosk_shifts
             SET clock_out_at=?, is_closed=1, duration_minutes=?
             WHERE id=?
         ");

@@ -59,7 +59,7 @@ function column_exists(PDO $pdo, string $table, string $column): bool {
 /** Fetch staff with open shifts (clocked in, not clocked out). */
 function fetch_open_shifts(PDO $pdo, int $limit): array {
     $limit = max(1, min($limit, 50));
-    $hasNickname = column_exists($pdo, 'employees', 'nickname');
+    $hasNickname = column_exists($pdo, 'kiosk_employees', 'nickname');
 
     $sql = $hasNickname
         ? "
@@ -70,8 +70,8 @@ function fetch_open_shifts(PDO $pdo, int $limit): array {
                 e.first_name    AS first_name,
                 e.last_name     AS last_name,
                 e.nickname      AS nickname
-            FROM shifts s
-            INNER JOIN employees e ON e.id = s.employee_id
+            FROM kiosk_shifts s
+            INNER JOIN kiosk_employees e ON e.id = s.employee_id
             WHERE s.is_closed = 0
               AND s.clock_out_at IS NULL
               AND e.is_active = 1
@@ -85,8 +85,8 @@ function fetch_open_shifts(PDO $pdo, int $limit): array {
                 s.clock_in_at   AS clock_in_at,
                 e.first_name    AS first_name,
                 e.last_name     AS last_name
-            FROM shifts s
-            INNER JOIN employees e ON e.id = s.employee_id
+            FROM kiosk_shifts s
+            INNER JOIN kiosk_employees e ON e.id = s.employee_id
             WHERE s.is_closed = 0
               AND s.clock_out_at IS NULL
               AND e.is_active = 1
@@ -168,6 +168,16 @@ $payload = [
     'ui_reload_enabled'  => s_bool($pdo, 'ui_reload_enabled', false),
     'ui_reload_check_ms' => s_int($pdo, 'ui_reload_check_ms', 60000),
     'ui_version'         => trim(s($pdo, 'ui_version', '1')),
+
+
+    // UI text (safe)
+    'ui_text' => [
+        'kiosk_title'          => trim(s($pdo, 'ui_text.kiosk_title', 'Clock Kiosk')),
+        'kiosk_subtitle'       => trim(s($pdo, 'ui_text.kiosk_subtitle', 'Kiosk Mode')),
+        'employee_notice'      => trim(s($pdo, 'ui_text.employee_notice', 'Enter your PIN on the next screen.')),
+        'not_paired_message'   => trim(s($pdo, 'ui_text.not_paired_message', 'This device is not paired.')),
+        'not_authorised_message' => trim(s($pdo, 'ui_text.not_authorised_message', 'This device is not authorised.')),
+    ],
 
     // open-shifts list controls (safe toggle only)
     'ui_show_open_shifts'  => $uiShowOpen,

@@ -18,6 +18,31 @@ function el(id) {
   return document.getElementById(id);
 }
 
+
+/**
+ * Apply server-driven UI text (optional).
+ * This lets you move hardcoded kiosk copy into kiosk_settings without changing layouts.
+ */
+function applyUiTextFromStatus(st) {
+  const t = st && st.ui_text ? st.ui_text : null;
+  if (!t) return;
+
+  const titleEl = el("uiKioskTitle");
+  const subEl   = el("uiKioskSubtitle");
+  const noticeEl= el("uiEmployeeNotice");
+
+  if (titleEl && typeof t.kiosk_title === "string" && t.kiosk_title.trim() !== "") {
+    titleEl.textContent = t.kiosk_title.trim();
+  }
+  if (subEl && typeof t.kiosk_subtitle === "string" && t.kiosk_subtitle.trim() !== "") {
+    subEl.textContent = t.kiosk_subtitle.trim();
+  }
+  if (noticeEl && typeof t.employee_notice === "string" && t.employee_notice.trim() !== "") {
+    noticeEl.textContent = t.employee_notice.trim();
+  }
+}
+
+
 function setScreen(screen) {
   if (screen === 'home') {
     homeScreen.classList.remove('hidden');

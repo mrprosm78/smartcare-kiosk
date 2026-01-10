@@ -40,7 +40,7 @@ foreach ($helperPaths as $p) {
   }
 }
 
-// Determine UI version from settings (fallback to 1)
+// Determine UI version from kiosk_settings (fallback to 1)
 $ui_version = '1';
 try {
   if (isset($pdo) && $pdo instanceof PDO && function_exists('setting')) {
@@ -167,8 +167,8 @@ $v = h($ui_version);
             </svg>
           </div>
           <div>
-            <div class="text-lg font-semibold leading-tight">Care Home Digital Time Clock</div>
-            <div class="text-sm text-white/60 leading-tight">Kiosk Mode</div>
+            <div id="uiKioskTitle" class="text-lg font-semibold leading-tight">Care Home Digital Time Clock</div>
+            <div id="uiKioskSubtitle" class="text-sm text-white/60 leading-tight">Kiosk Mode</div>
           </div>
         </div>
 
@@ -186,8 +186,8 @@ $v = h($ui_version);
         <section id="homeScreen" class="rounded-3xl bg-white/5 border border-white/10 p-8 shadow-xl shadow-black/30">
           <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
             <div class="flex-1">
-              <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Tap to Clock In or Clock Out</h1>
-              <p class="text-base md:text-lg text-white/60 mt-2">
+              <h1 id="uiHomeHeadline" class="text-2xl md:text-3xl font-bold tracking-tight">Tap to Clock In or Clock Out</h1>
+              <p id="uiEmployeeNotice" class="text-base md:text-lg text-white/60 mt-2">
                 Enter your <span class="font-semibold text-white/80">4-digit PIN</span> on the next screen.
               </p>
               <p id="pairHint" class="hidden mt-3 text-base text-amber-200/90">

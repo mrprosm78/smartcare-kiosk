@@ -24,64 +24,476 @@ if (!isset($pdo) || !($pdo instanceof PDO)) {
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
 function seed_settings(PDO $pdo): void {
-  $settings = [
-    // Core pairing + kiosk identity
-    'kiosk_code' => 'KIOSK-1',
-    'is_paired' => '0',
-    'paired_device_token_hash' => '',
-    // legacy (kept for older installs; will be cleaned automatically)
-    'paired_device_token' => '',
-    'pairing_version' => '1',
-    'pairing_code' => '5850',
+  // Seed kiosk_settings with values + metadata (future manager-editable filtering)
+  $defs = [
+    // ---------------------------
+    // Identity + Pairing
+    // ---------------------------
+    [
+      'key' => 'kiosk_code',
+      'value' => 'KIOSK-1',
+      'group' => 'identity',
+      'label' => 'Kiosk Code',
+      'description' => 'Short identifier for this kiosk (used in logs and API headers).',
+      'type' => 'string',
+      'editable_by' => 'superadmin',
+      'sort' => 10,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'is_paired',
+      'value' => '0',
+      'group' => 'pairing',
+      'label' => 'Is Paired',
+      'description' => '0/1 flag used by UI to show paired status. Pairing sets this to 1; revoke clears it.',
+      'type' => 'bool',
+      'editable_by' => 'none',
+      'sort' => 20,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'paired_device_token_hash',
+      'value' => '',
+      'group' => 'pairing',
+      'label' => 'Paired Device Token Hash',
+      'description' => 'SHA-256 hash of the paired device token. Only the paired device can authorise requests.',
+      'type' => 'secret',
+      'editable_by' => 'none',
+      'sort' => 30,
+      'secret' => 1,
+    ],
+    // legacy (kept for older installs; cleaned automatically by endpoints)
+    [
+      'key' => 'paired_device_token',
+      'value' => '',
+      'group' => 'pairing',
+      'label' => 'Legacy Paired Device Token',
+      'description' => 'Legacy token storage. Not used for auth; kept for backward compatibility and deleted automatically when possible.',
+      'type' => 'secret',
+      'editable_by' => 'none',
+      'sort' => 31,
+      'secret' => 1,
+    ],
+    [
+      'key' => 'pairing_version',
+      'value' => '1',
+      'group' => 'pairing',
+      'label' => 'Pairing Version',
+      'description' => 'Bumps whenever pairing is revoked/reset; helps clients detect pairing changes.',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 40,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'pairing_code',
+      'value' => '5850',
+      'group' => 'pairing',
+      'label' => 'Pairing Passcode',
+      'description' => 'Passcode required to pair a device (only works if pairing_mode is enabled).',
+      'type' => 'secret',
+      'editable_by' => 'superadmin',
+      'sort' => 50,
+      'secret' => 1,
+    ],
+    [
+      'key' => 'pairing_mode',
+      'value' => '0',
+      'group' => 'pairing',
+      'label' => 'Pairing Mode Enabled',
+      'description' => 'When 0, /api/kiosk/pair.php rejects pairing even if the passcode is known.',
+      'type' => 'bool',
+      'editable_by' => 'superadmin',
+      'sort' => 60,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'pairing_mode_until',
+      'value' => '',
+      'group' => 'pairing',
+      'label' => 'Pairing Mode Until',
+      'description' => 'Optional UTC datetime. If set and expired, pairing is auto-disabled.',
+      'type' => 'string',
+      'editable_by' => 'superadmin',
+      'sort' => 70,
+      'secret' => 0,
+    ],
 
-    // Pairing gate (DB admin-controlled)
-    // If pairing_mode is 0, /api/kiosk/pair.php rejects pairing even if manager PIN is known.
-    // Optional: set pairing_mode_until to a DATETIME to auto-expire pairing (e.g. NOW()+INTERVAL 10 MINUTE)
-    'pairing_mode' => '0',
-    'pairing_mode_until' => '',
+    // ---------------------------
+    // PIN + Security
+    // ---------------------------
+    [
+      'key' => 'pin_length',
+      'value' => '4',
+      'group' => 'security',
+      'label' => 'PIN Length',
+      'description' => 'Number of digits required for staff PINs.',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 110,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'allow_plain_pin',
+      'value' => '1',
+      'group' => 'security',
+      'label' => 'Allow Plain PIN',
+      'description' => 'If 1, allows plain PIN entries in kiosk_employees (for simple installs). Prefer hashed PINs in production.',
+      'type' => 'bool',
+      'editable_by' => 'superadmin',
+      'sort' => 120,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'min_seconds_between_punches',
+      'value' => '20',
+      'group' => 'security',
+      'label' => 'Min Seconds Between Punches',
+      'description' => 'Rate limit per employee to prevent double-taps and accidental repeated punches.',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 130,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'auth_fail_window_sec',
+      'value' => '300',
+      'group' => 'security',
+      'label' => 'Auth Fail Window (seconds)',
+      'description' => 'Time window to count failed PIN attempts.',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 140,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'auth_fail_max',
+      'value' => '5',
+      'group' => 'security',
+      'label' => 'Max Auth Failures',
+      'description' => 'Max failed PIN attempts within auth_fail_window_sec before returning 429.',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 150,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'auth_lockout_sec',
+      'value' => '300',
+      'group' => 'security',
+      'label' => 'Lockout (seconds)',
+      'description' => 'Reserved for future UI lockout timer. Server currently returns 429 on too many attempts.',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 160,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'pair_fail_window_sec',
+      'value' => '600',
+      'group' => 'security',
+      'label' => 'Pair Fail Window (seconds)',
+      'description' => 'Time window to count failed pairing attempts.',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 170,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'pair_fail_max',
+      'value' => '5',
+      'group' => 'security',
+      'label' => 'Max Pair Failures',
+      'description' => 'Max failed pairing attempts within pair_fail_window_sec before returning 429.',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 180,
+      'secret' => 0,
+    ],
 
-    // PIN
-    'pin_length' => '4',
-    'allow_plain_pin' => '1',
+    // ---------------------------
+    // Limits
+    // ---------------------------
+    [
+      'key' => 'max_shift_minutes',
+      'value' => '960',
+      'group' => 'limits',
+      'label' => 'Max Shift Minutes',
+      'description' => 'Maximum shift length used for future auto-close logic and validation.',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 210,
+      'secret' => 0,
+    ],
 
-    // Punch policy
-    'min_seconds_between_punches' => '20',
-    'max_shift_minutes' => '960',
+    // ---------------------------
+    // UI Behaviour
+    // ---------------------------
+    [
+      'key' => 'ui_version',
+      'value' => '1',
+      'group' => 'ui',
+      'label' => 'UI Version',
+      'description' => 'Cache-busting version for CSS/JS. Bump to force clients to reload assets.',
+      'type' => 'string',
+      'editable_by' => 'superadmin',
+      'sort' => 310,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'ui_thank_ms',
+      'value' => '3000',
+      'group' => 'ui',
+      'label' => 'Thank You Screen (ms)',
+      'description' => 'How long to show the success screen after a punch.',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 320,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'ui_show_clock',
+      'value' => '1',
+      'group' => 'ui',
+      'label' => 'Show Clock',
+      'description' => 'If 1, kiosk shows the current time and date panel.',
+      'type' => 'bool',
+      'editable_by' => 'manager',
+      'sort' => 325,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'ui_show_open_shifts',
+      'value' => '1',
+      'group' => 'ui',
+      'label' => 'Show Open Shifts Panel',
+      'description' => 'If 1 and authorised, the kiosk can display currently clocked-in staff.',
+      'type' => 'bool',
+      'editable_by' => 'manager',
+      'sort' => 330,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'ui_open_shifts_count',
+      'value' => '6',
+      'group' => 'ui',
+      'label' => 'Open Shifts Count',
+      'description' => 'How many open shifts to return/display in the kiosk UI.',
+      'type' => 'int',
+      'editable_by' => 'manager',
+      'sort' => 340,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'ui_reload_enabled',
+      'value' => '0',
+      'group' => 'ui',
+      'label' => 'UI Auto Reload Enabled',
+      'description' => 'If 1, kiosk periodically checks for ui_version changes and reloads.',
+      'type' => 'bool',
+      'editable_by' => 'superadmin',
+      'sort' => 350,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'ui_reload_check_ms',
+      'value' => '60000',
+      'group' => 'ui',
+      'label' => 'UI Reload Check (ms)',
+      'description' => 'How often the kiosk checks for ui_version changes when ui_reload_enabled=1.',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 360,
+      'secret' => 0,
+    ],
 
-    // UI
-    'ui_thank_ms' => '3000',
-    'ui_version' => '1',
-    'ui_reload_enabled' => '0',
-    'ui_reload_check_ms' => '60000',
+    // ---------------------------
+    // Sync / Telemetry
+    // ---------------------------
+    [
+      'key' => 'ping_interval_ms',
+      'value' => '60000',
+      'group' => 'health',
+      'label' => 'Ping Interval (ms)',
+      'description' => 'How often the client pings /api/kiosk/ping.php for health telemetry.',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 410,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'sync_interval_ms',
+      'value' => '30000',
+      'group' => 'sync',
+      'label' => 'Sync Interval (ms)',
+      'description' => 'How often the client attempts background sync (if enabled in JS).',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 420,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'sync_cooldown_ms',
+      'value' => '8000',
+      'group' => 'sync',
+      'label' => 'Sync Cooldown (ms)',
+      'description' => 'Cooldown between sync attempts after an error.',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 430,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'sync_batch_size',
+      'value' => '20',
+      'group' => 'sync',
+      'label' => 'Sync Batch Size',
+      'description' => 'Max number of queued records to send per sync batch.',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 440,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'max_sync_attempts',
+      'value' => '10',
+      'group' => 'sync',
+      'label' => 'Max Sync Attempts',
+      'description' => 'Max attempts before giving up on a queued record (client-side).',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 450,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'sync_backoff_base_ms',
+      'value' => '2000',
+      'group' => 'sync',
+      'label' => 'Sync Backoff Base (ms)',
+      'description' => 'Base backoff used for exponential retry delay (client-side).',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 460,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'sync_backoff_cap_ms',
+      'value' => '300000',
+      'group' => 'sync',
+      'label' => 'Sync Backoff Cap (ms)',
+      'description' => 'Maximum backoff delay cap (client-side).',
+      'type' => 'int',
+      'editable_by' => 'superadmin',
+      'sort' => 470,
+      'secret' => 0,
+    ],
 
-    // NEW: Open shifts panel (Currently on shift)
-    'ui_show_open_shifts' => '1',     // toggle (0/1)
-    'ui_open_shifts_count' => '6',    // how many to show
+    // ---------------------------
+    // Diagnostics
+    // ---------------------------
+    [
+      'key' => 'debug_mode',
+      'value' => '0',
+      'group' => 'debug',
+      'label' => 'Debug Mode',
+      'description' => 'If 1, some endpoints may return extra debug details.',
+      'type' => 'bool',
+      'editable_by' => 'superadmin',
+      'sort' => 510,
+      'secret' => 0,
+    ],
 
-    // NEW: brute force / lockout controls (used by punch.php logging)
-    'auth_fail_window_sec' => '300',  // 5 min window
-    'auth_fail_max' => '5',           // max failures in window
-    'auth_lockout_sec' => '300',      // (reserved) future use; current UI returns 429 only
-
-    // Pairing brute-force protection (applies to /api/kiosk/pair.php)
-    'pair_fail_window_sec' => '600',  // 10 min window
-    'pair_fail_max' => '5',           // max failed pairing attempts in window
-    // Sync tuning
-    'ping_interval_ms' => '60000',
-    'sync_interval_ms' => '30000',
-    'sync_cooldown_ms' => '8000',
-    'sync_batch_size' => '20',
-    'max_sync_attempts' => '10',
-    'sync_backoff_base_ms' => '2000',
-    'sync_backoff_cap_ms' => '300000',
-
-    // Optional diagnostics
-    'debug_mode' => '0',
+    // ---------------------------
+    // UI Text (move hardcoded copy here)
+    // ---------------------------
+    [
+      'key' => 'ui_text.kiosk_title',
+      'value' => 'Clock Kiosk',
+      'group' => 'ui_text',
+      'label' => 'Kiosk Title',
+      'description' => 'Main title text displayed on the kiosk screen.',
+      'type' => 'string',
+      'editable_by' => 'manager',
+      'sort' => 610,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'ui_text.kiosk_subtitle',
+      'value' => 'Clock in / Clock out',
+      'group' => 'ui_text',
+      'label' => 'Kiosk Subtitle',
+      'description' => 'Small subtitle displayed under the kiosk title.',
+      'type' => 'string',
+      'editable_by' => 'manager',
+      'sort' => 620,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'ui_text.employee_notice',
+      'value' => 'Please clock in at the start of your shift and clock out when you finish.',
+      'group' => 'ui_text',
+      'label' => 'Employee Notice',
+      'description' => 'Notice text shown to staff on the kiosk screen.',
+      'type' => 'string',
+      'editable_by' => 'manager',
+      'sort' => 630,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'ui_text.not_paired_message',
+      'value' => 'This device is not paired. Please contact admin.',
+      'group' => 'ui_text',
+      'label' => 'Not Paired Message',
+      'description' => 'Message shown when kiosk is not paired.',
+      'type' => 'string',
+      'editable_by' => 'superadmin',
+      'sort' => 640,
+      'secret' => 0,
+    ],
+    [
+      'key' => 'ui_text.not_authorised_message',
+      'value' => 'This device is not authorised.',
+      'group' => 'ui_text',
+      'label' => 'Not Authorised Message',
+      'description' => 'Message shown when kiosk token is missing/invalid.',
+      'type' => 'string',
+      'editable_by' => 'superadmin',
+      'sort' => 650,
+      'secret' => 0,
+    ],
   ];
 
-  $stmt = $pdo->prepare("REPLACE INTO settings (`key`,`value`) VALUES (?,?)");
-  foreach ($settings as $k => $v) {
-    $stmt->execute([$k, $v]);
+  $sql = "
+    INSERT INTO kiosk_settings
+      (`key`, `value`, `group_name`, `label`, `description`, `type`, `editable_by`, `sort_order`, `is_secret`)
+    VALUES
+      (:k, :v, :g, :l, :d, :t, :e, :s, :sec)
+    ON DUPLICATE KEY UPDATE
+      `value`       = VALUES(`value`),
+      `group_name`  = VALUES(`group_name`),
+      `label`       = VALUES(`label`),
+      `description` = VALUES(`description`),
+      `type`        = VALUES(`type`),
+      `editable_by` = VALUES(`editable_by`),
+      `sort_order`  = VALUES(`sort_order`),
+      `is_secret`   = VALUES(`is_secret`),
+      `updated_at`  = CURRENT_TIMESTAMP
+  ";
+
+  $stmt = $pdo->prepare($sql);
+
+  foreach ($defs as $d) {
+    $stmt->execute([
+      ':k'   => (string)$d['key'],
+      ':v'   => (string)$d['value'],
+      ':g'   => (string)$d['group'],
+      ':l'   => (string)$d['label'],
+      ':d'   => (string)$d['description'],
+      ':t'   => (string)$d['type'],
+      ':e'   => (string)$d['editable_by'],
+      ':s'   => (int)$d['sort'],
+      ':sec' => (int)$d['secret'],
+    ]);
   }
 }
 
@@ -89,23 +501,35 @@ function create_tables(PDO $pdo): void {
 
   // SETTINGS
   $pdo->exec("
-    CREATE TABLE IF NOT EXISTS settings (
-      `key` VARCHAR(100) PRIMARY KEY,
+    CREATE TABLE IF NOT EXISTS kiosk_settings (
+      `key` VARCHAR(150) PRIMARY KEY,
       `value` TEXT NOT NULL,
-      `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-        ON UPDATE CURRENT_TIMESTAMP
+      `group_name` VARCHAR(50) NOT NULL DEFAULT 'general',
+      `label` VARCHAR(150) NULL,
+      `description` TEXT NULL,
+      `type` VARCHAR(20) NOT NULL DEFAULT 'string',
+      `editable_by` VARCHAR(20) NOT NULL DEFAULT 'superadmin',
+      `sort_order` INT NOT NULL DEFAULT 0,
+      `is_secret` TINYINT(1) NOT NULL DEFAULT 0,
+      `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      KEY idx_group (group_name),
+      KEY idx_editable (editable_by),
+      KEY idx_sort (sort_order)
     ) ENGINE=InnoDB;
   ");
 
   // EMPLOYEES (NEW: nickname)
   $pdo->exec("
-    CREATE TABLE IF NOT EXISTS employees (
+    CREATE TABLE IF NOT EXISTS kiosk_employees (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
       employee_code VARCHAR(50) UNIQUE,
       first_name VARCHAR(100),
       last_name VARCHAR(100),
       nickname VARCHAR(100) NULL,
       pin_hash VARCHAR(255),
+      pin_updated_at DATETIME NULL,
+      archived_at DATETIME NULL,
       is_active TINYINT(1) DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -115,13 +539,21 @@ function create_tables(PDO $pdo): void {
 
   // SHIFTS
   $pdo->exec("
-    CREATE TABLE IF NOT EXISTS shifts (
+    CREATE TABLE IF NOT EXISTS kiosk_shifts (
       id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
       employee_id INT UNSIGNED,
       clock_in_at DATETIME NOT NULL,
       clock_out_at DATETIME NULL,
       duration_minutes INT NULL,
       is_closed TINYINT(1) DEFAULT 0,
+      close_reason VARCHAR(50) NULL,
+      is_autoclosed TINYINT(1) NOT NULL DEFAULT 0,
+      approved_at DATETIME NULL,
+      approved_by VARCHAR(50) NULL,
+      approval_note VARCHAR(255) NULL,
+      last_modified_reason VARCHAR(50) NULL,
+      created_source VARCHAR(20) NULL,
+      updated_source VARCHAR(20) NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       KEY idx_open (employee_id, is_closed),
@@ -131,7 +563,7 @@ function create_tables(PDO $pdo): void {
 
   // PUNCH EVENTS (kept employee_id NOT NULL as per your current approach)
   $pdo->exec("
-    CREATE TABLE IF NOT EXISTS punch_events (
+    CREATE TABLE IF NOT EXISTS kiosk_punch_events (
       id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
       event_uuid CHAR(36) UNIQUE,
       employee_id INT UNSIGNED,
@@ -140,6 +572,8 @@ function create_tables(PDO $pdo): void {
       received_at DATETIME,
       effective_time DATETIME,
       result_status VARCHAR(20),
+      source VARCHAR(20) NULL,
+      was_offline TINYINT(1) NOT NULL DEFAULT 0,
       error_code VARCHAR(50),
       shift_id BIGINT UNSIGNED NULL,
       kiosk_code VARCHAR(50),
@@ -202,10 +636,10 @@ function drop_all(PDO $pdo): void {
   foreach ([
     'kiosk_health_log',
     'kiosk_event_log',
-    'punch_events',
-    'shifts',
-    'employees',
-    'settings'
+    'kiosk_punch_events',
+    'kiosk_shifts',
+    'kiosk_employees',
+    'kiosk_settings'
   ] as $t) {
     $pdo->exec("DROP TABLE IF EXISTS `$t`");
   }

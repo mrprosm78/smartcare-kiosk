@@ -21,7 +21,7 @@ function setting(PDO $pdo, string $key, $default = null) {
     static $cache = [];
     if (array_key_exists($key, $cache)) return $cache[$key];
 
-    $stmt = $pdo->prepare("SELECT value FROM settings WHERE `key`=? LIMIT 1");
+    $stmt = $pdo->prepare("SELECT value FROM kiosk_settings WHERE `key`=? LIMIT 1");
     $stmt->execute([$key]);
     $val = $stmt->fetchColumn();
 
@@ -35,6 +35,15 @@ function setting_int(PDO $pdo, string $key, int $default): int {
 
 function setting_bool(PDO $pdo, string $key, bool $default): bool {
     return setting($pdo, $key, $default ? '1' : '0') === '1';
+}
+
+
+function setting_set(PDO $pdo, string $key, string $value): void {
+    // Update only the value (preserve metadata columns like group/description/editable_by)
+    $sql = "INSERT INTO kiosk_settings (`key`,`value`) VALUES (?,?)
+            ON DUPLICATE KEY UPDATE `value`=VALUES(`value`), `updated_at`=CURRENT_TIMESTAMP";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$key, $value]);
 }
 
 function is_bcrypt(string $s): bool {

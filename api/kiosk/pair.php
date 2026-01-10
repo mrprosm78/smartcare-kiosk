@@ -142,8 +142,8 @@ try {
         if ($ts !== false && time() > $ts) {
             // expired → auto-lock
             try {
-                $pdo->prepare("REPLACE INTO settings (`key`,`value`) VALUES ('pairing_mode','0')")->execute();
-                $pdo->prepare("REPLACE INTO settings (`key`,`value`) VALUES ('pairing_mode_until','')")->execute();
+                setting_set($pdo, 'pairing_mode', '0');
+                setting_set($pdo, 'pairing_mode_until', '');
             } catch (Throwable $e) {
                 // ignore
             }
@@ -211,21 +211,20 @@ try {
     $deviceHash  = hash('sha256', $deviceToken);
 
     // Mark paired
-    $pdo->prepare("REPLACE INTO settings (`key`,`value`) VALUES ('is_paired','1')")->execute();
-    $stmt = $pdo->prepare("REPLACE INTO settings (`key`,`value`) VALUES ('paired_device_token_hash', ?)");
-    $stmt->execute([$deviceHash]);
+    setting_set($pdo, 'is_paired', '1');
+    $stmt = setting_set($pdo, 'paired_device_token_hash', (string)($deviceHash));
 
     // ✅ Auto-lock pairing mode after a successful pairing
     // (DB admin can enable it again when needed)
     try {
-        $pdo->prepare("REPLACE INTO settings (`key`,`value`) VALUES ('pairing_mode','0')")->execute();
-        $pdo->prepare("REPLACE INTO settings (`key`,`value`) VALUES ('pairing_mode_until','')")->execute();
+        setting_set($pdo, 'pairing_mode', '0');
+        setting_set($pdo, 'pairing_mode_until', '');
     } catch (Throwable $e) {
         // ignore
     }
 
     // Legacy clean-up: remove plaintext token if present
-    try { $pdo->prepare("DELETE FROM settings WHERE `key`='paired_device_token'")->execute(); } catch (Throwable $e) {}
+    try { $pdo->prepare("DELETE FROM kiosk_settings WHERE `key`='paired_device_token'")->execute(); } catch (Throwable $e) {}
 
     // Optionally: keep pairing_version as-is (only changes when revoked manually)
     // (no change here)
