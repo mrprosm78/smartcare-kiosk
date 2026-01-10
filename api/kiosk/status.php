@@ -142,6 +142,12 @@ $payload = [
     'authorised'      => $authorised,
     'pairing_version' => s_int($pdo, 'pairing_version', 1),
 
+    // pairing mode (safe)
+    // pairing_mode is controlled by DB admin; kiosk can only pair when this is enabled.
+    // pairing_mode_until is optional (DATETIME). If present and in the past, pairing is effectively off.
+    'pairing_mode'       => s_bool($pdo, 'pairing_mode', false),
+    'pairing_mode_until' => trim(s($pdo, 'pairing_mode_until', '')),
+
     // kiosk policy (safe)
     'pin_length' => s_int($pdo, 'pin_length', 4),
 

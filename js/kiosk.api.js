@@ -254,6 +254,8 @@ async function pairWithManagerCode(code) {
 
     const err = (out && out.error) ? String(out.error) : "Pairing failed";
     const map = {
+      pairing_mode_off: "Pairing is disabled. Ask admin to enable Pairing Mode in settings.",
+      rate_limited: "Too many pairing attempts. Please wait a few minutes and try again.",
       kiosk_not_authorized: "Kiosk code not authorised.",
       invalid_pairing_code: "Invalid manager PIN.",
       server_error: "Server error. Please try again."

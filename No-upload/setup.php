@@ -34,6 +34,12 @@ function seed_settings(PDO $pdo): void {
     'pairing_version' => '1',
     'pairing_code' => '5850',
 
+    // Pairing gate (DB admin-controlled)
+    // If pairing_mode is 0, /api/kiosk/pair.php rejects pairing even if manager PIN is known.
+    // Optional: set pairing_mode_until to a DATETIME to auto-expire pairing (e.g. NOW()+INTERVAL 10 MINUTE)
+    'pairing_mode' => '0',
+    'pairing_mode_until' => '',
+
     // PIN
     'pin_length' => '4',
     'allow_plain_pin' => '1',
@@ -57,6 +63,9 @@ function seed_settings(PDO $pdo): void {
     'auth_fail_max' => '5',           // max failures in window
     'auth_lockout_sec' => '300',      // (reserved) future use; current UI returns 429 only
 
+    // Pairing brute-force protection (applies to /api/kiosk/pair.php)
+    'pair_fail_window_sec' => '600',  // 10 min window
+    'pair_fail_max' => '5',           // max failed pairing attempts in window
     // Sync tuning
     'ping_interval_ms' => '60000',
     'sync_interval_ms' => '30000',
@@ -162,6 +171,7 @@ function create_tables(PDO $pdo): void {
       message VARCHAR(255) NULL,
       meta_json JSON NULL,
       KEY idx_time (occurred_at),
+      KEY idx_ip_time (ip_address, occurred_at),
       KEY idx_device_time (device_token_hash, occurred_at),
       KEY idx_event (event_type, result),
       KEY idx_employee (employee_id)
