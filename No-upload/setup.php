@@ -285,6 +285,17 @@ function seed_settings(PDO $pdo): void {
       'secret' => 0,
     ],
     [
+      'key' => 'ui_open_shifts_show_time',
+      'value' => '1',
+      'group' => 'ui',
+      'label' => 'Open Shifts: Show Time & Duration',
+      'description' => 'If 1, the open shifts panel shows clock-in time and elapsed duration. If 0, it only shows the name/status.',
+      'type' => 'bool',
+      'editable_by' => 'manager',
+      'sort' => 345,
+      'secret' => 0,
+    ],
+    [
       'key' => 'ui_reload_enabled',
       'value' => '0',
       'group' => 'ui',
@@ -304,6 +315,18 @@ function seed_settings(PDO $pdo): void {
       'type' => 'int',
       'editable_by' => 'superadmin',
       'sort' => 360,
+      'secret' => 0,
+    ],
+
+    [
+      'key' => 'ui_reload_token',
+      'value' => '0',
+      'group' => 'ui',
+      'label' => 'UI Reload Token',
+      'description' => 'Change this value to force the kiosk to reload (even if ui_version is unchanged). Used as an operational "refresh now" switch.',
+      'type' => 'string',
+      'editable_by' => 'superadmin',
+      'sort' => 365,
       'secret' => 0,
     ],
 

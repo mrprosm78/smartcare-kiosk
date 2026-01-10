@@ -52,27 +52,115 @@ function maybeReloadFromStatus(d) {
 
   UI_VERSION = (d.ui_version ?? "").toString();
   UI_RELOAD_ENABLED = !!d.ui_reload_enabled;
+  const token = (d.ui_reload_token ?? "0").toString();
 
   if (Number.isFinite(+d.ui_reload_check_ms)) {
     UI_RELOAD_CHECK_MS = Math.max(10000, parseInt(d.ui_reload_check_ms, 10));
   }
 
-  if (!UI_RELOAD_ENABLED || !UI_VERSION) return;
+  if (!UI_RELOAD_ENABLED) return;
 
-  const stored = localStorage.getItem("kiosk_ui_version") || "";
+  // If a reload was queued earlier (e.g., during PIN entry),
+  // perform it as soon as it is safe.
+  if (window.__kioskReloadPending) {
+    const canReloadNow = (() => {
+      try {
+        if (typeof window.kioskCanReload === "function") return !!window.kioskCanReload();
+      } catch (e) {}
+      try {
+        if (typeof isSubmitting !== "undefined" && isSubmitting) return false;
+      } catch (e) {}
+      try {
+        if (typeof pinOverlay !== "undefined" && pinOverlay && !pinOverlay.classList.contains("hidden")) return false;
+      } catch (e) {}
+      return true;
+    })();
 
-  if (!stored) {
-    localStorage.setItem("kiosk_ui_version", UI_VERSION);
+    if (canReloadNow) {
+      window.__kioskReloadPending = false;
+      if (UI_VERSION) {
+        reloadWithVersion(UI_VERSION);
+      } else {
+        window.location.reload();
+      }
+      return;
+    }
+  }
+
+  const storedVer = localStorage.getItem("kiosk_ui_version") || "";
+  const storedTok = localStorage.getItem("kiosk_ui_reload_token") || "";
+
+  // First run: store and exit (no surprise reload).
+  if (!storedVer && !storedTok) {
+    if (UI_VERSION) localStorage.setItem("kiosk_ui_version", UI_VERSION);
+    localStorage.setItem("kiosk_ui_reload_token", token);
     return;
   }
 
-  if (stored !== UI_VERSION) {
+  // Determine whether a reload is needed
+  let needsReload = false;
+  let reason = "";
+
+  if (UI_VERSION && storedVer && storedVer !== UI_VERSION) {
     localStorage.setItem("kiosk_ui_version", UI_VERSION);
-    if (!currentUrlHasVersion(UI_VERSION)) reloadWithVersion(UI_VERSION);
+    needsReload = true;
+    reason = "version";
   }
 
-  if (stored === UI_VERSION && !currentUrlHasVersion(UI_VERSION)) {
+  if (storedTok !== token) {
+    localStorage.setItem("kiosk_ui_reload_token", token);
+    needsReload = true;
+    reason = reason || "token";
+  }
+
+  // Ensure URL always contains current ui_version if enabled
+  if (UI_VERSION && storedVer === UI_VERSION && !currentUrlHasVersion(UI_VERSION)) {
+    needsReload = true;
+    reason = reason || "url";
+  }
+
+  if (!needsReload) return;
+
+  // Safety: do not reload while PIN entry / submission is active.
+  const canReload = (() => {
+    try {
+      if (typeof window.kioskCanReload === "function") return !!window.kioskCanReload();
+    } catch (e) {}
+
+    try {
+      if (typeof isSubmitting !== "undefined" && isSubmitting) return false;
+    } catch (e) {}
+
+    try {
+      if (typeof pinOverlay !== "undefined" && pinOverlay && !pinOverlay.classList.contains("hidden")) return false;
+    } catch (e) {}
+
+    return true;
+  })();
+
+  // If a reload was previously queued (e.g., user was entering a PIN),
+  // execute it as soon as it's safe.
+  if (window.__kioskReloadPending && canReload) {
+    window.__kioskReloadPending = false;
+    if (UI_VERSION) {
+      reloadWithVersion(UI_VERSION);
+    } else {
+      window.location.reload();
+    }
+    return;
+  }
+
+  if (!canReload) {
+    // Queue a reload request; kiosk.main will eventually return to idle and next status poll will reload.
+    window.__kioskReloadPending = true;
+    return;
+  }
+
+  // Perform reload; prefer versioned reload to bust caches.
+  if (UI_VERSION) {
     reloadWithVersion(UI_VERSION);
+  } else {
+    window.location.reload();
   }
 }
 

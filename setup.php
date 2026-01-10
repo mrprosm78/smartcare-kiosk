@@ -318,6 +318,18 @@ function seed_settings(PDO $pdo): void {
       'secret' => 0,
     ],
 
+    [
+      'key' => 'ui_reload_token',
+      'value' => '0',
+      'group' => 'ui',
+      'label' => 'UI Reload Token',
+      'description' => 'Change this value to force the kiosk to reload (even if ui_version is unchanged). Used as an operational "refresh now" switch.',
+      'type' => 'string',
+      'editable_by' => 'superadmin',
+      'sort' => 365,
+      'secret' => 0,
+    ],
+
     // ---------------------------
     // Sync / Telemetry
     // ---------------------------

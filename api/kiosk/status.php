@@ -169,6 +169,7 @@ $payload = [
     'ui_reload_enabled'  => s_bool($pdo, 'ui_reload_enabled', false),
     'ui_reload_check_ms' => s_int($pdo, 'ui_reload_check_ms', 60000),
     'ui_version'         => trim(s($pdo, 'ui_version', '1')),
+    'ui_reload_token'    => trim(s($pdo, 'ui_reload_token', '0')),
 
 
     // UI text (safe)
