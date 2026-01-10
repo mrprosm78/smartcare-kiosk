@@ -261,6 +261,25 @@ async function submitPin() {
       if (msgMap[res.error]) {
         try { await deleteEvent(event_uuid); } catch {}
         closePin();
+
+        // Auth-related: show overlay instead of thank screen
+        if (res.error === "device_not_authorized" || res.error === "device_revoked" || res.error === "kiosk_not_paired") {
+          if (typeof toast === "function") {
+            toast("warning", "Authorisation required", msgMap[res.error], { ms: 4500 });
+          }
+          if (typeof window.setKioskOverlay === "function") {
+            const overlayState = (res.error === "device_revoked") ? "revoked" : (res.error === "kiosk_not_paired" ? "not_paired" : "not_authorised");
+            window.setKioskOverlay(overlayState, {
+              badge: overlayState === "revoked" ? "Revoked" : (overlayState === "not_paired" ? "Not paired" : "Unauthorised"),
+              title: overlayState === "revoked" ? "Device revoked" : (overlayState === "not_paired" ? "This kiosk is not set up" : "Device not authorised"),
+              message: msgMap[res.error],
+              actionText: "Enter Manager PIN",
+              action: "pair",
+            });
+          }
+          return;
+        }
+
         showThank(currentAction, msgMap[res.error], "");
         return;
       }
@@ -297,3 +316,174 @@ async function statusLoop() {
 
   setTimeout(statusLoop, UI_RELOAD_CHECK_MS || 60000);
 }
+
+
+/* ========================================================================
+   Overlay + Manager Modal (authorisation UX)
+   ===================================================================== */
+
+let KIOSK_STATE = {
+  server_paired: false,
+  authorised: false,
+  pairing_version: 0,
+  ui_version: "1",
+};
+
+function setOverlayVisible(on) {
+  if (!stateOverlay) return;
+  stateOverlay.classList.toggle("hidden", !on);
+}
+
+function setKioskOverlay(state, opts = {}) {
+  // state: 'ready' | 'not_paired' | 'not_authorised' | 'revoked'
+  const s = String(state || "").toLowerCase();
+
+  if (s === "ready") {
+    setOverlayVisible(false);
+    return;
+  }
+
+  setOverlayVisible(true);
+
+  if (stateTitle) stateTitle.textContent = opts.title || "Clock Kiosk";
+  if (stateMsg) stateMsg.textContent = opts.message || "This device needs manager authorisation.";
+  if (stateBadge) stateBadge.textContent = opts.badge || "Setup";
+  if (stateHint) stateHint.textContent = opts.hint || "Tip: keep this tablet on the kiosk stand. Only a manager can authorise new devices.";
+
+  if (stateActionBtn) stateActionBtn.textContent = opts.actionText || "Enter Manager PIN";
+  if (stateActionBtn) stateActionBtn.onclick = () => openManagerModal(opts.action || "pair");
+
+  if (stateRetryBtn) stateRetryBtn.onclick = () => {
+    if (typeof window.kioskBootstrap === "function") window.kioskBootstrap();
+  };
+}
+
+function openManagerModal(action = "pair") {
+  if (!mgrModal) return;
+  mgrModal.dataset.action = action;
+
+  // reset pin
+  window.__mgrPin = "";
+  if (typeof applyMgrDots === "function") applyMgrDots(PIN_LENGTH || 4);
+  updateMgrDots();
+
+  // build keypad once
+  buildMgrKeypad();
+
+  // message
+  const msg =
+    action === "pair"
+      ? "Enter the manager PIN to authorise this kiosk."
+      : "Enter the manager PIN.";
+  if (mgrModalMsg) mgrModalMsg.textContent = msg;
+
+  mgrModal.classList.remove("hidden");
+}
+
+function closeManagerModal() {
+  if (!mgrModal) return;
+  mgrModal.classList.add("hidden");
+}
+
+function updateMgrDots() {
+  if (!mgrDotsWrap) return;
+  const pin = String(window.__mgrPin || "");
+  const dots = mgrDotsWrap.querySelectorAll(".mgrDot");
+  dots.forEach((d, i) => {
+    d.className = "mgrDot h-3.5 w-3.5 rounded-full " + (i < pin.length ? "bg-white" : "bg-white/15");
+  });
+}
+
+function buildMgrKeypad() {
+  if (!mgrKeyGrid) return;
+  if (mgrKeyGrid.dataset.built === "1") return;
+
+  const mk = (label, val) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "key rounded-2xl bg-white/10 px-4 py-4 text-lg font-semibold text-white active:scale-[0.99]";
+    b.textContent = label;
+    b.dataset.val = val;
+    b.addEventListener("click", () => mgrKeyPress(val));
+    return b;
+  };
+
+  // 1..9
+  for (let i = 1; i <= 9; i++) mgrKeyGrid.appendChild(mk(String(i), String(i)));
+  // spacer, 0, back
+  mgrKeyGrid.appendChild(mk("•", "spacer"));
+  mgrKeyGrid.lastChild.classList.add("opacity-30");
+  mgrKeyGrid.lastChild.disabled = true;
+
+  mgrKeyGrid.appendChild(mk("0", "0"));
+  mgrKeyGrid.appendChild(mk("⌫", "back"));
+
+  mgrKeyGrid.dataset.built = "1";
+
+  if (mgrClose) mgrClose.onclick = closeManagerModal;
+  if (mgrClear) mgrClear.onclick = () => { window.__mgrPin = ""; updateMgrDots(); };
+  if (mgrSubmit) mgrSubmit.onclick = submitManagerPin;
+}
+
+function mgrKeyPress(val) {
+  if (val === "back") {
+    window.__mgrPin = String(window.__mgrPin || "").slice(0, -1);
+    updateMgrDots();
+    return;
+  }
+  if (val === "spacer") return;
+
+  const current = String(window.__mgrPin || "");
+  if (current.length >= (PIN_LENGTH || 4)) return;
+
+  window.__mgrPin = current + String(val);
+  updateMgrDots();
+
+  if (String(window.__mgrPin || "").length === (PIN_LENGTH || 4)) {
+    // small delay feels nicer
+    setTimeout(submitManagerPin, 120);
+  }
+}
+
+async function submitManagerPin() {
+  const code = String(window.__mgrPin || "");
+  if (code.length !== (PIN_LENGTH || 4)) {
+    toast && toast("warning", "PIN incomplete", "Please enter the full manager PIN.");
+    return;
+  }
+
+  // disable submit briefly
+  if (mgrSubmit) {
+    mgrSubmit.disabled = true;
+    mgrSubmit.classList.add("opacity-60");
+  }
+
+  try {
+    if (typeof window.pairWithManagerCode !== "function") {
+      toast && toast("error", "Missing function", "pairWithManagerCode() not available.");
+      return;
+    }
+    const ok = await window.pairWithManagerCode(code);
+
+    if (ok) {
+      toast && toast("success", "Authorised", "This device is now authorised.");
+      closeManagerModal();
+      setKioskOverlay("ready");
+    } else {
+      // pairWithManagerCode will toast specific error
+    }
+  } finally {
+    if (mgrSubmit) {
+      mgrSubmit.disabled = false;
+      mgrSubmit.classList.remove("opacity-60");
+    }
+    window.__mgrPin = "";
+    updateMgrDots();
+  }
+}
+
+// Expose state setters for other modules
+window.setKioskOverlay = setKioskOverlay;
+window.openManagerModal = openManagerModal;
+window.closeManagerModal = closeManagerModal;
+window.KIOSK_STATE = KIOSK_STATE;

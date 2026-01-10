@@ -119,29 +119,99 @@ async function getStatusAndApply() {
 }
 
 async function pairIfNeeded() {
+  // Backwards-compat shim: call the new bootstrap
+  if (typeof window.kioskBootstrap === "function") {
+    return window.kioskBootstrap();
+  }
+}
+
+/**
+ * Bootstrap pairing/authorisation state.
+ * Decides which UI screen to show and whether background loops should run.
+ */
+async function kioskBootstrap() {
   setPairedUI(false);
 
   const st = await getStatusAndApply();
 
-  if (st.paired && deviceToken()) {
-    const localVer = parseInt(pairingVersion() || "0", 10) || 0;
-    if (localVer && localVer !== st.pairing_version) {
-      alert("This device has been revoked. Please re-pair with manager.");
-      setPairedUI(false);
-      return;
-    }
-    setPairedUI(true);
-    return;
+  // persist to shared state (kiosk.ui.js exposes window.KIOSK_STATE)
+  if (window.KIOSK_STATE) {
+    window.KIOSK_STATE.server_paired = !!st.paired;
+    window.KIOSK_STATE.pairing_version = parseInt(st.pairing_version || 0, 10) || 0;
+    window.KIOSK_STATE.ui_version = String(st.ui_version || "1");
   }
 
+  // If system not paired at all
   if (!st.paired) {
-    const code = prompt("Manager pairing code:");
-    if (!code) return;
+    if (typeof window.setKioskOverlay === "function") {
+      window.setKioskOverlay("not_paired", {
+        badge: "Not paired",
+        title: "This kiosk is not set up",
+        message: "A manager must authorise this device before staff can clock in/out.",
+        actionText: "Enter Manager PIN",
+        action: "pair",
+      });
+    }
+    setPairedUI(false);
+    return { authorised: false, reason: "not_paired", status: st };
+  }
 
+  // System is paired. Is THIS device authorised?
+  const tok = deviceToken();
+  const localVer = parseInt(pairingVersion() || "0", 10) || 0;
+  const serverVer = parseInt(st.pairing_version || "0", 10) || 0;
+
+  if (tok) {
+    if (localVer && serverVer && localVer !== serverVer) {
+      // revoked
+      if (typeof window.setKioskOverlay === "function") {
+        window.setKioskOverlay("revoked", {
+          badge: "Revoked",
+          title: "Device revoked",
+          message: "This device was removed from the system. A manager must re-authorise it.",
+          actionText: "Re-authorise",
+          action: "pair",
+        });
+      }
+      setPairedUI(false);
+      return { authorised: false, reason: "revoked", status: st };
+    }
+
+    // authorised
+    if (typeof window.setKioskOverlay === "function") window.setKioskOverlay("ready");
+    setPairedUI(true);
+    return { authorised: true, reason: "authorised", status: st };
+  }
+
+  // server paired but no local token => not authorised
+  if (typeof window.setKioskOverlay === "function") {
+    window.setKioskOverlay("not_authorised", {
+      badge: "Unauthorised",
+      title: "Device not authorised",
+      message: "This kiosk needs manager approval before staff can clock in/out.",
+      actionText: "Enter Manager PIN",
+      action: "pair",
+    });
+  }
+  setPairedUI(false);
+  return { authorised: false, reason: "not_authorised", status: st };
+}
+
+/**
+ * Pair this kiosk using the manager PIN (entered via modal).
+ */
+async function pairWithManagerCode(code) {
+  const pairing_code = String(code || "").trim();
+  if (!pairing_code) {
+    toast && toast("warning", "PIN required", "Please enter the manager PIN.");
+    return false;
+  }
+
+  try {
     const res = await fetch(API_PAIR, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Kiosk-Code": KIOSK_CODE },
-      body: JSON.stringify({ pairing_code: code })
+      body: JSON.stringify({ pairing_code })
     });
 
     const out = await res.json().catch(() => ({}));
@@ -149,12 +219,30 @@ async function pairIfNeeded() {
       localStorage.setItem("kiosk_device_token", out.device_token);
       localStorage.setItem("kiosk_pairing_version", String(out.pairing_version || 1));
       setPairedUI(true);
-      return;
+      if (typeof window.setKioskOverlay === "function") window.setKioskOverlay("ready");
+      // kick background loops now that we're authorised
+      if (typeof window.startBackgroundLoops === "function") window.startBackgroundLoops();
+      return true;
     }
 
-    alert(out.error || "Pairing failed");
+    const err = (out && out.error) ? String(out.error) : "Pairing failed";
+    const map = {
+      kiosk_not_authorized: "Kiosk code not authorised.",
+      invalid_pairing_code: "Invalid manager PIN.",
+      server_error: "Server error. Please try again."
+    };
+    toast && toast("error", "Pairing failed", map[err] || err);
+    return false;
+  } catch (e) {
+    toast && toast("error", "Network error", "Could not reach server. Check connection.");
+    return false;
   }
 }
+
+// expose for kiosk.ui.js
+window.__kioskBootstrapImpl = kioskBootstrap;
+window.kioskBootstrap = kioskBootstrap;
+window.pairWithManagerCode = pairWithManagerCode;
 
 async function pingServer() {
   try {
@@ -190,4 +278,72 @@ async function postPunch(payload) {
   const data = await r.json().catch(() => ({}));
   if (!r.ok) return { ok: false, error: data?.error || "server_error" };
   return data;
+}
+
+
+/**
+ * Periodic status polling (safe settings + optional open shifts).
+ * Also detects revocation and pushes kiosk back into overlay state.
+ */
+async function statusLoop() {
+  try {
+    // If overlay is up (not authorised), poll less aggressively
+    const hasAuth = !!(deviceToken() && (typeof window.KIOSK_STATE === "object" ? true : true));
+
+    const st = await getStatusAndApply();
+
+    // Open shifts rendering (if enabled)
+    if (typeof applyOpenShiftsFromStatus === "function") {
+      try { applyOpenShiftsFromStatus(st); } catch {}
+    }
+
+    // Detect pairing changes
+    const tok = deviceToken();
+    const localVer = parseInt(pairingVersion() || "0", 10) || 0;
+    const serverVer = parseInt(st.pairing_version || "0", 10) || 0;
+
+    if (!st.paired) {
+      setPairedUI(false);
+      if (typeof window.setKioskOverlay === "function") {
+        window.setKioskOverlay("not_paired", {
+          badge: "Not paired",
+          title: "This kiosk is not set up",
+          message: "A manager must authorise this device before staff can clock in/out.",
+          actionText: "Enter Manager PIN",
+          action: "pair",
+        });
+      }
+    } else if (!tok) {
+      setPairedUI(false);
+      if (typeof window.setKioskOverlay === "function") {
+        window.setKioskOverlay("not_authorised", {
+          badge: "Unauthorised",
+          title: "Device not authorised",
+          message: "This kiosk needs manager approval before staff can clock in/out.",
+          actionText: "Enter Manager PIN",
+          action: "pair",
+        });
+      }
+    } else if (localVer && serverVer && localVer !== serverVer) {
+      setPairedUI(false);
+      if (typeof window.setKioskOverlay === "function") {
+        window.setKioskOverlay("revoked", {
+          badge: "Revoked",
+          title: "Device revoked",
+          message: "This device was removed from the system. A manager must re-authorise it.",
+          actionText: "Re-authorise",
+          action: "pair",
+        });
+      }
+    } else {
+      // still authorised
+      setPairedUI(true);
+      if (typeof window.setKioskOverlay === "function") window.setKioskOverlay("ready");
+    }
+
+    // schedule
+    setTimeout(statusLoop, UI_RELOAD_ENABLED ? UI_RELOAD_CHECK_MS : 60000);
+  } catch {
+    setTimeout(statusLoop, 60000);
+  }
 }

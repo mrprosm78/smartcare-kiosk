@@ -4,6 +4,27 @@
 const homeScreen  = document.getElementById('homeScreen');
 const thankScreen = document.getElementById('thankScreen');
 
+
+// Overlay + modal
+const stateOverlay   = document.getElementById('stateOverlay');
+const stateTitle     = document.getElementById('stateTitle');
+const stateMsg       = document.getElementById('stateMsg');
+const stateBadge     = document.getElementById('stateBadge');
+const stateActionBtn = document.getElementById('stateActionBtn');
+const stateRetryBtn  = document.getElementById('stateRetryBtn');
+const stateHint      = document.getElementById('stateHint');
+
+const mgrModal     = document.getElementById('mgrModal');
+const mgrModalMsg  = document.getElementById('mgrModalMsg');
+const mgrDotsWrap  = document.getElementById('mgrDotsWrap');
+const mgrClose     = document.getElementById('mgrClose');
+const mgrClear     = document.getElementById('mgrClear');
+const mgrSubmit    = document.getElementById('mgrSubmit');
+const mgrKeyGrid   = document.getElementById('mgrKeyGrid');
+
+// Toast wrap (from index.php)
+const toastWrap = document.getElementById('toastWrap');
+
 // Header / network
 const netDot  = document.getElementById('netDot');
 const netText = document.getElementById('netText');
@@ -68,4 +89,20 @@ function applyPinDots() {
   const newDots = Array.from(pinDotsWrap.querySelectorAll('.pinDot'));
   pinDots.length = 0;
   newDots.forEach(x => pinDots.push(x));
+}
+
+
+/**
+ * Build manager PIN dots (same length as PIN_LENGTH, defaults to 4).
+ * kiosk.ui.js uses applyMgrDots() before showing the modal.
+ */
+function applyMgrDots(len) {
+  const L = Number.isFinite(+len) ? Math.max(4, parseInt(len, 10)) : (typeof PIN_LENGTH !== "undefined" ? PIN_LENGTH : 4);
+  if (!mgrDotsWrap) return;
+  mgrDotsWrap.innerHTML = "";
+  for (let i = 0; i < L; i++) {
+    const d = document.createElement("div");
+    d.className = "mgrDot h-3.5 w-3.5 rounded-full bg-white/15";
+    mgrDotsWrap.appendChild(d);
+  }
 }

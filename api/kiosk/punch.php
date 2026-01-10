@@ -195,9 +195,34 @@ try {
         json_response(['ok'=>false,'error'=>'kiosk_not_paired'], 403);
     }
 
-    if ($deviceTok === '' || $deviceTok !== setting($pdo,'paired_device_token','')) {
+    // Device token verification (hash-first, legacy fallback)
+    if ($deviceTok === '') {
         log_kiosk_event($pdo, $kioskCode, $versionHdr, $tokHash, $ipAddress, $userAgent, null, 'punch_auth', 'fail', 'device_not_authorized');
         json_response(['ok'=>false,'error'=>'device_not_authorized'], 403);
+    }
+
+    $expectedHash = (string)setting($pdo,'paired_device_token_hash','');
+    if ($expectedHash !== '') {
+        $calc = hash('sha256', $deviceTok);
+        if (!hash_equals($expectedHash, $calc)) {
+            log_kiosk_event($pdo, $kioskCode, $versionHdr, $tokHash, $ipAddress, $userAgent, null, 'punch_auth', 'fail', 'device_not_authorized');
+            json_response(['ok'=>false,'error'=>'device_not_authorized'], 403);
+        }
+    } else {
+        // Legacy: plaintext token (migrate to hash on first successful use)
+        $legacy = (string)setting($pdo,'paired_device_token','');
+        if ($legacy === '' || !hash_equals($legacy, $deviceTok)) {
+            log_kiosk_event($pdo, $kioskCode, $versionHdr, $tokHash, $ipAddress, $userAgent, null, 'punch_auth', 'fail', 'device_not_authorized');
+            json_response(['ok'=>false,'error'=>'device_not_authorized'], 403);
+        }
+
+        // migrate
+        try {
+            $pdo->prepare("REPLACE INTO settings (`key`,`value`) VALUES ('paired_device_token_hash', ?)")->execute([hash('sha256', $deviceTok)]);
+            $pdo->prepare("DELETE FROM settings WHERE `key`='paired_device_token'")->execute();
+        } catch (Throwable $e) {
+            // ignore
+        }
     }
 
     $currentVersion = (int)setting($pdo,'pairing_version','1');

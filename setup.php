@@ -28,6 +28,8 @@ function seed_settings(PDO $pdo): void {
     // Core pairing + kiosk identity
     'kiosk_code' => 'KIOSK-1',
     'is_paired' => '0',
+    'paired_device_token_hash' => '',
+    // legacy (kept for older installs; will be cleaned automatically)
     'paired_device_token' => '',
     'pairing_version' => '1',
     'pairing_code' => '5850',

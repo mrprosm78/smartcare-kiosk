@@ -82,6 +82,45 @@ async function syncQueueIfNeeded(force = false) {
 
       if (!res.ok && NON_RETRYABLE.has(res.error)) {
         await deleteEvent(evt.event_uuid);
+
+        // If kiosk authorisation is invalid, stop hammering the API and show overlay.
+        if (res.error === "device_not_authorized" || res.error === "device_revoked" || res.error === "kiosk_not_paired") {
+          try {
+            localStorage.removeItem("kiosk_device_token");
+          } catch {}
+          try {
+            // keep local pairing_version for revoked detection; but reset if server says not paired
+            if (res.error === "kiosk_not_paired") localStorage.removeItem("kiosk_pairing_version");
+          } catch {}
+
+          if (typeof toast === "function") {
+            const msg = (res.error === "device_revoked")
+              ? "This device was revoked. Manager must re-authorise."
+              : (res.error === "kiosk_not_paired")
+                ? "Kiosk is not paired. Manager setup required."
+                : "Device not authorised. Manager approval required.";
+            toast("warning", "Authorisation required", msg, { ms: 4500 });
+          }
+
+          if (typeof window.setKioskOverlay === "function") {
+            const overlayState = (res.error === "device_revoked") ? "revoked" : (res.error === "kiosk_not_paired" ? "not_paired" : "not_authorised");
+            window.setKioskOverlay(overlayState, {
+              badge: overlayState === "revoked" ? "Revoked" : (overlayState === "not_paired" ? "Not paired" : "Unauthorised"),
+              title: overlayState === "revoked" ? "Device revoked" : (overlayState === "not_paired" ? "This kiosk is not set up" : "Device not authorised"),
+              message: overlayState === "revoked"
+                ? "This device was removed from the system. A manager must re-authorise it."
+                : (overlayState === "not_paired"
+                  ? "A manager must authorise this device before staff can clock in/out."
+                  : "This kiosk needs manager approval before staff can clock in/out."),
+              actionText: "Enter Manager PIN",
+              action: "pair",
+            });
+          }
+
+          // Exit early: no more sync until authorisation restored
+          return;
+        }
+
         continue;
       }
 
@@ -103,6 +142,14 @@ window.addEventListener("online", () => { updateNetworkUIOnly(); syncQueueIfNeed
 window.addEventListener("offline", () => updateNetworkUIOnly());
 
 async function syncLoop() {
+  // If kiosk is not authorised, avoid noisy background calls.
+  // statusLoop will keep checking and we will resume automatically after authorisation.
+  const hasToken = (typeof deviceToken === "function") ? !!deviceToken() : false;
+  if (!hasToken) {
+    setTimeout(syncLoop, Math.max(15000, SYNC_INTERVAL_MS));
+    return;
+  }
+
   await syncQueueIfNeeded(false);
   setTimeout(syncLoop, SYNC_INTERVAL_MS);
 }

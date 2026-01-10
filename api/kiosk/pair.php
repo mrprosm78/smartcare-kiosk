@@ -81,8 +81,11 @@ try {
 
     // Mark paired
     $pdo->prepare("REPLACE INTO settings (`key`,`value`) VALUES ('is_paired','1')")->execute();
-    $stmt = $pdo->prepare("REPLACE INTO settings (`key`,`value`) VALUES ('paired_device_token', ?)");
-    $stmt->execute([$deviceToken]);
+    $stmt = $pdo->prepare("REPLACE INTO settings (`key`,`value`) VALUES ('paired_device_token_hash', ?)");
+    $stmt->execute([$deviceHash]);
+
+    // Legacy clean-up: remove plaintext token if present
+    try { $pdo->prepare("DELETE FROM settings WHERE `key`='paired_device_token'")->execute(); } catch (Throwable $e) {}
 
     // Optionally: keep pairing_version as-is (only changes when revoked manually)
     // (no change here)

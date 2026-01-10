@@ -83,7 +83,8 @@ document.addEventListener("keydown", (e) => {
 /**
  * Boot
  */
-(function boot() {
+// NOTE: This needs to be async because we await kioskBootstrap().
+(async function boot() {
   setScreen("home");
   applyPinDots();
 
@@ -95,10 +96,22 @@ document.addEventListener("keydown", (e) => {
   window.addEventListener("online",  () => updateNetworkUIOnly && updateNetworkUIOnly());
   window.addEventListener("offline", () => updateNetworkUIOnly && updateNetworkUIOnly());
 
-  // pairing + background loops
-  if (typeof pairIfNeeded === "function") pairIfNeeded();
-  if (typeof syncLoop === "function") syncLoop();
-  if (typeof statusLoop === "function") statusLoop();
+  // pairing + background loops (start only when authorised)
+  window.__loopsStarted = false;
+
+  window.startBackgroundLoops = function startBackgroundLoops() {
+    if (window.__loopsStarted) return;
+    window.__loopsStarted = true;
+    if (typeof syncLoop === "function") syncLoop();
+    if (typeof statusLoop === "function") statusLoop();
+  };
+
+  // Bootstrap helper (used by overlay Retry button)
+  window.kioskBootstrap = window.kioskBootstrap || (async () => ({ authorised: false }));
+
+  const bootResult = await window.kioskBootstrap();
+  if (bootResult && bootResult.authorised) window.startBackgroundLoops();
+
 
   // clock ticker
   tickClock();

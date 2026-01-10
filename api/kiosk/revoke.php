@@ -79,7 +79,9 @@ try {
     $newVersion = $currentVersion + 1;
 
     $pdo->prepare("REPLACE INTO settings (`key`,`value`) VALUES ('is_paired','0')")->execute();
-    $pdo->prepare("REPLACE INTO settings (`key`,`value`) VALUES ('paired_device_token','')")->execute();
+    $pdo->prepare("REPLACE INTO settings (`key`,`value`) VALUES ('paired_device_token_hash','')")->execute();
+    // legacy clean-up
+    try { $pdo->prepare("DELETE FROM settings WHERE `key`='paired_device_token'")->execute(); } catch (Throwable $e) {}
     $stmt = $pdo->prepare("REPLACE INTO settings (`key`,`value`) VALUES ('pairing_version', ?)");
     $stmt->execute([(string)$newVersion]);
 

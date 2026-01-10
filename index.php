@@ -97,6 +97,65 @@ $v = h($ui_version);
 
 <body class="no-select bg-slate-950 text-white min-h-dvh">
   <div class="min-h-dvh flex flex-col">
+    <!-- Toasts -->
+    <div id="toastWrap" class="pointer-events-none fixed right-3 top-3 z-50 flex flex-col gap-2"></div>
+
+    <!-- State overlay (pairing / unauthorised / revoked) -->
+    <div id="stateOverlay" class="hidden fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm">
+      <div class="min-h-dvh flex items-center justify-center p-6">
+        <div class="w-full max-w-md rounded-3xl border border-white/10 bg-slate-900/60 p-6 shadow-2xl">
+          <div class="flex items-center justify-between gap-4">
+            <h2 id="stateTitle" class="text-lg font-semibold tracking-tight">Kiosk</h2>
+            <span id="stateBadge" class="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white/80">Setup</span>
+          </div>
+          <p id="stateMsg" class="mt-3 text-sm leading-6 text-white/80">
+            This device needs manager authorisation.
+          </p>
+
+          <div class="mt-5 flex items-center gap-3">
+            <button id="stateActionBtn" class="flex-1 rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 active:scale-[0.99]">
+              Enter Manager PIN
+            </button>
+            <button id="stateRetryBtn" class="rounded-2xl bg-white/10 px-4 py-3 text-sm font-semibold text-white/90 active:scale-[0.99]">
+              Retry
+            </button>
+          </div>
+
+          <div id="stateHint" class="mt-4 text-xs text-white/50">
+            Tip: keep this tablet on the kiosk stand. Only a manager can authorise new devices.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Manager PIN modal -->
+    <div id="mgrModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm">
+      <div class="min-h-dvh flex items-center justify-center p-6">
+        <div class="w-full max-w-md rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h3 class="text-base font-semibold">Manager authorisation</h3>
+              <p id="mgrModalMsg" class="mt-1 text-xs text-white/70">Enter the manager PIN to authorise this kiosk.</p>
+            </div>
+            <button id="mgrClose" class="rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/15">Close</button>
+          </div>
+
+          <div class="mt-5 flex items-center justify-center">
+            <div id="mgrDotsWrap" class="flex items-center gap-2"></div>
+          </div>
+
+          <div id="mgrKeyGrid" class="mt-5 grid grid-cols-3 gap-3">
+            <!-- buttons are built by JS (keeps markup small) -->
+          </div>
+
+          <div class="mt-4 flex gap-3">
+            <button id="mgrClear" class="flex-1 rounded-2xl bg-white/10 px-4 py-3 text-sm font-semibold text-white/90 active:scale-[0.99]">Clear</button>
+            <button id="mgrSubmit" class="flex-1 rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 active:scale-[0.99]">Authorise</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Header -->
     <header class="px-6 pt-7 pb-5">
       <div class="mx-auto max-w-5xl flex items-center justify-between gap-4">
@@ -310,6 +369,7 @@ $v = h($ui_version);
   <!-- ✅ Versioned JS assets -->
   <script src="./js/kiosk.config.js?v=<?=$v?>"></script>
   <script src="./js/kiosk.dom.js?v=<?=$v?>"></script>
+  <script src="./js/kiosk.toast.js?v=<?=$v?>"></script>
   <script src="./js/kiosk.idb.js?v=<?=$v?>"></script>
   <script src="./js/kiosk.crypto.js?v=<?=$v?>"></script>
   <script src="./js/kiosk.api.js?v=<?=$v?>"></script>
