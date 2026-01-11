@@ -140,7 +140,7 @@ function log_kiosk_event(
             INSERT INTO kiosk_event_log
             (occurred_at, kiosk_code, pairing_version, device_token_hash, ip_address, user_agent,
              employee_id, event_type, result, error_code, message, meta_json)
-            VALUES (NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (UTC_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
 
         $metaJson = $meta ? json_encode($meta, JSON_UNESCAPED_SLASHES) : null;
@@ -272,7 +272,7 @@ try {
             WHERE device_token_hash = ?
               AND event_type = 'punch_auth'
               AND result = 'fail'
-              AND occurred_at >= (NOW() - INTERVAL ? SECOND)
+              AND occurred_at >= (UTC_TIMESTAMP() - INTERVAL ? SECOND)
         ");
         $failStmt->execute([$tokHash, $failWindowSec]);
         $fails = (int)$failStmt->fetchColumn();
@@ -502,33 +502,54 @@ try {
         }
 
         $maxMins = setting_int($pdo,'max_shift_minutes', 960);
-        if ($maxMins > 0 && $mins > $maxMins) {
-            punch_mark($pdo, $eventUuid, 'rejected', 'shift_too_long_needs_review', null);
-            json_response(['ok'=>false,'error'=>'shift_too_long_needs_review'], 409);
+        $tooLong = ($maxMins > 0 && $mins > $maxMins);
+
+        // Production behaviour:
+        // - Do NOT block the staff member from clocking out.
+        // - If the shift exceeds max_shift_minutes, still close it but flag via close_reason.
+        //   This keeps the kiosk flow smooth while preserving audit & manager review.
+        $hasCloseReason = column_exists($pdo, 'kiosk_shifts', 'close_reason');
+
+        if ($tooLong && $hasCloseReason) {
+            $upd = $pdo->prepare("
+                UPDATE kiosk_shifts
+                SET clock_out_at=?, is_closed=1, duration_minutes=?, close_reason='too_long'
+                WHERE id=?
+            ");
+            $upd->execute([$effectiveTimeSql, $mins, (int)$s['id']]);
+
+            // Mark as processed but keep a flag on the punch event row.
+            punch_mark($pdo, $eventUuid, 'processed', 'shift_too_long_flagged', (int)$s['id']);
+        } else {
+            $upd = $pdo->prepare("
+                UPDATE kiosk_shifts
+                SET clock_out_at=?, is_closed=1, duration_minutes=?
+                WHERE id=?
+            ");
+            $upd->execute([$effectiveTimeSql, $mins, (int)$s['id']]);
+
+            punch_mark($pdo, $eventUuid, 'processed', null, (int)$s['id']);
         }
-
-        $upd = $pdo->prepare("
-            UPDATE kiosk_shifts
-            SET clock_out_at=?, is_closed=1, duration_minutes=?
-            WHERE id=?
-        ");
-        $upd->execute([$effectiveTimeSql, $mins, (int)$s['id']]);
-
-        punch_mark($pdo, $eventUuid, 'processed', null, (int)$s['id']);
 
         // Optional open shifts list for UI (after clock out)
         $uiShowOpen = s_bool($pdo, 'ui_show_open_shifts', false);
         $openCount  = s_int($pdo, 'ui_open_shifts_count', 6);
         $openList   = $uiShowOpen ? fetch_open_shifts($pdo, $openCount) : [];
 
-        json_response([
+        $resp = [
             'ok'            => true,
             'status'        => 'processed',
             'action'        => 'OUT',
             'employee_name' => $employeeName,   // backwards compatible
             'employee_label'=> $employeeLabel,  // NEW
             'open_shifts'   => $openList        // NEW
-        ]);
+        ];
+
+        if ($tooLong) {
+            $resp['warning'] = 'shift_too_long_flagged';
+        }
+
+        json_response($resp);
     }
 
     // should never reach here

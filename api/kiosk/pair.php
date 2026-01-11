@@ -35,7 +35,7 @@ function log_kiosk_event(
             INSERT INTO kiosk_event_log
             (occurred_at, kiosk_code, pairing_version, device_token_hash, ip_address, user_agent,
              employee_id, event_type, result, error_code, message, meta_json)
-            VALUES (NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (UTC_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
 
         $metaJson = $meta ? json_encode($meta, JSON_UNESCAPED_SLASHES) : null;
@@ -89,7 +89,7 @@ function sc_pairing_rate_limited(PDO $pdo, string $ip, string $kioskCode): array
         WHERE event_type='pair'
           AND result='fail'
           AND ip_address = ?
-          AND occurred_at >= (NOW() - INTERVAL {$windowSec} SECOND)
+          AND occurred_at >= (UTC_TIMESTAMP() - INTERVAL {$windowSec} SECOND)
     ";
     $params = [$ip];
 

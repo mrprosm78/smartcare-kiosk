@@ -564,7 +564,7 @@ function seed_settings(PDO $pdo): void {
       `editable_by` = VALUES(`editable_by`),
       `sort_order`  = VALUES(`sort_order`),
       `is_secret`   = VALUES(`is_secret`),
-      `updated_at`  = CURRENT_TIMESTAMP
+      `updated_at`  = UTC_TIMESTAMP
   ";
 
   $stmt = $pdo->prepare($sql);

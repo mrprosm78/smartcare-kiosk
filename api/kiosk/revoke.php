@@ -35,7 +35,7 @@ function log_kiosk_event(
             INSERT INTO kiosk_event_log
             (occurred_at, kiosk_code, pairing_version, device_token_hash, ip_address, user_agent,
              employee_id, event_type, result, error_code, message, meta_json)
-            VALUES (NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (UTC_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
 
         $metaJson = $meta ? json_encode($meta, JSON_UNESCAPED_SLASHES) : null;

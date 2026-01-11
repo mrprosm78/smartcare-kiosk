@@ -277,7 +277,10 @@ async function submitPin() {
     event_uuid,
     action: currentAction,
     pin_enc,
-    pin_plain: (!pin_enc && OFFLINE_ALLOW_UNENCRYPTED_PIN) ? pin : null,
+    // Production safety:
+    // If server allows plaintext offline PIN storage, always keep a fallback copy.
+    // This prevents lost punches if WebView storage resets and encrypted payload can't be decrypted.
+    pin_plain: OFFLINE_ALLOW_UNENCRYPTED_PIN ? pin : null,
     device_time,
     created_at: new Date().toISOString(),
     status: "queued",

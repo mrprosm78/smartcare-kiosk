@@ -41,7 +41,7 @@ function setting_bool(PDO $pdo, string $key, bool $default): bool {
 function setting_set(PDO $pdo, string $key, string $value): void {
     // Update only the value (preserve metadata columns like group/description/editable_by)
     $sql = "INSERT INTO kiosk_settings (`key`,`value`) VALUES (?,?)
-            ON DUPLICATE KEY UPDATE `value`=VALUES(`value`), `updated_at`=CURRENT_TIMESTAMP";
+            ON DUPLICATE KEY UPDATE `value`=VALUES(`value`), `updated_at`=UTC_TIMESTAMP()";
     $stmt = $pdo->prepare($sql);
     $stmt->execute([$key, $value]);
 }

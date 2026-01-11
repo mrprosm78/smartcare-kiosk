@@ -65,12 +65,17 @@ async function syncQueueIfNeeded(force = false) {
         try {
           pinToSend = await decryptPin(evt.pin_enc);
         } catch (e) {
-          evt.status = "dead";
-          evt.last_error = "decrypt_failed";
-          evt.last_attempt_at = new Date().toISOString();
-          evt.attempts = (evt.attempts || 0) + 1;
-          await queueEvent(evt);
-          continue;
+          // Fallback: if server allows plaintext PIN storage, use it rather than killing the event.
+          if (typeof evt.pin_plain === "string" && evt.pin_plain.length) {
+            pinToSend = evt.pin_plain;
+          } else {
+            evt.status = "dead";
+            evt.last_error = "decrypt_failed";
+            evt.last_attempt_at = new Date().toISOString();
+            evt.attempts = (evt.attempts || 0) + 1;
+            await queueEvent(evt);
+            continue;
+          }
         }
       } else if (typeof evt.pin_plain === "string" && evt.pin_plain.length) {
         pinToSend = evt.pin_plain;

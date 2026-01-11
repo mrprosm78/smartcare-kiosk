@@ -32,11 +32,11 @@ function upsert_device(PDO $pdo, array $row): void {
             INSERT INTO kiosk_devices
                 (kiosk_code, device_token_hash, pairing_version, last_seen_at, last_seen_kind, last_authorised, last_error_code, last_ip, last_user_agent)
             VALUES
-                (:kiosk_code, :device_token_hash, :pairing_version, NOW(), :kind, :authorised, :error_code, :ip, :ua)
+                (:kiosk_code, :device_token_hash, :pairing_version, UTC_TIMESTAMP(), :kind, :authorised, :error_code, :ip, :ua)
             ON DUPLICATE KEY UPDATE
                 device_token_hash = VALUES(device_token_hash),
                 pairing_version   = VALUES(pairing_version),
-                last_seen_at      = NOW(),
+                last_seen_at      = UTC_TIMESTAMP(),
                 last_seen_kind    = VALUES(last_seen_kind),
                 last_authorised   = VALUES(last_authorised),
                 last_error_code   = VALUES(last_error_code),
