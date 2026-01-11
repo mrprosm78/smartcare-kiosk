@@ -175,9 +175,18 @@ $v = h($ui_version);
         <div class="flex items-center gap-3">
           <span id="netDot" class="inline-block h-3 w-3 rounded-full bg-amber-400"></span>
           <span id="netText" class="text-sm text-white/70">Checking…</span>
+          <span id="queueCount" class="ml-2 hidden rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/70"></span>
         </div>
       </div>
     </header>
+
+    <!-- Offline banner -->
+    <div id="offlineBanner" class="hidden mx-auto max-w-5xl px-6">
+      <div class="mt-4 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-50">
+        <span class="font-semibold">Offline mode</span> — punches will sync automatically.
+        <span id="offlineBannerQueue" class="ml-2 text-amber-100/80"></span>
+      </div>
+    </div>
 
     <!-- Main -->
     <main class="flex-1 px-6 pb-8">
@@ -281,15 +290,12 @@ $v = h($ui_version);
         <!-- Thank Screen -->
         <section id="thankScreen" class="hidden rounded-3xl bg-white/5 border border-white/10 p-8 md:p-12 shadow-xl shadow-black/30 text-center">
           <div class="mx-auto max-w-lg">
-            <div class="mx-auto h-20 w-20 rounded-3xl bg-emerald-500/20 flex items-center justify-center">
-              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" class="text-emerald-200">
-                <path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
+  
+            <div class="mt-2 flex justify-center">
+              <div id="thankIconWrap" class="h-20 w-20 rounded-3xl flex items-center justify-center shadow-lg"></div>
             </div>
-
-            <h2 class="mt-6 text-3xl md:text-4xl font-extrabold tracking-tight">Thank you</h2>
-            <p id="thankMsg" class="mt-3 text-white/70 text-lg md:text-xl">Saved.</p>
-            <p id="thankName" class="hidden mt-3 text-white/85 text-lg md:text-xl font-semibold"></p>
+            <p id="thankName" class="mt-5 text-white text-2xl md:text-3xl font-extrabold"></p>
+            <p id="thankMsg" class="mt-2 text-white/70 text-lg md:text-xl"></p>
 
             <div class="mt-8 rounded-2xl bg-white/5 border border-white/10 p-5 text-left">
               <div class="text-sm text-white/50">Details</div>

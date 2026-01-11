@@ -220,6 +220,9 @@ async function getStatusAndApply() {
       : !!out.ui_open_shifts_show_time;
     if (!Array.isArray(out.open_shifts)) out.open_shifts = [];
 
+    // Render open shifts immediately (don’t wait for statusLoop)
+    try { if (typeof applyOpenShiftsFromStatus === 'function') applyOpenShiftsFromStatus(out); } catch {}
+
     return out;
 
   } catch {

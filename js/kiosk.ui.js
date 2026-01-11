@@ -6,6 +6,34 @@ let thankTimeout = null;
 let tickTimer = null;
 let isSubmitting = false;
 
+// Local staff label cache (Option A: plaintext PIN mapping is acceptable for company-owned locked device)
+const SC_STAFF_MAP_KEY = "sc_kiosk_staff_map_v1";
+function sc_read_staff_map() {
+  try { return JSON.parse(localStorage.getItem(SC_STAFF_MAP_KEY) || "{}") || {}; } catch { return {}; }
+}
+function sc_write_staff_map(map) {
+  try { localStorage.setItem(SC_STAFF_MAP_KEY, JSON.stringify(map || {})); } catch {}
+}
+function sc_cache_staff_label(pinValue, label) {
+  const p = String(pinValue || "");
+  const l = String(label || "");
+  if (!p || !l) return;
+  const map = sc_read_staff_map();
+  map[p] = l;
+  // prevent unbounded growth
+  const keys = Object.keys(map);
+  if (keys.length > 300) {
+    for (const k of keys.slice(0, keys.length - 300)) delete map[k];
+  }
+  sc_write_staff_map(map);
+}
+function sc_lookup_staff_label(pinValue) {
+  const p = String(pinValue || "");
+  if (!p) return "";
+  const map = sc_read_staff_map();
+  return String(map[p] || "");
+}
+
 // Open shifts (currently clocked-in staff)
 let OPEN_SHIFTS = [];              // array of { shift_id, employee_id, clock_in_at, label }
 let UI_SHOW_OPEN_SHIFTS = false;   // controlled by status.php (we will wire this next)
@@ -218,21 +246,57 @@ function applyOpenShiftsFromStatus(d) {
   }
 }
 
-function showThank(action, msgOverride, staffLabel) {
+function showThank(action, opts = {}) {
+  const offline = !!(opts && opts.offline);
+  const staffLabel = String((opts && opts.staffLabel) || "").trim();
+  const overrideMsg = String((opts && opts.messageOverride) || "").trim();
+
   setScreen('thank');
   thankAction.textContent = action === 'IN' ? 'Clock In' : 'Clock Out';
 
+  // Icon (reuse same visual language as buttons)
+if (typeof thankIconWrap !== 'undefined' && thankIconWrap) {
+
+  // Use ONE check icon for both clock-in and clock-out
+  const bg = offline ? 'bg-slate-600' : 'bg-emerald-500';
+
+  const svg = `
+    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" class="text-white">
+      <path d="M20 6L9 17l-5-5"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"/>
+    </svg>
+  `;
+
+  thankIconWrap.className =
+    `h-20 w-20 rounded-3xl flex items-center justify-center shadow-lg ${bg}` +
+    (offline ? ' opacity-80' : '');
+
+  thankIconWrap.innerHTML = svg;
+}
+
+
   const now = new Date();
   thankTime.textContent = now.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
-  thankMsg.textContent = msgOverride || (action === 'IN' ? "Your clock-in has been saved." : "Your clock-out has been saved.");
 
-  // Show name label only if enabled and we have it
-  if (SHOW_NAME && staffLabel) {
-    thankName.textContent = staffLabel;
-    thankName.classList.remove('hidden');
-  } else {
-    thankName.textContent = "";
-    thankName.classList.add('hidden');
+  // Top line: Thank you, <Name>
+  if (thankName) {
+    thankName.textContent = staffLabel ? `Thank you, ${staffLabel}` : "Thank you";
+  }
+
+  // Second line
+  if (thankMsg) {
+    if (overrideMsg) {
+      thankMsg.textContent = overrideMsg;
+    } else if (offline) {
+      thankMsg.textContent = "Saved offline — will sync automatically.";
+    } else {
+      thankMsg.textContent = action === 'IN'
+        ? "Your clock-in has been recorded."
+        : "Your clock-out has been recorded.";
+    }
   }
 
   if (thankTimeout) clearTimeout(thankTimeout);
@@ -263,7 +327,7 @@ async function submitPin() {
     if (!online) {
       if (!OFFLINE_ALLOW_UNENCRYPTED_PIN) {
         closePin();
-        showThank(currentAction, "This device can't save offline punches yet. Please try again when online or ask manager to re-pair.", "");
+        showThank(currentAction, { offline: false, staffLabel: "", messageOverride: "This device can't save offline punches. Please try again when online or ask manager to re-pair." });
         isSubmitting = false;
         setKeypadDisabled(false);
         return;
@@ -305,13 +369,16 @@ async function submitPin() {
       // Prefer new employee_label (nickname-friendly), fallback to old fields
       const staffLabel = (res.employee_label || res.name || res.employee_name || "").toString();
 
+      // Cache for offline-friendly UX (Option A)
+      try { sc_cache_staff_label(pin, staffLabel); } catch {}
+
       // Update open shifts list immediately if server returned it
       if (Array.isArray(res.open_shifts)) {
         // if server returns list, show it (but only if setting enabled)
         renderOpenShifts(res.open_shifts);
       }
 
-      showThank(currentAction, null, staffLabel);
+      showThank(currentAction, { offline: false, staffLabel });
       syncQueueIfNeeded(true);
       return;
     }
@@ -353,21 +420,21 @@ async function submitPin() {
           return;
         }
 
-        showThank(currentAction, msgMap[res.error], "");
+        showThank(currentAction, { offline: false, staffLabel: '', messageOverride: msgMap[res.error] });
         return;
       }
     }
 
     // Anything else: treat as offline save
     closePin();
-    showThank(currentAction, "Saved offline — will sync automatically.", "");
+    showThank(currentAction, { offline: true, staffLabel: sc_lookup_staff_label(pin) });
     syncQueueIfNeeded(true);
     return;
   }
 
   // Offline: keep queued and sync later
   closePin();
-  showThank(currentAction, "Saved offline — will sync automatically.", "");
+  showThank(currentAction, { offline: true, staffLabel: sc_lookup_staff_label(pin) });
   syncQueueIfNeeded(true);
 }
 

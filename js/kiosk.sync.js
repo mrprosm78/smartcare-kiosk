@@ -2,6 +2,7 @@
 
 let syncing = false;
 let lastPingAt = 0;
+let lastPingOk = false;
 let lastSyncAt = 0;
 
 async function hasQueueItems() {
@@ -10,19 +11,52 @@ async function hasQueueItems() {
 }
 
 async function updateNetworkUIOnly() {
+  const updateQueueIndicators = async (onlineNow) => {
+    try {
+      const n = (typeof countQueuedEvents === 'function') ? await countQueuedEvents() : 0;
+      if (typeof queueCount !== 'undefined' && queueCount) {
+        if (n > 0) {
+          queueCount.textContent = `Queue: ${n}`;
+          queueCount.classList.remove('hidden');
+        } else {
+          queueCount.textContent = '';
+          queueCount.classList.add('hidden');
+        }
+      }
+      if (typeof offlineBanner !== 'undefined' && offlineBanner) {
+        offlineBanner.classList.toggle('hidden', !!onlineNow);
+      }
+      if (typeof offlineBannerQueue !== 'undefined' && offlineBannerQueue) {
+        offlineBannerQueue.textContent = n > 0 ? `(Queued punches: ${n})` : '';
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   if (!navigator.onLine) {
+    lastPingOk = false;
     setNetUI(false, "Offline");
+    await updateQueueIndicators(false);
     return false;
   }
+
   const now = Date.now();
+
+  // If we pinged recently, respect the last result (don't assume online)
   if (now - lastPingAt < PING_INTERVAL_MS) {
-    setNetUI(true, "Online");
-    return true;
+    setNetUI(!!lastPingOk, lastPingOk ? "Online" : "Offline");
+    await updateQueueIndicators(!!lastPingOk);
+    return !!lastPingOk;
   }
-  lastPingAt = now;
+
   const ok = await pingServer();
-  setNetUI(ok, ok ? "Online" : "Offline");
-  return ok;
+  lastPingAt = now;
+  lastPingOk = !!ok;
+
+  setNetUI(!!ok, ok ? "Online" : "Offline");
+  await updateQueueIndicators(!!ok);
+  return !!ok;
 }
 
 async function syncQueueIfNeeded(force = false) {

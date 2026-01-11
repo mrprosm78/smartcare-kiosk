@@ -70,3 +70,24 @@ async function listQueuedEvents(limit = SYNC_BATCH_SIZE) {
     req.onerror = () => reject(req.error);
   });
 }
+
+
+// Count active queued events (excluding sent/dead)
+async function countQueuedEvents() {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_QUEUE, 'readonly');
+    const store = tx.objectStore(STORE_QUEUE);
+    const req = store.openCursor();
+    let n = 0;
+    req.onsuccess = () => {
+      const cur = req.result;
+      if (!cur) return resolve(n);
+      const v = cur.value || {};
+      const st = String(v.status || 'queued');
+      if (st !== 'sent' && st !== 'dead') n++;
+      cur.continue();
+    };
+    req.onerror = () => resolve(0);
+  });
+}

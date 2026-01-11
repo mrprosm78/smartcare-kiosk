@@ -14,6 +14,15 @@ require __DIR__ . '/../../helpers.php';
 function s(PDO $pdo, string $key, string $default = ''): string {
     return (string) setting($pdo, $key, $default);
 }
+
+function iso_utc(string $dt): string {
+    $dt = trim($dt);
+    if ($dt === '') return '';
+    // DB values are UTC (no timezone). Make them unambiguous for Android/JS.
+    $ts = strtotime($dt . ' UTC');
+    if (!$ts) return $dt;
+    return gmdate('Y-m-d\TH:i:s\Z', $ts);
+}
 function s_int(PDO $pdo, string $key, int $default): int {
     $v = trim(s($pdo, $key, (string)$default));
     return (is_numeric($v) ? (int)$v : $default);
@@ -111,7 +120,7 @@ function fetch_open_shifts(PDO $pdo, int $limit): array {
             'shift_id'    => (int)($r['shift_id'] ?? 0),
             'employee_id' => (int)($r['employee_id'] ?? 0),
 
-            'clock_in_at' => (string)($r['clock_in_at'] ?? ''),
+            'clock_in_at' => iso_utc((string)($r['clock_in_at'] ?? '')),
             'label'       => trim($primary . ' ' . $initial),
         ];
     }

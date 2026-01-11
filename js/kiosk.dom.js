@@ -28,6 +28,11 @@ const toastWrap = document.getElementById('toastWrap');
 // Header / network
 const netDot  = document.getElementById('netDot');
 const netText = document.getElementById('netText');
+const queueCount = document.getElementById('queueCount');
+
+// Offline banner
+const offlineBanner = document.getElementById('offlineBanner');
+const offlineBannerQueue = document.getElementById('offlineBannerQueue');
 
 // Date/Time
 const nowDateEl = document.getElementById('nowDate');
@@ -43,6 +48,7 @@ const thankMsg    = document.getElementById('thankMsg');
 const thankName   = document.getElementById('thankName');
 const thankAction = document.getElementById('thankAction');
 const thankTime   = document.getElementById('thankTime');
+const thankIconWrap = document.getElementById('thankIconWrap');
 
 // PIN overlay elements
 const pinOverlay = document.getElementById('pinOverlay');
