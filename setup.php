@@ -1,6 +1,6 @@
 <?php
 // https://zapsite.co.uk/kiosk-dev/setup.php?action=install
-// https://zapsite.co.uk/kiosk-dev/setup.php?action=reset&pin=5850
+// https://zapsite.co.uk/kiosk-dev/setup.php?action=reset&pin=4***
 declare(strict_types=1);
 
 /**
@@ -12,7 +12,7 @@ declare(strict_types=1);
 ini_set('display_errors', '1');
 error_reporting(E_ALL);
 
-const RESET_PIN = '5850';
+const RESET_PIN = '4321';
 
 // ✅ db.php in same folder (keep as you have it)
 require __DIR__ . '/db.php';
@@ -87,7 +87,7 @@ function seed_settings(PDO $pdo): void {
     ],
     [
       'key' => 'pairing_code',
-      'value' => '5850',
+      'value' => '4321',
       'group' => 'pairing',
       'label' => 'Pairing Passcode',
       'description' => 'Passcode required to pair a device (only works if pairing_mode is enabled).',
@@ -658,6 +658,9 @@ function create_tables(PDO $pdo): void {
       approved_at DATETIME NULL,
       approved_by VARCHAR(50) NULL,
       approval_note VARCHAR(255) NULL,
+      payroll_approved_at DATETIME NULL,
+      payroll_approved_by VARCHAR(50) NULL,
+      payroll_note VARCHAR(255) NULL,
       last_modified_reason VARCHAR(50) NULL,
       created_source VARCHAR(20) NULL,
       updated_source VARCHAR(20) NULL,
@@ -736,11 +739,66 @@ function create_tables(PDO $pdo): void {
       KEY idx_device_time (device_token_hash, recorded_at)
     ) ENGINE=InnoDB;
   ");
+
+  // ADMIN USERS (Manager / Payroll / Superadmin)
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS kiosk_admin_users (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      email VARCHAR(190) NOT NULL UNIQUE,
+      name VARCHAR(120) NULL,
+      role ENUM('manager','payroll','superadmin') NOT NULL DEFAULT 'manager',
+      password_hash VARCHAR(255) NOT NULL,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      last_login_at DATETIME NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      KEY idx_role (role),
+      KEY idx_active (is_active)
+    ) ENGINE=InnoDB;
+  ");
+
+  // Backwards compatible: add future payroll-approval columns to kiosk_shifts if missing
+  $cols = [
+    'payroll_approved_at' => "ALTER TABLE kiosk_shifts ADD COLUMN payroll_approved_at DATETIME NULL AFTER approval_note",
+    'payroll_approved_by' => "ALTER TABLE kiosk_shifts ADD COLUMN payroll_approved_by VARCHAR(50) NULL AFTER payroll_approved_at",
+    'payroll_note'        => "ALTER TABLE kiosk_shifts ADD COLUMN payroll_note VARCHAR(255) NULL AFTER payroll_approved_by",
+  ];
+  foreach ($cols as $col => $alter) {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME='kiosk_shifts' AND COLUMN_NAME=?");
+    $stmt->execute([$col]);
+    if ((int)$stmt->fetchColumn() === 0) {
+      $pdo->exec($alter);
+    }
+  }
+}
+
+function seed_admin_users(PDO $pdo): array {
+  // If no admin users exist, create sensible defaults.
+  $count = (int)$pdo->query("SELECT COUNT(*) FROM kiosk_admin_users")->fetchColumn();
+  if ($count > 0) return [];
+
+  $defaults = [
+    ['email' => 'manager@carehome.local', 'name' => 'Manager',   'role' => 'manager',   'password' => 'ChangeMe123!'],
+    ['email' => 'payroll@carehome.local', 'name' => 'Payroll',   'role' => 'payroll',   'password' => 'ChangeMe123!'],
+    ['email' => 'admin@carehome.local',   'name' => 'Superadmin','role' => 'superadmin','password' => 'ChangeMe123!'],
+  ];
+
+  $ins = $pdo->prepare("INSERT INTO kiosk_admin_users (email,name,role,password_hash) VALUES (?,?,?,?)");
+  foreach ($defaults as $u) {
+    $ins->execute([
+      $u['email'],
+      $u['name'],
+      $u['role'],
+      password_hash($u['password'], PASSWORD_DEFAULT),
+    ]);
+  }
+  return $defaults;
 }
 
 function drop_all(PDO $pdo): void {
   $pdo->exec("SET FOREIGN_KEY_CHECKS=0");
   foreach ([
+    'kiosk_admin_users',
     'kiosk_devices',
     'kiosk_health_log',
     'kiosk_event_log',
@@ -760,6 +818,14 @@ try {
   if ($action === 'install') {
     create_tables($pdo);
     seed_settings($pdo);
+    $created = seed_admin_users($pdo);
+    if ($created) {
+      $lines = ["✅ Install / repair completed", "", "Default admin users created (CHANGE THESE):"]; 
+      foreach ($created as $u) {
+        $lines[] = "- {$u['role']}: {$u['email']}  /  {$u['password']}";
+      }
+      exit(implode("\n", $lines));
+    }
     exit("✅ Install / repair completed");
   }
 
@@ -771,13 +837,18 @@ try {
     drop_all($pdo);
     create_tables($pdo);
     seed_settings($pdo);
-    exit("🔥 Database reset completed");
+    $created = seed_admin_users($pdo);
+    $lines = ["🔥 Database reset completed", "", "Default admin users created (CHANGE THESE):"]; 
+    foreach ($created as $u) {
+      $lines[] = "- {$u['role']}: {$u['email']}  /  {$u['password']}";
+    }
+    exit(implode("\n", $lines));
   }
 
   echo '<h3>SmartCare Kiosk – Setup</h3>
   <ul>
     <li><a href="?action=install">Install / Repair</a></li>
-    <li><a href="?action=reset&pin=5850" onclick="return confirm(\'RESET DATABASE?\')">Reset (PIN required)</a></li>
+    <li><a href="?action=reset&pin=4321" onclick="return confirm(\'RESET DATABASE?\')">Reset (PIN required)</a></li>
   </ul>';
 
 } catch (Throwable $e) {
