@@ -146,7 +146,7 @@ function seed_settings(PDO $pdo): void {
     ],
     [
       'key' => 'min_seconds_between_punches',
-      'value' => '20',
+      'value' => '5',
       'group' => 'security',
       'label' => 'Min Seconds Between Punches',
       'description' => 'Rate limit per employee to prevent double-taps and accidental repeated punches.',
@@ -264,7 +264,7 @@ function seed_settings(PDO $pdo): void {
     ],
     [
       'key' => 'ui_show_open_shifts',
-      'value' => '1',
+      'value' => '0',
       'group' => 'ui',
       'label' => 'Show Open Shifts Panel',
       'description' => 'If 1 and authorised, the kiosk can display currently clocked-in staff.',
