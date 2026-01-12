@@ -1,6 +1,6 @@
 <?php
 // https://zapsite.co.uk/kiosk-dev/setup.php?action=install
-// https://zapsite.co.uk/kiosk-dev/setup.php?action=reset&pin=5850
+// https://zapsite.co.uk/kiosk-dev/setup.php?action=reset&pin=4321
 declare(strict_types=1);
 
 /**
@@ -12,7 +12,7 @@ declare(strict_types=1);
 ini_set('display_errors', '1');
 error_reporting(E_ALL);
 
-const RESET_PIN = '5850';
+const RESET_PIN = '4321';
 
 // ✅ db.php in same folder (keep as you have it)
 require __DIR__ . '/db.php';
@@ -87,7 +87,7 @@ function seed_settings(PDO $pdo): void {
     ],
     [
       'key' => 'pairing_code',
-      'value' => '5850',
+      'value' => '4321',
       'group' => 'pairing',
       'label' => 'Pairing Passcode',
       'description' => 'Passcode required to pair a device (only works if pairing_mode is enabled).',
@@ -98,7 +98,7 @@ function seed_settings(PDO $pdo): void {
     ],
     [
       'key' => 'pairing_mode',
-      'value' => '0',
+      'value' => '1',
       'group' => 'pairing',
       'label' => 'Pairing Mode Enabled',
       'description' => 'When 0, /api/kiosk/pair.php rejects pairing even if the passcode is known.',
@@ -777,7 +777,7 @@ try {
   echo '<h3>SmartCare Kiosk – Setup</h3>
   <ul>
     <li><a href="?action=install">Install / Repair</a></li>
-    <li><a href="?action=reset&pin=5850" onclick="return confirm(\'RESET DATABASE?\')">Reset (PIN required)</a></li>
+    <li><a href="?action=reset&pin=4321" onclick="return confirm(\'RESET DATABASE?\')">Reset (PIN required)</a></li>
   </ul>';
 
 } catch (Throwable $e) {
