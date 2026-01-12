@@ -1,6 +1,6 @@
 <?php
 // https://zapsite.co.uk/kiosk-dev/setup.php?action=install
-// https://zapsite.co.uk/kiosk-dev/setup.php?action=reset&pin=4***
+// https://zapsite.co.uk/kiosk-dev/setup.php?action=reset&pin=5850
 declare(strict_types=1);
 
 /**
@@ -12,7 +12,7 @@ declare(strict_types=1);
 ini_set('display_errors', '1');
 error_reporting(E_ALL);
 
-const RESET_PIN = '4321';
+const RESET_PIN = '5850';
 
 // ✅ db.php in same folder (keep as you have it)
 require __DIR__ . '/db.php';
@@ -87,7 +87,7 @@ function seed_settings(PDO $pdo): void {
     ],
     [
       'key' => 'pairing_code',
-      'value' => '4321',
+      'value' => '5850',
       'group' => 'pairing',
       'label' => 'Pairing Passcode',
       'description' => 'Passcode required to pair a device (only works if pairing_mode is enabled).',
@@ -757,6 +757,22 @@ function create_tables(PDO $pdo): void {
     ) ENGINE=InnoDB;
   ");
 
+  // TARGET HOURS (per employee, per day) — used by Super Admin calendar
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS kiosk_targets (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      employee_id BIGINT UNSIGNED NOT NULL,
+      target_date DATE NOT NULL,
+      target_minutes INT NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uq_emp_date (employee_id, target_date),
+      KEY idx_target_date (target_date),
+      CONSTRAINT fk_target_emp FOREIGN KEY (employee_id) REFERENCES kiosk_employees(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB;
+  ");
+
   // Backwards compatible: add future payroll-approval columns to kiosk_shifts if missing
   $cols = [
     'payroll_approved_at' => "ALTER TABLE kiosk_shifts ADD COLUMN payroll_approved_at DATETIME NULL AFTER approval_note",
@@ -798,6 +814,7 @@ function seed_admin_users(PDO $pdo): array {
 function drop_all(PDO $pdo): void {
   $pdo->exec("SET FOREIGN_KEY_CHECKS=0");
   foreach ([
+    'kiosk_targets',
     'kiosk_admin_users',
     'kiosk_devices',
     'kiosk_health_log',
@@ -848,7 +865,7 @@ try {
   echo '<h3>SmartCare Kiosk – Setup</h3>
   <ul>
     <li><a href="?action=install">Install / Repair</a></li>
-    <li><a href="?action=reset&pin=4321" onclick="return confirm(\'RESET DATABASE?\')">Reset (PIN required)</a></li>
+    <li><a href="?action=reset&pin=5850" onclick="return confirm(\'RESET DATABASE?\')">Reset (PIN required)</a></li>
   </ul>';
 
 } catch (Throwable $e) {
