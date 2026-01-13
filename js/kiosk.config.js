@@ -1,7 +1,7 @@
 // kiosk.config.js
 
 // Deployment config
-const API_BASE = "https://zapsite.co.uk/kiosk-dev";
+const API_BASE = "https://aadev.smartkiosk.uk/";
 
 const API_STATUS     = `${API_BASE}/api/kiosk/status.php`;
 const API_PAIR       = `${API_BASE}/api/kiosk/pair.php`;
