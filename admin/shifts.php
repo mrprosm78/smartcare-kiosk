@@ -4,7 +4,37 @@ declare(strict_types=1);
 require_once __DIR__ . '/layout.php';
 admin_require_perm($user, 'view_shifts');
 
-// Actions: approve / unapprove / unlock_payroll
+/**
+ * Shifts Admin
+ * - Filters day/week/month/range
+ * - Shows Original vs Effective (edit JSON) vs Rounded (payroll preview)
+ * - Approve / Unapprove (blocks if Payroll Locked OR missing clock-out)
+ * - Super Admin can Unlock Payroll Lock (audit best-effort)
+ *
+ * NOTE:
+ * - Uses helper functions from layout.php:
+ *   admin_page_start/admin_page_end/admin_redirect/admin_verify_csrf/admin_can/admin_require_perm
+ *   admin_shift_effective/admin_round_datetime/admin_minutes_between
+ *   admin_setting_bool/admin_setting_int
+ *   admin_sql_employee_display_name/admin_sql_employee_number
+ *   h(), admin_fmt_dt()
+ */
+
+// ----------------------------
+// Helper: badge
+// ----------------------------
+function badge(string $text, string $kind): string {
+  $base = "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold border";
+  if ($kind === 'ok')   return "<span class='$base bg-emerald-500/10 border-emerald-400/20 text-emerald-100'>$text</span>";
+  if ($kind === 'warn') return "<span class='$base bg-amber-500/10 border-amber-400/20 text-amber-100'>$text</span>";
+  if ($kind === 'bad')  return "<span class='$base bg-rose-500/10 border-rose-400/20 text-rose-100'>$text</span>";
+  if ($kind === 'info') return "<span class='$base bg-sky-500/10 border-sky-400/20 text-sky-100'>$text</span>";
+  return "<span class='$base bg-white/5 border border-white/10 text-white/80'>$text</span>";
+}
+
+// ----------------------------
+// POST Actions (PRG)
+// ----------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $action = (string)($_POST['action'] ?? '');
   admin_verify_csrf($_POST['csrf'] ?? null);
@@ -12,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $shiftId = (int)($_POST['shift_id'] ?? 0);
   if ($shiftId > 0) {
 
-    // Load shift + latest edit json for snapshot (also includes payroll lock fields)
+    // Load shift + latest edit json for snapshot + lock fields
     $stmt = $pdo->prepare("
       SELECT s.*,
              c.new_json AS latest_edit_json
@@ -36,65 +66,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($shiftRow) {
       $isLocked = !empty($shiftRow['payroll_locked_at']);
 
-      // Unlock payroll (Super Admin only)
-      if ($action === 'unlock_payroll') {
-        // Only Super Admin/high permissions can unlock
-        admin_require_perm($user, 'manage_settings_high');
-
-        $pdo->beginTransaction();
-        try {
-          $upd = $pdo->prepare("
-            UPDATE kiosk_shifts
-            SET payroll_locked_at = NULL,
-                payroll_locked_by = NULL,
-                payroll_batch_id  = NULL,
-                updated_source='admin'
-            WHERE id = ?
-          ");
-          $upd->execute([$shiftId]);
-
-          // Best-effort audit (requires enum includes payroll_unlock)
-          try {
-            $meta = [
-              'note' => trim((string)($_POST['note'] ?? 'Unlocked by Super Admin')),
-            ];
-
-            $ins = $pdo->prepare("
-              INSERT INTO kiosk_shift_changes
-                (shift_id, change_type, changed_by_user_id, changed_by_username, changed_by_role, reason, note, old_json, new_json)
-              VALUES
-                (?, 'payroll_unlock', ?, ?, ?, 'payroll_unlock', ?, NULL, ?)
-            ");
-            $ins->execute([
-              $shiftId,
-              (int)$user['user_id'],
-              (string)($user['username'] ?? ''),
-              (string)($user['role'] ?? ''),
-              $meta['note'] !== '' ? $meta['note'] : null,
-              json_encode($meta),
-            ]);
-          } catch (Throwable $e) {
-            // ignore audit insert errors (enum/table may not yet support)
-          }
-
-          $pdo->commit();
-        } catch (Throwable $e) {
-          $pdo->rollBack();
-        }
-
-        admin_redirect(admin_url('shifts.php?' . http_build_query($_GET)));
-      }
-
-      // If payroll locked, block approve/unapprove (and any future actions)
-      if ($isLocked && ($action === 'approve' || $action === 'unapprove')) {
-        admin_redirect(admin_url('shifts.php?' . http_build_query($_GET + ['n' => 'locked'])));
-      }
-
+      // Effective (for open check + snapshot)
       $eff = admin_shift_effective($shiftRow);
+      $open = empty($eff['clock_out_at']);
 
-      // rounding snapshot
+      // Rounding snapshot
       $roundingEnabled = admin_setting_bool($pdo, 'rounding_enabled', true);
-      $inc = admin_setting_int($pdo, 'round_increment_minutes', 15);
+      $inc   = admin_setting_int($pdo, 'round_increment_minutes', 15);
       $grace = admin_setting_int($pdo, 'round_grace_minutes', 5);
       $roundedIn  = $roundingEnabled ? admin_round_datetime($eff['clock_in_at'] ?: null, $inc, $grace) : ($eff['clock_in_at'] ?: null);
       $roundedOut = $roundingEnabled ? admin_round_datetime($eff['clock_out_at'] ?: null, $inc, $grace) : ($eff['clock_out_at'] ?: null);
@@ -110,10 +88,77 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ],
         'payroll_lock' => [
           'locked_at' => $shiftRow['payroll_locked_at'] ?? null,
+          'locked_by' => $shiftRow['payroll_locked_by'] ?? null,
           'batch_id'  => $shiftRow['payroll_batch_id'] ?? null,
         ],
       ];
 
+      // ----------------------------
+      // Unlock payroll (Super Admin)
+      // ----------------------------
+      if ($action === 'unlock_payroll') {
+        admin_require_perm($user, 'manage_settings_high');
+
+        $pdo->beginTransaction();
+        try {
+          // Capture old lock data for audit
+          $oldLock = [
+            'locked_at' => $shiftRow['payroll_locked_at'] ?? null,
+            'locked_by' => $shiftRow['payroll_locked_by'] ?? null,
+            'batch_id'  => $shiftRow['payroll_batch_id'] ?? null,
+          ];
+
+          $upd = $pdo->prepare("
+            UPDATE kiosk_shifts
+            SET payroll_locked_at = NULL,
+                payroll_locked_by = NULL,
+                payroll_batch_id  = NULL,
+                updated_source='admin'
+            WHERE id = ?
+          ");
+          $upd->execute([$shiftId]);
+
+          // Best-effort audit insert (requires enum includes payroll_unlock)
+          try {
+            $note = trim((string)($_POST['note'] ?? 'Unlocked by Super Admin'));
+            $meta = ['note' => $note];
+
+            $ins = $pdo->prepare("
+              INSERT INTO kiosk_shift_changes
+                (shift_id, change_type, changed_by_user_id, changed_by_username, changed_by_role, reason, note, old_json, new_json)
+              VALUES
+                (?, 'payroll_unlock', ?, ?, ?, 'payroll_unlock', ?, ?, ?)
+            ");
+            $ins->execute([
+              $shiftId,
+              (int)$user['user_id'],
+              (string)($user['username'] ?? ''),
+              (string)($user['role'] ?? ''),
+              $note !== '' ? $note : null,
+              json_encode($oldLock),
+              json_encode($meta),
+            ]);
+          } catch (Throwable $e) {
+            // ignore audit insert errors
+          }
+
+          $pdo->commit();
+          admin_redirect(admin_url('shifts.php?' . http_build_query(array_merge($_GET, ['n' => 'unlocked']))));
+        } catch (Throwable $e) {
+          $pdo->rollBack();
+          admin_redirect(admin_url('shifts.php?' . http_build_query(array_merge($_GET, ['n' => 'err']))));
+        }
+      }
+
+      // Block approve/unapprove when payroll locked OR open shift
+      if (($action === 'approve' || $action === 'unapprove') && ($isLocked || $open)) {
+        $why = $isLocked ? 'locked' : 'open';
+        admin_redirect(admin_url('shifts.php?' . http_build_query(array_merge($_GET, ['n' => $why]))));
+      }
+
+      // ----------------------------
+      // Approve
+      // ----------------------------
       if ($action === 'approve') {
         admin_require_perm($user, 'approve_shifts');
         $note = trim((string)($_POST['note'] ?? ''));
@@ -135,7 +180,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             json_encode($snapshot),
           ]);
 
-          $upd = $pdo->prepare("UPDATE kiosk_shifts SET approved_at=UTC_TIMESTAMP, approved_by=?, approval_note=?, updated_source='admin' WHERE id=?");
+          $upd = $pdo->prepare("
+            UPDATE kiosk_shifts
+            SET approved_at=UTC_TIMESTAMP,
+                approved_by=?,
+                approval_note=?,
+                updated_source='admin'
+            WHERE id=?
+          ");
           $upd->execute([
             (string)($user['username'] ?? ''),
             $note !== '' ? $note : null,
@@ -143,11 +195,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           ]);
 
           $pdo->commit();
+          admin_redirect(admin_url('shifts.php?' . http_build_query(array_merge($_GET, ['n' => 'approved']))));
         } catch (Throwable $e) {
           $pdo->rollBack();
+          admin_redirect(admin_url('shifts.php?' . http_build_query(array_merge($_GET, ['n' => 'err']))));
         }
       }
 
+      // ----------------------------
+      // Unapprove
+      // ----------------------------
       if ($action === 'unapprove') {
         admin_require_perm($user, 'approve_shifts');
 
@@ -167,32 +224,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             json_encode($snapshot),
           ]);
 
-          $upd = $pdo->prepare("UPDATE kiosk_shifts SET approved_at=NULL, approved_by=NULL, approval_note=NULL, updated_source='admin' WHERE id=?");
+          $upd = $pdo->prepare("
+            UPDATE kiosk_shifts
+            SET approved_at=NULL,
+                approved_by=NULL,
+                approval_note=NULL,
+                updated_source='admin'
+            WHERE id=?
+          ");
           $upd->execute([$shiftId]);
 
           $pdo->commit();
+          admin_redirect(admin_url('shifts.php?' . http_build_query(array_merge($_GET, ['n' => 'unapproved']))));
         } catch (Throwable $e) {
           $pdo->rollBack();
+          admin_redirect(admin_url('shifts.php?' . http_build_query(array_merge($_GET, ['n' => 'err']))));
         }
       }
     }
   }
 
-  // Redirect back to GET (PRG)
+  // Default PRG
   admin_redirect(admin_url('shifts.php?' . http_build_query($_GET)));
 }
 
+// ----------------------------
+// Page + Filters
+// ----------------------------
 admin_page_start($pdo, 'Shifts');
 $active = admin_url('shifts.php');
 
-// Filters
-$mode = (string)($_GET['mode'] ?? 'week'); // day|week|month|range
+$mode     = (string)($_GET['mode'] ?? 'week'); // day|week|month|range
 $baseDate = (string)($_GET['date'] ?? gmdate('Y-m-d'));
-$empId = (int)($_GET['employee_id'] ?? 0);
-$status = (string)($_GET['status'] ?? 'all'); // all|open|closed|approved|unapproved|missing_out
-
-$start = $baseDate;
-$end = $baseDate;
+$empId    = (int)($_GET['employee_id'] ?? 0);
+$status   = (string)($_GET['status'] ?? 'all'); // all|open|closed|approved|unapproved|missing_out
 
 try {
   $d = new DateTimeImmutable($baseDate, new DateTimeZone('UTC'));
@@ -202,35 +267,34 @@ try {
 
 if ($mode === 'day') {
   $startDt = $d->setTime(0,0,0);
-  $endDt = $startDt->modify('+1 day');
+  $endDt   = $startDt->modify('+1 day');
 } elseif ($mode === 'month') {
   $startDt = $d->modify('first day of this month')->setTime(0,0,0);
-  $endDt = $startDt->modify('+1 month');
+  $endDt   = $startDt->modify('+1 month');
 } elseif ($mode === 'range') {
   $from = (string)($_GET['from'] ?? $d->format('Y-m-d'));
-  $to = (string)($_GET['to'] ?? $d->format('Y-m-d'));
-  try { $startDt = (new DateTimeImmutable($from, new DateTimeZone('UTC')))->setTime(0,0,0); } catch(Throwable $e){ $startDt=$d->setTime(0,0,0); }
-  try { $endDt = (new DateTimeImmutable($to, new DateTimeZone('UTC')))->setTime(0,0,0)->modify('+1 day'); } catch(Throwable $e){ $endDt=$startDt->modify('+7 day'); }
+  $to   = (string)($_GET['to'] ?? $d->format('Y-m-d'));
+  try { $startDt = (new DateTimeImmutable($from, new DateTimeZone('UTC')))->setTime(0,0,0); } catch(Throwable $e){ $startDt = $d->setTime(0,0,0); }
+  try { $endDt   = (new DateTimeImmutable($to, new DateTimeZone('UTC')))->setTime(0,0,0)->modify('+1 day'); } catch(Throwable $e){ $endDt = $startDt->modify('+7 day'); }
 } else {
   // week
   $startDt = $d->modify('monday this week')->setTime(0,0,0);
-  $endDt = $startDt->modify('+7 day');
+  $endDt   = $startDt->modify('+7 day');
 }
 
 $startSql = $startDt->format('Y-m-d H:i:s');
 $endSql   = $endDt->format('Y-m-d H:i:s');
 
-// Load employees for filter dropdown
-// IMPORTANT: kiosk_employees does not have a full_name column. Compute display name from schema.
+// Employees for filter dropdown
 $emps = $pdo->query(
-  "SELECT id, " . admin_sql_employee_display_name('kiosk_employees') . " AS full_name, is_agency, agency_label\n"
-  . "FROM kiosk_employees\n"
-  . "WHERE is_active = 1\n"
-  . "ORDER BY first_name ASC, last_name ASC"
-)->fetchAll(PDO::FETCH_ASSOC);
+  "SELECT id, " . admin_sql_employee_display_name('kiosk_employees') . " AS full_name, is_agency, agency_label
+   FROM kiosk_employees
+   WHERE is_active = 1
+   ORDER BY first_name ASC, last_name ASC"
+)->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-// Query shifts with latest edit json
-$where = ["s.clock_in_at >= ? AND s.clock_in_at < ?"];
+// WHERE clauses
+$where  = ["s.clock_in_at >= ? AND s.clock_in_at < ?"];
 $params = [$startSql, $endSql];
 
 if ($empId > 0) {
@@ -238,7 +302,7 @@ if ($empId > 0) {
   $params[] = $empId;
 }
 
-if ($status === 'open') {
+if ($status === 'open' || $status === 'missing_out') {
   $where[] = "s.clock_out_at IS NULL";
 } elseif ($status === 'closed') {
   $where[] = "s.clock_out_at IS NOT NULL";
@@ -246,10 +310,9 @@ if ($status === 'open') {
   $where[] = "s.approved_at IS NOT NULL";
 } elseif ($status === 'unapproved') {
   $where[] = "s.approved_at IS NULL";
-} elseif ($status === 'missing_out') {
-  $where[] = "s.clock_out_at IS NULL";
 }
 
+// Load shifts + latest edit json
 $sql = "
   SELECT s.*,
          " . admin_sql_employee_display_name('e') . " AS full_name,
@@ -277,21 +340,15 @@ $sql = "
 
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
-$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-// Rounding settings
+// Rounding settings for display
 $roundingEnabled = admin_setting_bool($pdo, 'rounding_enabled', true);
-$inc = admin_setting_int($pdo, 'round_increment_minutes', 15);
+$inc   = admin_setting_int($pdo, 'round_increment_minutes', 15);
 $grace = admin_setting_int($pdo, 'round_grace_minutes', 5);
 
-function badge(string $text, string $kind): string {
-  $base = "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold border";
-  if ($kind === 'ok') return "<span class='$base bg-emerald-500/10 border-emerald-400/20 text-emerald-100'>$text</span>";
-  if ($kind === 'warn') return "<span class='$base bg-amber-500/10 border-amber-400/20 text-amber-100'>$text</span>";
-  if ($kind === 'bad') return "<span class='$base bg-rose-500/10 border-rose-400/20 text-rose-100'>$text</span>";
-  return "<span class='$base bg-white/5 border border-white/10 text-white/80'>$text</span>";
-}
-
+// Notification banners
+$note = (string)($_GET['n'] ?? '');
 ?>
 
 <div class="min-h-dvh">
@@ -313,9 +370,29 @@ function badge(string $text, string $kind): string {
             </div>
           </header>
 
-          <?php if ((string)($_GET['n'] ?? '') === 'locked'): ?>
+          <?php if ($note === 'locked'): ?>
             <div class="mt-5 rounded-3xl border border-rose-400/20 bg-rose-500/10 p-5 text-sm text-rose-100">
               This shift is <b>Payroll Locked</b> and cannot be edited or (un)approved. Super Admin can unlock if needed.
+            </div>
+          <?php elseif ($note === 'open'): ?>
+            <div class="mt-5 rounded-3xl border border-amber-400/20 bg-amber-500/10 p-5 text-sm text-amber-100">
+              Open shifts (missing clock-out) cannot be approved. Clock out first or edit the shift to add an OUT time.
+            </div>
+          <?php elseif ($note === 'approved'): ?>
+            <div class="mt-5 rounded-3xl border border-emerald-400/20 bg-emerald-500/10 p-5 text-sm text-emerald-100">
+              Shift approved.
+            </div>
+          <?php elseif ($note === 'unapproved'): ?>
+            <div class="mt-5 rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/80">
+              Shift unapproved.
+            </div>
+          <?php elseif ($note === 'unlocked'): ?>
+            <div class="mt-5 rounded-3xl border border-sky-400/20 bg-sky-500/10 p-5 text-sm text-sky-100">
+              Payroll lock removed.
+            </div>
+          <?php elseif ($note === 'err'): ?>
+            <div class="mt-5 rounded-3xl border border-rose-400/20 bg-rose-500/10 p-5 text-sm text-rose-100">
+              Something went wrong saving your action. Please try again (and check server error logs).
             </div>
           <?php endif; ?>
 
@@ -402,17 +479,22 @@ function badge(string $text, string $kind): string {
                 <?php foreach ($rows as $r): ?>
                   <?php
                     $eff = admin_shift_effective($r);
-                    $origIn = (string)$r['clock_in_at'];
+
+                    $origIn  = (string)$r['clock_in_at'];
                     $origOut = (string)($r['clock_out_at'] ?? '');
-                    $effIn = $eff['clock_in_at'];
+
+                    $effIn  = $eff['clock_in_at'];
                     $effOut = $eff['clock_out_at'];
 
                     $roundedIn  = $roundingEnabled ? admin_round_datetime($effIn ?: null, $inc, $grace) : ($effIn ?: null);
                     $roundedOut = $roundingEnabled ? admin_round_datetime($effOut ?: null, $inc, $grace) : ($effOut ?: null);
 
-                    $mins = admin_minutes_between($effIn ?: null, $effOut ?: null);
+                    $minsEff = admin_minutes_between($effIn ?: null, $effOut ?: null);
+                    $minsRnd = admin_minutes_between($roundedIn ?: null, $roundedOut ?: null);
+
                     $approved = !empty($r['approved_at']);
-                    $locked = !empty($r['payroll_locked_at']);
+                    $locked   = !empty($r['payroll_locked_at']);
+                    $open     = empty($effOut);
 
                     $name = (string)($r['full_name'] ?? 'Unknown');
                     if ((int)($r['is_agency'] ?? 0) === 1) {
@@ -421,8 +503,8 @@ function badge(string $text, string $kind): string {
                     }
 
                     $statusBadge = $approved ? badge('Approved', 'ok') : badge('Unapproved', 'warn');
-                    if (empty($r['clock_out_at'])) $statusBadge .= ' ' . badge('Missing OUT', 'bad');
-                    if ((string)($r['latest_edit_json'] ?? '') !== '') $statusBadge .= ' ' . badge('Edited', 'neutral');
+                    if ($open) $statusBadge .= ' ' . badge('Missing OUT', 'bad');
+                    if ((string)($r['latest_edit_json'] ?? '') !== '') $statusBadge .= ' ' . badge('Edited', 'info');
                     if ($locked) $statusBadge .= ' ' . badge('Payroll Locked', 'bad');
                   ?>
                   <tr>
@@ -433,10 +515,12 @@ function badge(string $text, string $kind): string {
                         <?php if (!empty($r['employee_number'])): ?> • #<?= h((string)$r['employee_number']) ?><?php endif; ?>
                       </div>
                     </td>
+
                     <td class="py-4 pr-4 text-white/80">
                       <div><?= h(admin_fmt_dt($origIn)) ?></div>
                       <div class="text-white/50"><?= h(admin_fmt_dt($origOut ?: null)) ?></div>
                     </td>
+
                     <td class="py-4 pr-4">
                       <div class="text-white/90"><?= h(admin_fmt_dt($effIn ?: null)) ?></div>
                       <div class="text-white/50"><?= h(admin_fmt_dt($effOut ?: null)) ?></div>
@@ -444,14 +528,25 @@ function badge(string $text, string $kind): string {
                         <div class="text-xs text-white/50 mt-1">Break: <?= (int)$eff['break_minutes'] ?>m</div>
                       <?php endif; ?>
                     </td>
+
                     <td class="py-4 pr-4">
                       <div class="text-white/90"><?= h(admin_fmt_dt($roundedIn)) ?></div>
                       <div class="text-white/50"><?= h(admin_fmt_dt($roundedOut)) ?></div>
                     </td>
+
                     <td class="py-4 pr-4">
-                      <div class="font-semibold"><?= $mins !== null ? (int)$mins : '—' ?></div>
+                      <?php if ($minsEff === null): ?>
+                        <div class="font-semibold">—</div>
+                      <?php else: ?>
+                        <div class="font-semibold"><?= (int)$minsEff ?>m</div>
+                        <?php if ($roundingEnabled && $minsRnd !== null && (int)$minsRnd !== (int)$minsEff): ?>
+                          <div class="text-xs text-white/50">Rounded: <?= (int)$minsRnd ?>m</div>
+                        <?php endif; ?>
+                      <?php endif; ?>
                     </td>
+
                     <td class="py-4 pr-4"><?= $statusBadge ?></td>
+
                     <td class="py-4 text-right">
                       <div class="flex items-center justify-end gap-2">
 
@@ -459,7 +554,7 @@ function badge(string $text, string $kind): string {
                           <a href="<?= h(admin_url('shift-edit.php?id=' . (int)$r['id'])) ?>" class="rounded-2xl bg-white/10 border border-white/10 px-3 py-2 text-xs hover:bg-white/15">Edit</a>
                         <?php endif; ?>
 
-                        <?php if (admin_can($user, 'approve_shifts') && !$locked): ?>
+                        <?php if (admin_can($user, 'approve_shifts') && !$locked && !$open): ?>
                           <form method="post" class="inline">
                             <input type="hidden" name="csrf" value="<?= h(admin_csrf_token()) ?>"/>
                             <input type="hidden" name="shift_id" value="<?= (int)$r['id'] ?>"/>
@@ -484,6 +579,10 @@ function badge(string $text, string $kind): string {
                             <input type="hidden" name="action" value="unlock_payroll"/>
                             <button class="rounded-2xl bg-rose-500/10 border border-rose-400/20 px-3 py-2 text-xs hover:bg-rose-500/15">Unlock</button>
                           </form>
+                        <?php endif; ?>
+
+                        <?php if ($open): ?>
+                          <span class="rounded-2xl bg-amber-500/10 border border-amber-400/20 px-3 py-2 text-xs text-amber-100">Open</span>
                         <?php endif; ?>
 
                       </div>
