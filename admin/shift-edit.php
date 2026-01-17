@@ -49,6 +49,8 @@ $eff = admin_shift_effective($shift);
 $inVal  = $eff['clock_in_at'] ? str_replace(' ', 'T', substr($eff['clock_in_at'], 0, 16)) : '';
 $outVal = $eff['clock_out_at'] ? str_replace(' ', 'T', substr($eff['clock_out_at'], 0, 16)) : '';
 $breakVal = $eff['break_minutes'] !== null ? (string)$eff['break_minutes'] : '';
+$trainingVal = (string)((int)($shift['training_minutes'] ?? 0));
+$trainingNoteVal = (string)($shift['training_note'] ?? '');
 
 $error = '';
 $success = '';
@@ -65,6 +67,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $newIn  = trim((string)($_POST['clock_in_at'] ?? ''));
     $newOut = trim((string)($_POST['clock_out_at'] ?? ''));
     $newBreak = trim((string)($_POST['break_minutes'] ?? ''));
+    $newTraining = trim((string)($_POST['training_minutes'] ?? ''));
+    $newTrainingNote = trim((string)($_POST['training_note'] ?? ''));
     $reason = trim((string)($_POST['reason'] ?? ''));
     $note = trim((string)($_POST['note'] ?? ''));
 
@@ -82,6 +86,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'clock_in_at' => $norm($newIn),
         'clock_out_at' => $newOut === '' ? null : $norm($newOut),
         'break_minutes' => ($newBreak === '') ? null : max(0, (int)$newBreak),
+        'training_minutes' => ($newTraining === '') ? (int)($shift['training_minutes'] ?? 0) : max(0, (int)$newTraining),
+        'training_note' => $newTrainingNote !== '' ? $newTrainingNote : null,
       ];
 
       // Build old snapshot from current effective values
@@ -89,6 +95,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'clock_in_at' => $eff['clock_in_at'] ?: null,
         'clock_out_at' => $eff['clock_out_at'] ?: null,
         'break_minutes' => $eff['break_minutes'],
+        'training_minutes' => (int)($shift['training_minutes'] ?? 0),
+        'training_note' => (string)($shift['training_note'] ?? ''),
       ];
 
       try {
@@ -110,8 +118,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ]);
 
         // Mark shift as modified (but do NOT overwrite original times)
-        $upd = $pdo->prepare("UPDATE kiosk_shifts SET last_modified_reason=?, updated_source='admin' WHERE id=?");
-        $upd->execute([$reason !== '' ? $reason : 'edit', $shiftId]);
+        $upd = $pdo->prepare("UPDATE kiosk_shifts SET last_modified_reason=?, training_minutes=?, training_note=?, updated_source='admin' WHERE id=?");
+        $upd->execute([
+          $reason !== '' ? $reason : 'edit',
+          ($newTraining === '') ? (int)($shift['training_minutes'] ?? 0) : max(0, (int)$newTraining),
+          $newTrainingNote !== '' ? $newTrainingNote : null,
+          $shiftId
+        ]);
 
         $success = 'Saved shift adjustment.';
         // refresh effective values
@@ -120,6 +133,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $inVal  = str_replace(' ', 'T', substr($eff['clock_in_at'], 0, 16));
         $outVal = $eff['clock_out_at'] ? str_replace(' ', 'T', substr($eff['clock_out_at'], 0, 16)) : '';
         $breakVal = $eff['break_minutes'] !== null ? (string)$eff['break_minutes'] : '';
+        $trainingVal = (string)((int)($newTraining === '' ? (int)($shift['training_minutes'] ?? 0) : max(0, (int)$newTraining)));
+        $trainingNoteVal = $newTrainingNote;
       } catch (Throwable $e) {
         $error = 'Failed to save adjustment: ' . $e->getMessage();
       }
@@ -221,6 +236,14 @@ if ((int)($shift['is_agency'] ?? 0) === 1) {
                       <?= $isLocked ? 'disabled' : '' ?> />
                   </label>
 
+                  <label class="block">
+                    <div class="text-xs uppercase tracking-widest text-white/50">Training (minutes)</div>
+                    <input type="number" min="0" step="1" name="training_minutes" value="<?= h($trainingVal) ?>"
+                      class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30"
+                      <?= $isLocked ? 'disabled' : '' ?> />
+                    <div class="mt-2 text-xs text-white/50">Adds paid training time to payroll (separate from punches).</div>
+                  </label>
+
                   <label class="block md:col-span-2">
                     <div class="text-xs uppercase tracking-widest text-white/50">Reason</div>
                     <input name="reason" value="<?= h((string)($_POST['reason'] ?? '')) ?>" placeholder="e.g. Forgot to clock out"
@@ -230,10 +253,24 @@ if ((int)($shift['is_agency'] ?? 0) === 1) {
                 </div>
 
                 <label class="block">
+                  <div class="text-xs uppercase tracking-widest text-white/50">Training note (optional)</div>
+                  <input name="training_note" value="<?= h($trainingNoteVal) ?>" placeholder="e.g. Manual handling training"
+                    class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30"
+                    <?= $isLocked ? 'disabled' : '' ?> />
+                </label>
+
+                <label class="block">
                   <div class="text-xs uppercase tracking-widest text-white/50">Note (optional)</div>
                   <textarea name="note" rows="3"
                     class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30"
                     <?= $isLocked ? 'disabled' : '' ?>><?= h((string)($_POST['note'] ?? '')) ?></textarea>
+                </label>
+
+                <label class="block">
+                  <div class="text-xs uppercase tracking-widest text-white/50">Training note (optional)</div>
+                  <textarea name="training_note" rows="2"
+                    class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30"
+                    <?= $isLocked ? 'disabled' : '' ?>><?= h((string)($_POST['training_note'] ?? $trainingNoteVal)) ?></textarea>
                 </label>
 
                 <div class="flex items-center justify-end gap-3">

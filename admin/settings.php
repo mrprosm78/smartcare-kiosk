@@ -29,11 +29,35 @@ $basicAllow = [
     'rounding_enabled',
     'round_increment_minutes',
     'round_grace_minutes',
+    // Payroll (carehome rules)
+    'payroll_week_starts_on',
+    'payroll_timezone',
+    'night_shift_threshold_percent',
+    'overtime_default_multiplier',
+    'weekend_premium_enabled',
+    'weekend_days',
+    'weekend_rate_multiplier',
+    'bank_holiday_enabled',
+    'bank_holiday_paid',
+    'bank_holiday_rate_multiplier',
+    'payroll_overtime_priority',
   ],
   'superadmin' => [
     'rounding_enabled',
     'round_increment_minutes',
     'round_grace_minutes',
+    // Payroll (carehome rules)
+    'payroll_week_starts_on',
+    'payroll_timezone',
+    'night_shift_threshold_percent',
+    'overtime_default_multiplier',
+    'weekend_premium_enabled',
+    'weekend_days',
+    'weekend_rate_multiplier',
+    'bank_holiday_enabled',
+    'bank_holiday_paid',
+    'bank_holiday_rate_multiplier',
+    'payroll_overtime_priority',
   ],
 ];
 
@@ -54,6 +78,19 @@ $vals = [
   'rounding_enabled' => admin_setting_bool($pdo, 'rounding_enabled', true),
   'round_increment_minutes' => admin_setting_int($pdo, 'round_increment_minutes', 15),
   'round_grace_minutes' => admin_setting_int($pdo, 'round_grace_minutes', 5),
+
+  // payroll (admin/superadmin)
+  'payroll_week_starts_on' => admin_setting_str($pdo, 'payroll_week_starts_on', 'MONDAY'),
+  'payroll_timezone' => admin_setting_str($pdo, 'payroll_timezone', 'Europe/London'),
+  'night_shift_threshold_percent' => admin_setting_int($pdo, 'night_shift_threshold_percent', 50),
+  'overtime_default_multiplier' => admin_setting_str($pdo, 'overtime_default_multiplier', '1.5'),
+  'weekend_premium_enabled' => admin_setting_bool($pdo, 'weekend_premium_enabled', false),
+  'weekend_days' => admin_setting_str($pdo, 'weekend_days', '["SAT","SUN"]'),
+  'weekend_rate_multiplier' => admin_setting_str($pdo, 'weekend_rate_multiplier', '1.25'),
+  'bank_holiday_enabled' => admin_setting_bool($pdo, 'bank_holiday_enabled', true),
+  'bank_holiday_paid' => admin_setting_bool($pdo, 'bank_holiday_paid', true),
+  'bank_holiday_rate_multiplier' => admin_setting_str($pdo, 'bank_holiday_rate_multiplier', '1.5'),
+  'payroll_overtime_priority' => admin_setting_str($pdo, 'payroll_overtime_priority', 'PREMIUMS_THEN_OVERTIME'),
 
   // high-level (superadmin only)
   'admin_pairing_mode' => admin_setting_bool($pdo, 'admin_pairing_mode', false),
@@ -80,6 +117,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       admin_set_setting($pdo, 'round_grace_minutes', (string)max(0, (int)($_POST['round_grace_minutes'] ?? 5)));
     }
 
+    // Payroll (admin/superadmin)
+    if (in_array('payroll_week_starts_on', $allowedBasic, true)) {
+      admin_set_setting($pdo, 'payroll_week_starts_on', strtoupper(trim((string)($_POST['payroll_week_starts_on'] ?? 'MONDAY'))));
+    }
+    if (in_array('payroll_timezone', $allowedBasic, true)) {
+      admin_set_setting($pdo, 'payroll_timezone', trim((string)($_POST['payroll_timezone'] ?? 'Europe/London')));
+    }
+    if (in_array('night_shift_threshold_percent', $allowedBasic, true)) {
+      admin_set_setting($pdo, 'night_shift_threshold_percent', (string)max(0, min(100, (int)($_POST['night_shift_threshold_percent'] ?? 50))));
+    }
+    if (in_array('overtime_default_multiplier', $allowedBasic, true)) {
+      admin_set_setting($pdo, 'overtime_default_multiplier', trim((string)($_POST['overtime_default_multiplier'] ?? '1.5')));
+    }
+    if (in_array('weekend_premium_enabled', $allowedBasic, true)) {
+      admin_set_setting($pdo, 'weekend_premium_enabled', isset($_POST['weekend_premium_enabled']) ? '1' : '0');
+    }
+    if (in_array('weekend_days', $allowedBasic, true)) {
+      admin_set_setting($pdo, 'weekend_days', trim((string)($_POST['weekend_days'] ?? '["SAT","SUN"]')));
+    }
+    if (in_array('weekend_rate_multiplier', $allowedBasic, true)) {
+      admin_set_setting($pdo, 'weekend_rate_multiplier', trim((string)($_POST['weekend_rate_multiplier'] ?? '1.25')));
+    }
+    if (in_array('bank_holiday_enabled', $allowedBasic, true)) {
+      admin_set_setting($pdo, 'bank_holiday_enabled', isset($_POST['bank_holiday_enabled']) ? '1' : '0');
+    }
+    if (in_array('bank_holiday_paid', $allowedBasic, true)) {
+      admin_set_setting($pdo, 'bank_holiday_paid', isset($_POST['bank_holiday_paid']) ? '1' : '0');
+    }
+    if (in_array('bank_holiday_rate_multiplier', $allowedBasic, true)) {
+      admin_set_setting($pdo, 'bank_holiday_rate_multiplier', trim((string)($_POST['bank_holiday_rate_multiplier'] ?? '1.5')));
+    }
+    if (in_array('payroll_overtime_priority', $allowedBasic, true)) {
+      admin_set_setting($pdo, 'payroll_overtime_priority', strtoupper(trim((string)($_POST['payroll_overtime_priority'] ?? 'PREMIUMS_THEN_OVERTIME'))));
+    }
+
     // High-level: admin pairing (superadmin only)
     if ($canHigh) {
       admin_set_setting($pdo, 'admin_pairing_mode', isset($_POST['admin_pairing_mode']) ? '1' : '0');
@@ -97,6 +169,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $vals['rounding_enabled'] = admin_setting_bool($pdo, 'rounding_enabled', true);
   $vals['round_increment_minutes'] = admin_setting_int($pdo, 'round_increment_minutes', 15);
   $vals['round_grace_minutes'] = admin_setting_int($pdo, 'round_grace_minutes', 5);
+  $vals['payroll_week_starts_on'] = admin_setting_str($pdo, 'payroll_week_starts_on', 'MONDAY');
+  $vals['payroll_timezone'] = admin_setting_str($pdo, 'payroll_timezone', 'Europe/London');
+  $vals['night_shift_threshold_percent'] = admin_setting_int($pdo, 'night_shift_threshold_percent', 50);
+  $vals['overtime_default_multiplier'] = admin_setting_str($pdo, 'overtime_default_multiplier', '1.5');
+  $vals['weekend_premium_enabled'] = admin_setting_bool($pdo, 'weekend_premium_enabled', false);
+  $vals['weekend_days'] = admin_setting_str($pdo, 'weekend_days', '["SAT","SUN"]');
+  $vals['weekend_rate_multiplier'] = admin_setting_str($pdo, 'weekend_rate_multiplier', '1.25');
+  $vals['bank_holiday_enabled'] = admin_setting_bool($pdo, 'bank_holiday_enabled', true);
+  $vals['bank_holiday_paid'] = admin_setting_bool($pdo, 'bank_holiday_paid', true);
+  $vals['bank_holiday_rate_multiplier'] = admin_setting_str($pdo, 'bank_holiday_rate_multiplier', '1.5');
+  $vals['payroll_overtime_priority'] = admin_setting_str($pdo, 'payroll_overtime_priority', 'PREMIUMS_THEN_OVERTIME');
   $vals['admin_pairing_mode'] = admin_setting_bool($pdo, 'admin_pairing_mode', false);
   $vals['admin_pairing_mode_until'] = admin_setting_str($pdo, 'admin_pairing_mode_until', '');
   $vals['admin_pairing_code'] = admin_setting_str($pdo, 'admin_pairing_code', '');
@@ -177,6 +260,130 @@ $active = admin_url('settings.php');
               <section class="rounded-3xl border border-white/10 bg-white/5 p-5">
                 <h2 class="text-lg font-semibold">Basic settings</h2>
                 <p class="mt-2 text-sm text-white/70">No basic settings are enabled for your role.</p>
+              </section>
+            <?php endif; ?>
+
+            <?php
+              $payrollKeys = [
+                'payroll_week_starts_on','payroll_timezone','night_shift_threshold_percent','overtime_default_multiplier',
+                'weekend_premium_enabled','weekend_days','weekend_rate_multiplier',
+                'bank_holiday_enabled','bank_holiday_paid','bank_holiday_rate_multiplier',
+                'payroll_overtime_priority',
+              ];
+              $canSeePayroll = false;
+              foreach ($payrollKeys as $k) { if (in_array($k, $allowedBasic, true)) { $canSeePayroll = true; break; } }
+            ?>
+
+            <?php if ($canSeePayroll): ?>
+              <section class="rounded-3xl border border-white/10 bg-white/5 p-5">
+                <h2 class="text-lg font-semibold">Payroll settings (admin)</h2>
+                <p class="mt-1 text-sm text-white/70">These affect monthly payroll calculations. Weekend & bank holiday premiums are applied per-day until midnight in the configured timezone.</p>
+
+                <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <?php if (in_array('payroll_week_starts_on', $allowedBasic, true)): ?>
+                    <label class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div class="text-xs uppercase tracking-widest text-white/50">Week starts on</div>
+                      <select name="payroll_week_starts_on" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30">
+                        <?php foreach (['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'] as $d): ?>
+                          <option value="<?= h($d) ?>" <?= strtoupper((string)$vals['payroll_week_starts_on'])===$d ? 'selected' : '' ?>><?= h($d) ?></option>
+                        <?php endforeach; ?>
+                      </select>
+                    </label>
+                  <?php endif; ?>
+
+                  <?php if (in_array('payroll_timezone', $allowedBasic, true)): ?>
+                    <label class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div class="text-xs uppercase tracking-widest text-white/50">Payroll timezone</div>
+                      <input name="payroll_timezone" value="<?= h((string)$vals['payroll_timezone']) ?>" placeholder="Europe/London"
+                        class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                      <div class="mt-2 text-xs text-white/50">Used for midnight/day boundaries for premiums.</div>
+                    </label>
+                  <?php endif; ?>
+
+                  <?php if (in_array('night_shift_threshold_percent', $allowedBasic, true)): ?>
+                    <label class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div class="text-xs uppercase tracking-widest text-white/50">Night threshold (%)</div>
+                      <input type="number" min="0" max="100" step="1" name="night_shift_threshold_percent" value="<?= h((string)$vals['night_shift_threshold_percent']) ?>"
+                        class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                    </label>
+                  <?php endif; ?>
+                </div>
+
+                <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <?php if (in_array('overtime_default_multiplier', $allowedBasic, true)): ?>
+                    <label class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div class="text-xs uppercase tracking-widest text-white/50">Overtime multiplier</div>
+                      <input name="overtime_default_multiplier" value="<?= h((string)$vals['overtime_default_multiplier']) ?>" placeholder="1.5"
+                        class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                    </label>
+                  <?php endif; ?>
+
+                  <?php if (in_array('payroll_overtime_priority', $allowedBasic, true)): ?>
+                    <label class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div class="text-xs uppercase tracking-widest text-white/50">OT vs premium rule</div>
+                      <select name="payroll_overtime_priority" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30">
+                        <?php foreach (['PREMIUMS_THEN_OVERTIME','OVERTIME_THEN_PREMIUMS','HIGHEST_WINS'] as $r): ?>
+                          <option value="<?= h($r) ?>" <?= strtoupper((string)$vals['payroll_overtime_priority'])===$r ? 'selected' : '' ?>><?= h($r) ?></option>
+                        <?php endforeach; ?>
+                      </select>
+                      <div class="mt-2 text-xs text-white/50">Currently implemented: PREMIUMS_THEN_OVERTIME.</div>
+                    </label>
+                  <?php endif; ?>
+                </div>
+
+                <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <?php if (in_array('weekend_premium_enabled', $allowedBasic, true)): ?>
+                    <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <input type="checkbox" name="weekend_premium_enabled" class="h-4 w-4 rounded" <?= $vals['weekend_premium_enabled'] ? 'checked' : '' ?> />
+                      <div>
+                        <div class="text-sm font-semibold">Weekend premium enabled</div>
+                        <div class="text-xs text-white/60">Applies per-day until midnight.</div>
+                      </div>
+                    </label>
+                  <?php endif; ?>
+                  <?php if (in_array('weekend_days', $allowedBasic, true)): ?>
+                    <label class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div class="text-xs uppercase tracking-widest text-white/50">Weekend days (JSON)</div>
+                      <input name="weekend_days" value="<?= h((string)$vals['weekend_days']) ?>" placeholder='["SAT","SUN"]'
+                        class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                    </label>
+                  <?php endif; ?>
+                  <?php if (in_array('weekend_rate_multiplier', $allowedBasic, true)): ?>
+                    <label class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div class="text-xs uppercase tracking-widest text-white/50">Weekend multiplier</div>
+                      <input name="weekend_rate_multiplier" value="<?= h((string)$vals['weekend_rate_multiplier']) ?>" placeholder="1.25"
+                        class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                    </label>
+                  <?php endif; ?>
+                </div>
+
+                <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <?php if (in_array('bank_holiday_enabled', $allowedBasic, true)): ?>
+                    <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <input type="checkbox" name="bank_holiday_enabled" class="h-4 w-4 rounded" <?= $vals['bank_holiday_enabled'] ? 'checked' : '' ?> />
+                      <div>
+                        <div class="text-sm font-semibold">Bank holiday enabled</div>
+                        <div class="text-xs text-white/60">Uses dates from Bank Holidays table.</div>
+                      </div>
+                    </label>
+                  <?php endif; ?>
+                  <?php if (in_array('bank_holiday_paid', $allowedBasic, true)): ?>
+                    <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <input type="checkbox" name="bank_holiday_paid" class="h-4 w-4 rounded" <?= $vals['bank_holiday_paid'] ? 'checked' : '' ?> />
+                      <div>
+                        <div class="text-sm font-semibold">Bank holiday is paid</div>
+                        <div class="text-xs text-white/60">If off, BH days are ignored.</div>
+                      </div>
+                    </label>
+                  <?php endif; ?>
+                  <?php if (in_array('bank_holiday_rate_multiplier', $allowedBasic, true)): ?>
+                    <label class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div class="text-xs uppercase tracking-widest text-white/50">Bank holiday multiplier</div>
+                      <input name="bank_holiday_rate_multiplier" value="<?= h((string)$vals['bank_holiday_rate_multiplier']) ?>" placeholder="1.5"
+                        class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                    </label>
+                  <?php endif; ?>
+                </div>
               </section>
             <?php endif; ?>
 

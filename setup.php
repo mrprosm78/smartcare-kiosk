@@ -351,9 +351,19 @@ function seed_settings(PDO $pdo): void {
       'type' => 'string', 'editable_by' => 'admin', 'sort' => 710, 'secret' => 0,
     ],
     [
+      'key' => 'payroll_timezone', 'value' => 'Europe/London', 'group' => 'payroll',
+      'label' => 'Payroll Timezone', 'description' => 'Timezone used for midnight/day boundaries (weekend/bank holiday until midnight).',
+      'type' => 'string', 'editable_by' => 'admin', 'sort' => 715, 'secret' => 0,
+    ],
+    [
       'key' => 'overtime_default_multiplier', 'value' => '1.5', 'group' => 'payroll',
       'label' => 'Overtime Rate Multiplier', 'description' => 'Default overtime multiplier when employee profile does not specify one (e.g., 1.5).',
       'type' => 'string', 'editable_by' => 'admin', 'sort' => 720, 'secret' => 0,
+    ],
+    [
+      'key' => 'night_shift_threshold_percent', 'value' => '50', 'group' => 'payroll',
+      'label' => 'Night Shift Threshold (%)', 'description' => 'If >= this % of a shift falls within the night window, apply night break minutes.',
+      'type' => 'string', 'editable_by' => 'admin', 'sort' => 725, 'secret' => 0,
     ],
     [
       'key' => 'weekend_premium_enabled', 'value' => '0', 'group' => 'payroll',
@@ -541,6 +551,8 @@ function create_tables(PDO $pdo): void {
       employee_id INT UNSIGNED PRIMARY KEY,
       contract_hours_per_week DECIMAL(6,2) NULL,
       break_minutes_default INT NULL,
+      break_minutes_day INT NULL,
+      break_minutes_night INT NULL,
       break_is_paid TINYINT(1) NOT NULL DEFAULT 0,
       min_hours_for_break DECIMAL(5,2) NULL,
       holiday_entitled TINYINT(1) NOT NULL DEFAULT 0,
@@ -563,6 +575,8 @@ function create_tables(PDO $pdo): void {
       employee_id INT UNSIGNED,
       clock_in_at DATETIME NOT NULL,
       clock_out_at DATETIME NULL,
+      training_minutes INT NULL,
+      training_note VARCHAR(255) NULL,
       duration_minutes INT NULL,
       is_closed TINYINT(1) DEFAULT 0,
       close_reason VARCHAR(50) NULL,
@@ -583,9 +597,15 @@ function create_tables(PDO $pdo): void {
       KEY idx_locked (payroll_locked_at)
     ) ENGINE=InnoDB;
   ");
+  add_column_if_missing($pdo, 'kiosk_shifts', 'training_minutes', 'INT NULL');
+  add_column_if_missing($pdo, 'kiosk_shifts', 'training_note', 'VARCHAR(255) NULL');
   add_column_if_missing($pdo, 'kiosk_shifts', 'payroll_locked_at', 'DATETIME NULL');
   add_column_if_missing($pdo, 'kiosk_shifts', 'payroll_locked_by', 'VARCHAR(100) NULL');
   add_column_if_missing($pdo, 'kiosk_shifts', 'payroll_batch_id', 'VARCHAR(64) NULL');
+
+  // Pay profile additions for day/night breaks
+  add_column_if_missing($pdo, 'kiosk_employee_pay_profiles', 'break_minutes_day', 'INT NULL');
+  add_column_if_missing($pdo, 'kiosk_employee_pay_profiles', 'break_minutes_night', 'INT NULL');
 
   // SHIFT CHANGES / AUDIT
   $pdo->exec("

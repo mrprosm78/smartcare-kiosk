@@ -89,8 +89,15 @@ final class PayrollCalculator {
       $workedMinutes = $this->minutesBetween($rin, $rout);
       if ($workedMinutes <= 0) continue;
 
-      // Break rules (Milestone 1: use default break + min hours)
-      $breakMinutes = $eff['break_minutes'] !== null ? (int)$eff['break_minutes'] : (int)($row['break_minutes_default'] ?? 0);
+      // Break rules (Day vs Night)
+      $isNight = $this->isNightShift($rin, $rout, $row, $settings);
+      $breakMinutes = $eff['break_minutes'] !== null
+        ? (int)$eff['break_minutes']
+        : (int)(
+          $isNight
+            ? ($row['break_minutes_night'] ?? ($row['break_minutes_default'] ?? 0))
+            : ($row['break_minutes_day'] ?? ($row['break_minutes_default'] ?? 0))
+        );
       $breakIsPaid = ((int)($row['break_is_paid'] ?? 0) === 1);
       $minHours = $row['min_hours_for_break'] !== null ? (float)$row['min_hours_for_break'] : 0.0;
       if ($minHours > 0 && ($workedMinutes/60.0) < $minHours) {
@@ -103,10 +110,16 @@ final class PayrollCalculator {
       }
       if ($paidMinutes <= 0) continue;
 
+      // Training minutes (manager-entered) are paid at base rate and count toward weekly totals.
+      // They do not attract weekend/BH premiums in this milestone.
+      $trainingMinutes = (int)($row['training_minutes'] ?? 0);
+      if ($trainingMinutes < 0) $trainingMinutes = 0;
+
       $usedShiftIds[] = (int)$row['id'];
 
       // Split into day segments for premium computation, then into week buckets.
-      $segments = $this->splitByDay($rin, $rout, $period['start'], $period['end']);
+      $tz = (string)($settings['payroll_timezone'] ?? 'UTC');
+      $segments = $this->splitByDay($rin, $rout, $period['start'], $period['end'], $tz);
 
       // Allocate paid minutes proportionally across segments
       $totalSegMinutes = array_sum(array_column($segments, 'minutes'));
@@ -128,17 +141,38 @@ final class PayrollCalculator {
 
         $premiumExtra = $this->premiumExtraForSegment($seg['date'], $paidSeg, $meta, $settings, $bankHolidayIndex);
 
-        $weekKey = $this->weekKeyForDate($seg['date'], $settings['payroll_week_starts_on']);
+        $weekKey = $this->weekKeyForDate($seg['date'], $settings['payroll_week_starts_on'], $tz);
         if (!isset($weekly[$empId])) $weekly[$empId] = [];
         if (!isset($weekly[$empId][$weekKey])) {
           $weekly[$empId][$weekKey] = [
+            'work_minutes' => 0,
+            'training_minutes' => 0,
             'paid_minutes' => 0,
             'premium_extra' => 0.0,
-            'week_start' => $this->weekStartDate($seg['date'], $settings['payroll_week_starts_on']),
+            'week_start' => $this->weekStartDate($seg['date'], $settings['payroll_week_starts_on'], $tz),
           ];
         }
+        $weekly[$empId][$weekKey]['work_minutes'] += $paidSeg;
         $weekly[$empId][$weekKey]['paid_minutes'] += $paidSeg;
         $weekly[$empId][$weekKey]['premium_extra'] += $premiumExtra;
+      }
+
+      // Allocate training minutes to the week of the shift start date (no premium).
+      if ($trainingMinutes > 0 && $totalSegMinutes > 0) {
+        $startDate = $segments[0]['date'] ?? (new DateTimeImmutable($rin, new DateTimeZone('UTC')))->format('Y-m-d');
+        $weekKey = $this->weekKeyForDate($startDate, $settings['payroll_week_starts_on'], $tz);
+        if (!isset($weekly[$empId])) $weekly[$empId] = [];
+        if (!isset($weekly[$empId][$weekKey])) {
+          $weekly[$empId][$weekKey] = [
+            'work_minutes' => 0,
+            'training_minutes' => 0,
+            'paid_minutes' => 0,
+            'premium_extra' => 0.0,
+            'week_start' => $this->weekStartDate($startDate, $settings['payroll_week_starts_on'], $tz),
+          ];
+        }
+        $weekly[$empId][$weekKey]['training_minutes'] += $trainingMinutes;
+        $weekly[$empId][$weekKey]['paid_minutes'] += $trainingMinutes;
       }
     }
 
@@ -154,14 +188,17 @@ final class PayrollCalculator {
       $month = [
         'regular_minutes' => 0,
         'overtime_minutes' => 0,
+        'training_minutes' => 0,
         'premium_extra' => 0.0,
         'regular_amount' => 0.0,
         'overtime_amount' => 0.0,
+        'training_amount' => 0.0,
         'gross_pay' => 0.0,
       ];
 
       foreach ($weeks as $wk => $w) {
         $paid = (int)$w['paid_minutes'];
+        $training = (int)($w['training_minutes'] ?? 0);
         $regular = $paid;
         $ot = 0;
         if ($contractWeekMinutes > 0) {
@@ -181,19 +218,23 @@ final class PayrollCalculator {
           'week_key' => $wk,
           'week_start' => $w['week_start'],
           'paid_hours' => round($paid/60.0, 2),
+          'training_hours' => round($training/60.0, 2),
           'regular_hours' => round($regular/60.0, 2),
           'overtime_hours' => round($ot/60.0, 2),
           'premium_extra' => round($prem, 2),
           'regular_amount' => round($regularAmt, 2),
           'overtime_amount' => round($otAmt, 2),
+          'training_amount' => round(($training/60.0) * $rate, 2),
           'gross_pay' => round($gross, 2),
         ];
 
         $month['regular_minutes'] += $regular;
         $month['overtime_minutes'] += $ot;
+        $month['training_minutes'] += $training;
         $month['premium_extra'] += $prem;
         $month['regular_amount'] += $regularAmt;
         $month['overtime_amount'] += $otAmt;
+        $month['training_amount'] += ($training/60.0) * $rate;
         $month['gross_pay'] += $gross;
       }
 
@@ -207,9 +248,11 @@ final class PayrollCalculator {
         'totals' => [
           'regular_hours' => round($month['regular_minutes']/60.0, 2),
           'overtime_hours' => round($month['overtime_minutes']/60.0, 2),
+          'training_hours' => round($month['training_minutes']/60.0, 2),
           'premium_extra' => round($month['premium_extra'], 2),
           'regular_amount' => round($month['regular_amount'], 2),
           'overtime_amount' => round($month['overtime_amount'], 2),
+          'training_amount' => round($month['training_amount'], 2),
           'gross_pay' => round($month['gross_pay'], 2),
         ],
         'weeks' => $perWeek,
@@ -236,6 +279,8 @@ final class PayrollCalculator {
       'round_increment_minutes' => 15,
       'round_grace_minutes' => 5,
       'payroll_week_starts_on' => 'MONDAY',
+      'payroll_timezone' => 'Europe/London',
+      'night_shift_threshold_percent' => 50,
       'overtime_default_multiplier' => 1.5,
       'weekend_premium_enabled' => false,
       'weekend_days' => ['SAT','SUN'],
@@ -261,6 +306,12 @@ final class PayrollCalculator {
 
     if (isset($map['payroll_week_starts_on']) && $map['payroll_week_starts_on'] !== '') {
       $out['payroll_week_starts_on'] = strtoupper(trim($map['payroll_week_starts_on']));
+    }
+    if (isset($map['payroll_timezone']) && trim($map['payroll_timezone']) !== '') {
+      $out['payroll_timezone'] = trim($map['payroll_timezone']);
+    }
+    if (isset($map['night_shift_threshold_percent']) && is_numeric($map['night_shift_threshold_percent'])) {
+      $out['night_shift_threshold_percent'] = (int)$map['night_shift_threshold_percent'];
     }
     if (isset($map['overtime_default_multiplier']) && is_numeric($map['overtime_default_multiplier'])) {
       $out['overtime_default_multiplier'] = (float)$map['overtime_default_multiplier'];
@@ -292,6 +343,15 @@ final class PayrollCalculator {
       $out['payroll_week_starts_on'] = $defaults['payroll_week_starts_on'];
     }
 
+    // Validate timezone
+    try {
+      new DateTimeZone((string)$out['payroll_timezone']);
+    } catch (Throwable $e) {
+      $out['payroll_timezone'] = $defaults['payroll_timezone'];
+    }
+
+    $out['night_shift_threshold_percent'] = max(0, min(100, (int)$out['night_shift_threshold_percent']));
+
     return $out;
   }
 
@@ -320,8 +380,9 @@ final class PayrollCalculator {
       SELECT
         s.*,
         e.employee_code, e.first_name, e.last_name, e.nickname, e.is_agency, e.agency_label,
-        p.break_minutes_default, p.break_is_paid, p.min_hours_for_break, p.contract_hours_per_week,
+        p.break_minutes_default, p.break_minutes_day, p.break_minutes_night, p.break_is_paid, p.min_hours_for_break, p.contract_hours_per_week,
         p.day_rate,
+        p.night_start, p.night_end,
         p.rules_json,
         (
           SELECT sc.new_json
@@ -420,6 +481,58 @@ final class PayrollCalculator {
     }
   }
 
+  /**
+   * Determine if a shift should be treated as a "night" shift for break purposes.
+   * Uses employee pay profile night_start/night_end (falls back to 22:00-06:00) in the payroll timezone.
+   * If >= night_shift_threshold_percent of the shift falls inside the night window, it is considered night.
+   */
+  private function isNightShift(string $startDt, string $endDt, array $row, array $settings): bool {
+    try {
+      $tz = new DateTimeZone((string)($settings['payroll_timezone'] ?? 'Europe/London'));
+      $s = new DateTimeImmutable($startDt, $tz);
+      $e = new DateTimeImmutable($endDt, $tz);
+      if ($e <= $s) return false;
+
+      $nightStart = (string)($row['night_start'] ?? '');
+      $nightEnd   = (string)($row['night_end'] ?? '');
+      if ($nightStart === '') $nightStart = '22:00:00';
+      if ($nightEnd === '') $nightEnd = '06:00:00';
+
+      $threshold = (int)($settings['night_shift_threshold_percent'] ?? 50);
+      $threshold = max(0, min(100, $threshold));
+
+      $totalMin = (int)floor(($e->getTimestamp() - $s->getTimestamp())/60);
+      if ($totalMin <= 0) return false;
+
+      // Walk day by day and accumulate overlap with the night window.
+      $nightMin = 0;
+      $curDay = $s->setTime(0,0,0);
+      $endDay = $e->setTime(0,0,0)->modify('+1 day');
+      while ($curDay < $endDay) {
+        // Night window may cross midnight.
+        $ns = new DateTimeImmutable($curDay->format('Y-m-d').' '.$nightStart, $tz);
+        $ne = new DateTimeImmutable($curDay->format('Y-m-d').' '.$nightEnd, $tz);
+        if ($ne <= $ns) {
+          $ne = $ne->modify('+1 day');
+        }
+
+        // Compute overlap of [s,e) with [ns,ne)
+        $os = ($s > $ns) ? $s : $ns;
+        $oe = ($e < $ne) ? $e : $ne;
+        if ($oe > $os) {
+          $nightMin += (int)floor(($oe->getTimestamp() - $os->getTimestamp())/60);
+        }
+
+        $curDay = $curDay->modify('+1 day');
+      }
+
+      $pct = ($nightMin / $totalMin) * 100.0;
+      return $pct >= (float)$threshold;
+    } catch (Throwable $e) {
+      return false;
+    }
+  }
+
   /** @return array{0:string,1:string} */
   private function applyRounding(string $in, string $out, array $settings): array {
     if (!(bool)$settings['rounding_enabled']) return [$in, $out];
@@ -470,13 +583,14 @@ final class PayrollCalculator {
    * Split an interval into segments by day (midnight), clamped to [periodStart, periodEnd).
    * Returns list of ['date'=>'Y-m-d', 'minutes'=>int].
    */
-  private function splitByDay(string $start, string $end, string $periodStart, string $periodEnd): array {
+  private function splitByDay(string $start, string $end, string $periodStart, string $periodEnd, string $tz): array {
     $out = [];
     try {
-      $s = new DateTimeImmutable($start, new DateTimeZone('UTC'));
-      $e = new DateTimeImmutable($end, new DateTimeZone('UTC'));
-      $ps = new DateTimeImmutable($periodStart, new DateTimeZone('UTC'));
-      $pe = new DateTimeImmutable($periodEnd, new DateTimeZone('UTC'));
+      $tzObj = new DateTimeZone($tz);
+      $s = new DateTimeImmutable($start, $tzObj);
+      $e = new DateTimeImmutable($end, $tzObj);
+      $ps = new DateTimeImmutable($periodStart, $tzObj);
+      $pe = new DateTimeImmutable($periodEnd, $tzObj);
 
       if ($e <= $ps || $s >= $pe) return [];
       if ($s < $ps) $s = $ps;
@@ -500,7 +614,8 @@ final class PayrollCalculator {
 
   private function isWeekendDate(string $dateYmd, array $settings): bool {
     try {
-      $d = new DateTimeImmutable($dateYmd.' 00:00:00', new DateTimeZone('UTC'));
+      $tz = new DateTimeZone((string)($settings['payroll_timezone'] ?? 'UTC'));
+      $d = new DateTimeImmutable($dateYmd.' 00:00:00', $tz);
       $dow = strtoupper($d->format('D')); // MON, TUE, ...
       $weekend = $settings['weekend_days'] ?? ['SAT','SUN'];
       if (!is_array($weekend)) $weekend = ['SAT','SUN'];
@@ -539,7 +654,7 @@ final class PayrollCalculator {
     return $extra;
   }
 
-  private function weekStartDate(string $dateYmd, string $weekStartsOn): string {
+  private function weekStartDate(string $dateYmd, string $weekStartsOn, string $tz): string {
     $weekStartsOn = strtoupper($weekStartsOn);
     $map = [
       'MONDAY' => 1,
@@ -551,7 +666,7 @@ final class PayrollCalculator {
       'SUNDAY' => 7,
     ];
     $target = $map[$weekStartsOn] ?? 1;
-    $d = new DateTimeImmutable($dateYmd.' 00:00:00', new DateTimeZone('UTC'));
+    $d = new DateTimeImmutable($dateYmd.' 00:00:00', new DateTimeZone($tz));
     $iso = (int)$d->format('N');
     $delta = ($iso - $target) % 7;
     if ($delta < 0) $delta += 7;
@@ -559,8 +674,8 @@ final class PayrollCalculator {
     return $ws->format('Y-m-d');
   }
 
-  private function weekKeyForDate(string $dateYmd, string $weekStartsOn): string {
-    $ws = $this->weekStartDate($dateYmd, $weekStartsOn);
+  private function weekKeyForDate(string $dateYmd, string $weekStartsOn, string $tz): string {
+    $ws = $this->weekStartDate($dateYmd, $weekStartsOn, $tz);
     return $ws; // weekKey as week start date
   }
 }

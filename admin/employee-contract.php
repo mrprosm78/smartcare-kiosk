@@ -28,6 +28,8 @@ $success = '';
 $pay = [
   'contract_hours_per_week' => null,
   'break_minutes_default' => null,
+  'break_minutes_day' => null,
+  'break_minutes_night' => null,
   'break_is_paid' => 0,
   'min_hours_for_break' => null,
   'holiday_entitled' => 0,
@@ -61,6 +63,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $pp = [
       'contract_hours_per_week' => trim((string)($_POST['contract_hours_per_week'] ?? '')),
       'break_minutes_default' => trim((string)($_POST['break_minutes_default'] ?? '')),
+      'break_minutes_day' => trim((string)($_POST['break_minutes_day'] ?? '')),
+      'break_minutes_night' => trim((string)($_POST['break_minutes_night'] ?? '')),
       'break_is_paid' => (int)($_POST['break_is_paid'] ?? 0) === 1 ? 1 : 0,
       'min_hours_for_break' => trim((string)($_POST['min_hours_for_break'] ?? '')),
       'holiday_entitled' => (int)($_POST['holiday_entitled'] ?? 0) === 1 ? 1 : 0,
@@ -72,17 +76,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       'night_end' => trim((string)($_POST['night_end'] ?? '')),
     ];
 
-    foreach (['contract_hours_per_week','break_minutes_default','min_hours_for_break','bank_holiday_multiplier','day_rate','night_rate','night_start','night_end'] as $k) {
+    foreach (['contract_hours_per_week','break_minutes_default','break_minutes_day','break_minutes_night','min_hours_for_break','bank_holiday_multiplier','day_rate','night_rate','night_start','night_end'] as $k) {
       if ($pp[$k] === '') $pp[$k] = null;
     }
 
-    $pdo->prepare("INSERT INTO kiosk_employee_pay_profiles (employee_id, contract_hours_per_week, break_minutes_default, break_is_paid, min_hours_for_break, holiday_entitled, bank_holiday_entitled, bank_holiday_multiplier, day_rate, night_rate, night_start, night_end, created_at, updated_at)
-                   VALUES (:id,:ch,:bm,:bp,:mh,:he,:bhe,:bhm,:dr,:nr,:ns,:ne, UTC_TIMESTAMP, UTC_TIMESTAMP)
-                   ON DUPLICATE KEY UPDATE contract_hours_per_week=VALUES(contract_hours_per_week), break_minutes_default=VALUES(break_minutes_default), break_is_paid=VALUES(break_is_paid), min_hours_for_break=VALUES(min_hours_for_break), holiday_entitled=VALUES(holiday_entitled), bank_holiday_entitled=VALUES(bank_holiday_entitled), bank_holiday_multiplier=VALUES(bank_holiday_multiplier), day_rate=VALUES(day_rate), night_rate=VALUES(night_rate), night_start=VALUES(night_start), night_end=VALUES(night_end), updated_at=UTC_TIMESTAMP")
+    $pdo->prepare("INSERT INTO kiosk_employee_pay_profiles (employee_id, contract_hours_per_week, break_minutes_default, break_minutes_day, break_minutes_night, break_is_paid, min_hours_for_break, holiday_entitled, bank_holiday_entitled, bank_holiday_multiplier, day_rate, night_rate, night_start, night_end, created_at, updated_at)
+                   VALUES (:id,:ch,:bm,:bmd,:bmn,:bp,:mh,:he,:bhe,:bhm,:dr,:nr,:ns,:ne, UTC_TIMESTAMP, UTC_TIMESTAMP)
+                   ON DUPLICATE KEY UPDATE contract_hours_per_week=VALUES(contract_hours_per_week), break_minutes_default=VALUES(break_minutes_default), break_minutes_day=VALUES(break_minutes_day), break_minutes_night=VALUES(break_minutes_night), break_is_paid=VALUES(break_is_paid), min_hours_for_break=VALUES(min_hours_for_break), holiday_entitled=VALUES(holiday_entitled), bank_holiday_entitled=VALUES(bank_holiday_entitled), bank_holiday_multiplier=VALUES(bank_holiday_multiplier), day_rate=VALUES(day_rate), night_rate=VALUES(night_rate), night_start=VALUES(night_start), night_end=VALUES(night_end), updated_at=UTC_TIMESTAMP")
       ->execute([
         ':id' => $id,
         ':ch' => $pp['contract_hours_per_week'],
         ':bm' => $pp['break_minutes_default'],
+        ':bmd' => $pp['break_minutes_day'],
+        ':bmn' => $pp['break_minutes_night'],
         ':bp' => $pp['break_is_paid'],
         ':mh' => $pp['min_hours_for_break'],
         ':he' => $pp['holiday_entitled'],
@@ -176,6 +182,20 @@ $readonly = !$canEdit;
                     <div class="text-xs uppercase tracking-widest text-white/50">Default break minutes</div>
                     <input name="break_minutes_default" value="<?= h((string)($pay['break_minutes_default'] ?? '')) ?>" <?= ro_attr($readonly) ?>
                       class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" placeholder="e.g. 30">
+                  </label>
+
+                  <label class="block">
+                    <div class="text-xs uppercase tracking-widest text-white/50">Day break minutes</div>
+                    <input name="break_minutes_day" value="<?= h((string)($pay['break_minutes_day'] ?? '')) ?>" <?= ro_attr($readonly) ?>
+                      class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" placeholder="e.g. 45">
+                    <div class="mt-2 text-xs text-white/50">Used when the shift is not classified as a night shift.</div>
+                  </label>
+
+                  <label class="block">
+                    <div class="text-xs uppercase tracking-widest text-white/50">Night break minutes</div>
+                    <input name="break_minutes_night" value="<?= h((string)($pay['break_minutes_night'] ?? '')) ?>" <?= ro_attr($readonly) ?>
+                      class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" placeholder="e.g. 30">
+                    <div class="mt-2 text-xs text-white/50">Used when the shift is classified as a night shift (based on night window and threshold).</div>
                   </label>
 
                   <label class="block">
