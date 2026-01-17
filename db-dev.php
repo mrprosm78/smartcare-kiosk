@@ -1,8 +1,8 @@
 <?php
 // db.php
-$host = 'sdb-c.hosting.stackcp.net';
-$db   = 'DevSmartcare-31373162cf';
-$user = 'DevSmartcare-31373162cf';
+$host = 'sdb-67.hosting.stackcp.net';
+$db   = 'kiosk01-35303437df66';
+$user = 'kiosk01-35303437df66';
 $pass = 'r2mspgngzy'; // rotate later
 $charset = 'utf8mb4';
 
