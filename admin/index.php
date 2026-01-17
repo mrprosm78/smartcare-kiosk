@@ -105,6 +105,9 @@ $active = admin_url('index.php');
                 <?php if (admin_can($user, 'manage_employees')): ?>
                   <a href="<?= h(admin_url('employees.php')) ?>" class="rounded-2xl px-3 py-2 text-sm font-semibold bg-white/5 border border-white/10 text-white/80 hover:bg-white/10">Employees</a>
                 <?php endif; ?>
+                <?php if (admin_can($user, 'run_payroll')): ?>
+                  <a href="<?= h(admin_url('payroll-run.php')) ?>" class="rounded-2xl px-3 py-2 text-sm font-semibold bg-white/5 border border-white/10 text-white/80 hover:bg-white/10">Run Payroll (Monthly)</a>
+                <?php endif; ?>
                 <?php if (admin_can($user, 'export_payroll')): ?>
                   <a href="<?= h(admin_url('payroll.php')) ?>" class="rounded-2xl px-3 py-2 text-sm font-semibold bg-white/5 border border-white/10 text-white/80 hover:bg-white/10">Payroll Export</a>
                 <?php endif; ?>

@@ -340,6 +340,56 @@ function seed_settings(PDO $pdo): void {
       'label' => 'Not Authorised Message', 'description' => 'Message shown when kiosk token missing/invalid.',
       'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 650, 'secret' => 0,
     ],
+
+
+    // ===========================
+    // Payroll (Carehome Rules)
+    // ===========================
+    [
+      'key' => 'payroll_week_starts_on', 'value' => 'MONDAY', 'group' => 'payroll',
+      'label' => 'Payroll Week Starts On', 'description' => 'Defines the payroll week for weekly overtime calculation (e.g., MONDAY).',
+      'type' => 'string', 'editable_by' => 'admin', 'sort' => 710, 'secret' => 0,
+    ],
+    [
+      'key' => 'overtime_default_multiplier', 'value' => '1.5', 'group' => 'payroll',
+      'label' => 'Overtime Rate Multiplier', 'description' => 'Default overtime multiplier when employee profile does not specify one (e.g., 1.5).',
+      'type' => 'string', 'editable_by' => 'admin', 'sort' => 720, 'secret' => 0,
+    ],
+    [
+      'key' => 'weekend_premium_enabled', 'value' => '0', 'group' => 'payroll',
+      'label' => 'Weekend Premium Enabled', 'description' => 'If 1, apply weekend premium multiplier for weekend days.',
+      'type' => 'bool', 'editable_by' => 'admin', 'sort' => 730, 'secret' => 0,
+    ],
+    [
+      'key' => 'weekend_days', 'value' => '["SAT","SUN"]', 'group' => 'payroll',
+      'label' => 'Weekend Days', 'description' => 'JSON array of weekend day codes (SAT,SUN).',
+      'type' => 'string', 'editable_by' => 'admin', 'sort' => 740, 'secret' => 0,
+    ],
+    [
+      'key' => 'weekend_rate_multiplier', 'value' => '1.25', 'group' => 'payroll',
+      'label' => 'Weekend Rate Multiplier', 'description' => 'Multiplier for weekend hours when enabled (e.g., 1.25).',
+      'type' => 'string', 'editable_by' => 'admin', 'sort' => 750, 'secret' => 0,
+    ],
+    [
+      'key' => 'bank_holiday_enabled', 'value' => '1', 'group' => 'payroll',
+      'label' => 'Bank Holiday Enabled', 'description' => 'If 1, bank holiday logic is enabled.',
+      'type' => 'bool', 'editable_by' => 'admin', 'sort' => 760, 'secret' => 0,
+    ],
+    [
+      'key' => 'bank_holiday_paid', 'value' => '1', 'group' => 'payroll',
+      'label' => 'Bank Holiday Paid', 'description' => 'If 1, bank holiday shifts are payable (and may attract multiplier).',
+      'type' => 'bool', 'editable_by' => 'admin', 'sort' => 770, 'secret' => 0,
+    ],
+    [
+      'key' => 'bank_holiday_rate_multiplier', 'value' => '1.5', 'group' => 'payroll',
+      'label' => 'Bank Holiday Rate Multiplier', 'description' => 'Default bank holiday multiplier when employee profile does not specify one (e.g., 1.5).',
+      'type' => 'string', 'editable_by' => 'admin', 'sort' => 780, 'secret' => 0,
+    ],
+    [
+      'key' => 'payroll_overtime_priority', 'value' => 'PREMIUMS_THEN_OVERTIME', 'group' => 'payroll',
+      'label' => 'Overtime Priority Rule', 'description' => 'How premiums interact with overtime. For now, PREMIUMS_THEN_OVERTIME is implemented.',
+      'type' => 'string', 'editable_by' => 'admin', 'sort' => 790, 'secret' => 0,
+    ],
   ];
 
   $sql = "
@@ -695,6 +745,33 @@ function create_tables(PDO $pdo): void {
       KEY idx_seen (last_seen_at)
     ) ENGINE=InnoDB;
   ");
+
+  // PAYROLL BANK HOLIDAYS
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS payroll_bank_holidays (
+      holiday_date DATE PRIMARY KEY,
+      name VARCHAR(120) NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB;
+  ");
+
+  // PAYROLL BATCHES (monthly payroll runs)
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS payroll_batches (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      period_start DATE NOT NULL,
+      period_end DATE NOT NULL,
+      run_by BIGINT UNSIGNED NULL,
+      run_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      status ENUM('FINAL','VOID') NOT NULL DEFAULT 'FINAL',
+      notes VARCHAR(255) NULL,
+      snapshot_json JSON NULL,
+      KEY idx_period (period_start, period_end),
+      KEY idx_run_at (run_at)
+    ) ENGINE=InnoDB;
+  ");
+
 }
 
 /**
@@ -703,6 +780,8 @@ function create_tables(PDO $pdo): void {
 function drop_all(PDO $pdo): void {
   $pdo->exec("SET FOREIGN_KEY_CHECKS=0");
   foreach ([
+    'payroll_batches',
+    'payroll_bank_holidays',
     'admin_sessions',
     'admin_devices',
     'admin_users',

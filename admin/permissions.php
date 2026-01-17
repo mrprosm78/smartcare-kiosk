@@ -26,6 +26,7 @@ function admin_permissions_for_role(string $role): array {
     'edit_contract',
     'view_payroll',
     'export_payroll',
+    'run_payroll',
     'manage_settings_basic',
     'manage_settings_high',
     'manage_devices',
@@ -57,6 +58,7 @@ function admin_permissions_for_role(string $role): array {
       'view_contract',
       'view_payroll',
       'export_payroll',
+      'run_payroll',
     ];
   }
 
