@@ -33,26 +33,23 @@ function calendar_month_period(int $year, int $month): array {
 
 /** @return array<string,mixed> */
 function load_payroll_settings(PDO $pdo): array {
-  // Keep in sync with PayrollCalculator defaults (hours-only subset).
+  // Settings keys are seeded by setup.php (Payroll Rules section).
   $defaults = [
     'rounding_enabled' => true,
     'round_increment_minutes' => 15,
     'round_grace_minutes' => 5,
     'payroll_week_starts_on' => 'MONDAY',
     'payroll_timezone' => 'Europe/London',
-    'night_shift_threshold_percent' => 50,
-    // Global night premium window used for the "Night hours" bucket.
-    // If you want to use employee-specific night windows, disable this
-    // and payroll-hours will fall back to the employee pay profile.
-    'night_premium_enabled' => true,
-    'night_premium_start' => '22:00:00',
-    'night_premium_end' => '06:00:00',
-    'weekend_premium_enabled' => false,
+    'payroll_overtime_threshold_hours' => 40,
+    'payroll_stacking_mode' => 'exclusive',
+    'payroll_night_start' => '20:00',
+    'payroll_night_end' => '07:00',
+    'payroll_bank_holiday_cap_hours' => 12,
+    'payroll_callout_min_paid_hours' => 4,
+    // Weekend bucket is hours-only; we default to Sat/Sun unless a JSON weekend_days setting exists.
     'weekend_days' => ['SAT','SUN'],
-    'bank_holiday_enabled' => true,
-    'bank_holiday_paid' => true,
-    // Bank holiday paid hours cap per day (care-home rule: paid up to 12h)
-    'bank_holiday_paid_cap_hours' => 12,
+    // Used only for picking night break minutes; kept for backwards compatibility.
+    'night_shift_threshold_percent' => 50,
   ];
 
   $keys = array_keys($defaults);
@@ -64,6 +61,8 @@ function load_payroll_settings(PDO $pdo): array {
   foreach ($rows as $r) $map[(string)$r['key']] = (string)$r['value'];
 
   $out = $defaults;
+
+  // Scalars
   $out['rounding_enabled'] = isset($map['rounding_enabled']) ? ((int)$map['rounding_enabled'] === 1) : $defaults['rounding_enabled'];
   $out['round_increment_minutes'] = isset($map['round_increment_minutes']) ? (int)$map['round_increment_minutes'] : $defaults['round_increment_minutes'];
   $out['round_grace_minutes'] = isset($map['round_grace_minutes']) ? (int)$map['round_grace_minutes'] : $defaults['round_grace_minutes'];
@@ -74,27 +73,36 @@ function load_payroll_settings(PDO $pdo): array {
   if (isset($map['payroll_timezone']) && trim($map['payroll_timezone']) !== '') {
     $out['payroll_timezone'] = trim($map['payroll_timezone']);
   }
+  if (isset($map['payroll_overtime_threshold_hours']) && is_numeric($map['payroll_overtime_threshold_hours'])) {
+    $out['payroll_overtime_threshold_hours'] = (float)$map['payroll_overtime_threshold_hours'];
+  }
+  if (isset($map['payroll_stacking_mode']) && trim($map['payroll_stacking_mode']) !== '') {
+    $out['payroll_stacking_mode'] = trim((string)$map['payroll_stacking_mode']);
+  }
+  if (isset($map['payroll_night_start']) && trim($map['payroll_night_start']) !== '') {
+    $out['payroll_night_start'] = trim((string)$map['payroll_night_start']);
+  }
+  if (isset($map['payroll_night_end']) && trim($map['payroll_night_end']) !== '') {
+    $out['payroll_night_end'] = trim((string)$map['payroll_night_end']);
+  }
+  if (isset($map['payroll_bank_holiday_cap_hours']) && is_numeric($map['payroll_bank_holiday_cap_hours'])) {
+    $out['payroll_bank_holiday_cap_hours'] = (int)$map['payroll_bank_holiday_cap_hours'];
+  }
+  if (isset($map['payroll_callout_min_paid_hours']) && is_numeric($map['payroll_callout_min_paid_hours'])) {
+    $out['payroll_callout_min_paid_hours'] = (float)$map['payroll_callout_min_paid_hours'];
+  }
   if (isset($map['night_shift_threshold_percent']) && is_numeric($map['night_shift_threshold_percent'])) {
     $out['night_shift_threshold_percent'] = (int)$map['night_shift_threshold_percent'];
   }
-  $out['night_premium_enabled'] = isset($map['night_premium_enabled']) ? ((int)$map['night_premium_enabled']===1) : $defaults['night_premium_enabled'];
-  if (isset($map['night_premium_start']) && trim($map['night_premium_start']) !== '') {
-    $out['night_premium_start'] = trim((string)$map['night_premium_start']);
-  }
-  if (isset($map['night_premium_end']) && trim($map['night_premium_end']) !== '') {
-    $out['night_premium_end'] = trim((string)$map['night_premium_end']);
-  }
-  $out['weekend_premium_enabled'] = isset($map['weekend_premium_enabled']) ? ((int)$map['weekend_premium_enabled']===1) : $defaults['weekend_premium_enabled'];
+
+  // Optional weekend_days as JSON array (backwards/optional)
   if (isset($map['weekend_days']) && $map['weekend_days'] !== '') {
-    $arr = json_decode($map['weekend_days'], true);
-    if (is_array($arr)) {
-      $out['weekend_days'] = array_values(array_map(fn($x) => strtoupper((string)$x), $arr));
-    }
-  }
-  $out['bank_holiday_enabled'] = isset($map['bank_holiday_enabled']) ? ((int)$map['bank_holiday_enabled']===1) : $defaults['bank_holiday_enabled'];
-  $out['bank_holiday_paid'] = isset($map['bank_holiday_paid']) ? ((int)$map['bank_holiday_paid']===1) : $defaults['bank_holiday_paid'];
-  if (isset($map['bank_holiday_paid_cap_hours']) && is_numeric($map['bank_holiday_paid_cap_hours'])) {
-    $out['bank_holiday_paid_cap_hours'] = (int)$map['bank_holiday_paid_cap_hours'];
+    try {
+      $arr = json_decode($map['weekend_days'], true);
+      if (is_array($arr) && $arr) {
+        $out['weekend_days'] = array_values(array_map(fn($x) => strtoupper((string)$x), $arr));
+      }
+    } catch (Throwable $e) {}
   }
 
   // Validate week start
@@ -108,8 +116,13 @@ function load_payroll_settings(PDO $pdo): array {
   } catch (Throwable $e) {
     $out['payroll_timezone'] = $defaults['payroll_timezone'];
   }
+
+  $out['round_increment_minutes'] = max(1, (int)$out['round_increment_minutes']);
+  $out['round_grace_minutes'] = max(0, (int)$out['round_grace_minutes']);
+  $out['payroll_overtime_threshold_hours'] = max(0.0, (float)$out['payroll_overtime_threshold_hours']);
+  $out['payroll_bank_holiday_cap_hours'] = max(0, (int)$out['payroll_bank_holiday_cap_hours']);
+  $out['payroll_callout_min_paid_hours'] = max(0.0, (float)$out['payroll_callout_min_paid_hours']);
   $out['night_shift_threshold_percent'] = max(0, min(100, (int)$out['night_shift_threshold_percent']));
-  $out['bank_holiday_paid_cap_hours'] = max(0, (int)$out['bank_holiday_paid_cap_hours']);
 
   return $out;
 }
@@ -233,18 +246,14 @@ function normalize_hms(string $t, string $fallback): string {
 
 /** @return array{start:string,end:string} */
 function night_window_for_row(array $row, array $settings): array {
-  $defaultStart = '22:00:00';
-  $defaultEnd = '06:00:00';
-  $useGlobal = (bool)($settings['night_premium_enabled'] ?? true);
-  if ($useGlobal) {
-    $ns = normalize_hms((string)($settings['night_premium_start'] ?? ''), $defaultStart);
-    $ne = normalize_hms((string)($settings['night_premium_end'] ?? ''), $defaultEnd);
-    return ['start'=>$ns, 'end'=>$ne];
-  }
-  $ns = normalize_hms((string)($row['night_start'] ?? ''), $defaultStart);
-  $ne = normalize_hms((string)($row['night_end'] ?? ''), $defaultEnd);
+  // Payroll-wide night window (LOCKED model). We don't use per-employee night windows here.
+  $defaultStart = '20:00:00';
+  $defaultEnd = '07:00:00';
+  $ns = normalize_hms((string)($settings['payroll_night_start'] ?? ''), $defaultStart);
+  $ne = normalize_hms((string)($settings['payroll_night_end'] ?? ''), $defaultEnd);
   return ['start'=>$ns, 'end'=>$ne];
 }
+
 
 function night_minutes_between(string $startUtc, string $endUtc, string $nightStart, string $nightEnd, string $tz): int {
   try {
@@ -314,16 +323,9 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
       s.*,
       e.employee_code, e.first_name, e.last_name, e.nickname, e.is_agency, e.agency_label,
       p.contract_hours_per_week,
-      p.break_minutes_default, p.break_minutes_day, p.break_minutes_night,
+      p.break_minutes_default, p.break_minutes_night,
       p.break_is_paid, p.min_hours_for_break,
-      p.night_start, p.night_end,
-      (
-        SELECT sc.new_json
-        FROM kiosk_shift_changes sc
-        WHERE sc.shift_id = s.id AND sc.change_type = 'edit'
-        ORDER BY sc.id DESC
-        LIMIT 1
-      ) AS latest_edit_json
+      NULL AS latest_edit_json
     FROM kiosk_shifts s
     JOIN kiosk_employees e ON e.id = s.employee_id
     LEFT JOIN kiosk_employee_pay_profiles p ON p.employee_id = e.id
@@ -338,7 +340,9 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
   $shifts = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
   $contractHours = (float)($shifts[0]['contract_hours_per_week'] ?? 0);
-  $contractWeekMinutes = (int)round(max(0.0, $contractHours) * 60);
+  // LOCKED: overtime threshold is a care-home payroll setting (Mon–Sun week).
+  $thresholdHours = (float)($settings['payroll_overtime_threshold_hours'] ?? 0);
+  $contractWeekMinutes = (int)round(max(0.0, $thresholdHours) * 60);
 
   // Training minutes are shown separately and excluded from OT on this page.
   $trainingMinutes = 0;
@@ -375,7 +379,7 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
       ? (int)$eff['break_minutes']
       : (int)($isNightForBreak
         ? ($s['break_minutes_night'] ?? ($s['break_minutes_default'] ?? 0))
-        : ($s['break_minutes_day'] ?? ($s['break_minutes_default'] ?? 0))
+        : ($s['break_minutes_default'] ?? 0)
       );
     $breakMinutes = max(0, $breakMinutes);
 
@@ -396,6 +400,9 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
     if ($roundedTotalSegMin <= 0) continue;
 
     // Allocate unpaid break across rounded segments proportionally.
+    $shiftPaidTotal = 0;
+    $shiftStartDate = (new DateTimeImmutable($rin, new DateTimeZone('UTC')))->setTimezone(new DateTimeZone($tz))->format('Y-m-d');
+    $isCallout = ((int)($s['is_callout'] ?? 0) === 1);
     $remainingBreak = $unpaidBreakTotal;
     foreach ($roundedSegs as $idx => $seg) {
       $segMin = (int)$seg['minutes_utc'];
@@ -413,6 +420,7 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
       $remainingBreak -= $allocBreak;
 
       $paidSeg = max(0, $segMin - max(0, $allocBreak));
+      $shiftPaidTotal += $paidSeg;
       $date = (string)$seg['date'];
 
       if (!isset($days[$date])) {
@@ -452,8 +460,8 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
       if (is_weekend_date($date, $settings)) {
         $days[$date]['weekend'] += $paidSeg;
       }
-      if ((bool)$settings['bank_holiday_enabled'] && (bool)$settings['bank_holiday_paid'] && isset($bankHolidayIndex[$date])) {
-        $capHours = (int)($settings['bank_holiday_paid_cap_hours'] ?? 12);
+      if (isset($bankHolidayIndex[$date])) {
+        $capHours = (int)($settings['payroll_bank_holiday_cap_hours'] ?? 12);
         $capMin = max(0, $capHours) * 60;
         if ($capMin <= 0) {
           $days[$date]['bank_holiday'] += $paidSeg;
@@ -482,6 +490,36 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
     }
 
     // Accumulate ACTUAL worked minutes + bounds by day (independently)
+
+    // LOCKED: Call-out minimum paid hours uplift happens before overtime.
+    if ($isCallout) {
+      $minPaidH = (float)($settings['payroll_callout_min_paid_hours'] ?? 0);
+      $minPaidMin = (int)round(max(0.0, $minPaidH) * 60);
+      if ($minPaidMin > 0 && $shiftPaidTotal > 0 && $shiftPaidTotal < $minPaidMin) {
+        $uplift = $minPaidMin - $shiftPaidTotal;
+        if (!isset($days[$shiftStartDate])) {
+          $days[$shiftStartDate] = [
+            'date' => $shiftStartDate,
+            'actual_start' => null,
+            'actual_end' => null,
+            'rounded_start' => null,
+            'rounded_end' => null,
+            'actual_worked' => 0,
+            'rounded_worked' => 0,
+            'unpaid_break' => 0,
+            'paid' => 0,
+            'weekend' => 0,
+            'bank_holiday' => 0,
+            'night' => 0,
+            'callout' => 0,
+            'dst_delta' => 0,
+          ];
+        }
+        $days[$shiftStartDate]['paid'] += $uplift;
+        $days[$shiftStartDate]['callout'] += $uplift;
+      }
+    }
+
     foreach ($actualSegs as $aseg) {
       $date = (string)$aseg['date'];
       if (!isset($days[$date])) {

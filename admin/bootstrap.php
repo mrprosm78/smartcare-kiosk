@@ -287,6 +287,22 @@ function admin_sql_employee_number(string $alias = 'e'): string {
   return "{$a}.employee_code";
 }
 
+/**
+ * PHP helper for displaying an employee name from a fetched row.
+ * Mirrors admin_sql_employee_display_name().
+ */
+function admin_employee_display_name(array $employeeRow): string {
+  $nickname = trim((string)($employeeRow['nickname'] ?? ''));
+  if ($nickname !== '') return $nickname;
+  $first = trim((string)($employeeRow['first_name'] ?? ''));
+  $last  = trim((string)($employeeRow['last_name'] ?? ''));
+  $full = trim($first . ' ' . $last);
+  if ($full !== '') return $full;
+  // Fallback to code if name missing.
+  $code = trim((string)($employeeRow['employee_code'] ?? ''));
+  return $code !== '' ? $code : 'Employee';
+}
+
 function admin_redirect(string $to): void {
   header('Location: ' . $to);
   exit;
