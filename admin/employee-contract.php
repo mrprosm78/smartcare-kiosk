@@ -25,10 +25,10 @@ $canEdit = admin_can($user, 'edit_contract');
 $err = '';
 $success = '';
 
+
 $pay = [
   'contract_hours_per_week' => null,
   'break_minutes_default' => null,
-  'break_minutes_day' => null,
   'break_minutes_night' => null,
   'break_is_paid' => 0,
   'min_hours_for_break' => null,
@@ -41,6 +41,13 @@ $pay = [
   'night_end' => null,
 ];
 
+// Contract rule overrides stored in kiosk_employee_pay_profiles.rules_json
+$rules = [
+  'stacking_override' => 'inherit',
+  'premiums' => ['night'=>null,'weekend'=>null,'bank_holiday'=>null,'overtime'=>null],
+  'multipliers' => ['night'=>null,'weekend'=>null,'bank_holiday'=>null,'overtime'=>null],
+];
+
 $ps = $pdo->prepare("SELECT * FROM kiosk_employee_pay_profiles WHERE employee_id=? LIMIT 1");
 $ps->execute([$id]);
 $prow = $ps->fetch(PDO::FETCH_ASSOC);
@@ -51,6 +58,23 @@ if ($prow) {
   $pay['break_is_paid'] = (int)($prow['break_is_paid'] ?? 0);
   $pay['holiday_entitled'] = (int)($prow['holiday_entitled'] ?? 0);
   $pay['bank_holiday_entitled'] = (int)($prow['bank_holiday_entitled'] ?? 0);
+
+  if (!empty($prow['rules_json'])) {
+    $decoded = json_decode((string)$prow['rules_json'], true);
+    if (is_array($decoded)) {
+      if (isset($decoded['stacking_override'])) $rules['stacking_override'] = (string)$decoded['stacking_override'];
+      if (isset($decoded['premiums']) && is_array($decoded['premiums'])) {
+        foreach ($rules['premiums'] as $k=>$_) {
+          if (array_key_exists($k,$decoded['premiums'])) $rules['premiums'][$k] = $decoded['premiums'][$k];
+        }
+      }
+      if (isset($decoded['multipliers']) && is_array($decoded['multipliers'])) {
+        foreach ($rules['multipliers'] as $k=>$_) {
+          if (array_key_exists($k,$decoded['multipliers'])) $rules['multipliers'][$k] = $decoded['multipliers'][$k];
+        }
+      }
+    }
+  }
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -63,7 +87,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $pp = [
       'contract_hours_per_week' => trim((string)($_POST['contract_hours_per_week'] ?? '')),
       'break_minutes_default' => trim((string)($_POST['break_minutes_default'] ?? '')),
-      'break_minutes_day' => trim((string)($_POST['break_minutes_day'] ?? '')),
       'break_minutes_night' => trim((string)($_POST['break_minutes_night'] ?? '')),
       'break_is_paid' => (int)($_POST['break_is_paid'] ?? 0) === 1 ? 1 : 0,
       'min_hours_for_break' => trim((string)($_POST['min_hours_for_break'] ?? '')),
@@ -76,18 +99,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       'night_end' => trim((string)($_POST['night_end'] ?? '')),
     ];
 
-    foreach (['contract_hours_per_week','break_minutes_default','break_minutes_day','break_minutes_night','min_hours_for_break','bank_holiday_multiplier','day_rate','night_rate','night_start','night_end'] as $k) {
+    foreach (['contract_hours_per_week','break_minutes_default','break_minutes_night','min_hours_for_break','bank_holiday_multiplier','day_rate','night_rate','night_start','night_end'] as $k) {
       if ($pp[$k] === '') $pp[$k] = null;
     }
 
-    $pdo->prepare("INSERT INTO kiosk_employee_pay_profiles (employee_id, contract_hours_per_week, break_minutes_default, break_minutes_day, break_minutes_night, break_is_paid, min_hours_for_break, holiday_entitled, bank_holiday_entitled, bank_holiday_multiplier, day_rate, night_rate, night_start, night_end, created_at, updated_at)
-                   VALUES (:id,:ch,:bm,:bmd,:bmn,:bp,:mh,:he,:bhe,:bhm,:dr,:nr,:ns,:ne, UTC_TIMESTAMP, UTC_TIMESTAMP)
-                   ON DUPLICATE KEY UPDATE contract_hours_per_week=VALUES(contract_hours_per_week), break_minutes_default=VALUES(break_minutes_default), break_minutes_day=VALUES(break_minutes_day), break_minutes_night=VALUES(break_minutes_night), break_is_paid=VALUES(break_is_paid), min_hours_for_break=VALUES(min_hours_for_break), holiday_entitled=VALUES(holiday_entitled), bank_holiday_entitled=VALUES(bank_holiday_entitled), bank_holiday_multiplier=VALUES(bank_holiday_multiplier), day_rate=VALUES(day_rate), night_rate=VALUES(night_rate), night_start=VALUES(night_start), night_end=VALUES(night_end), updated_at=UTC_TIMESTAMP")
+    // Rules JSON (premiums/multiplier overrides + stacking override)
+    $stack = (string)($_POST['stacking_override'] ?? 'inherit');
+    if (!in_array($stack, ['inherit','exclusive','stack'], true)) $stack = 'inherit';
+
+    $prem = [
+      'night' => trim((string)($_POST['rule_night_premium'] ?? '')),
+      'weekend' => trim((string)($_POST['rule_weekend_premium'] ?? '')),
+      'bank_holiday' => trim((string)($_POST['rule_bank_holiday_premium'] ?? '')),
+      'overtime' => trim((string)($_POST['rule_overtime_premium'] ?? '')),
+    ];
+    $mult = [
+      'night' => trim((string)($_POST['rule_night_multiplier'] ?? '')),
+      'weekend' => trim((string)($_POST['rule_weekend_multiplier'] ?? '')),
+      'bank_holiday' => trim((string)($_POST['rule_bank_holiday_multiplier'] ?? '')),
+      'overtime' => trim((string)($_POST['rule_overtime_multiplier'] ?? '')),
+    ];
+
+    foreach ($prem as $k => $v) $prem[$k] = ($v === '') ? null : (float)$v;
+    foreach ($mult as $k => $v) $mult[$k] = ($v === '') ? null : (float)$v;
+
+    $rulesToSave = [
+      'stacking_override' => $stack,
+      'premiums' => $prem,
+      'multipliers' => $mult,
+    ];
+
+    $pdo->prepare("INSERT INTO kiosk_employee_pay_profiles (employee_id, contract_hours_per_week, break_minutes_default, break_minutes_night, break_is_paid, min_hours_for_break, holiday_entitled, bank_holiday_entitled, bank_holiday_multiplier, day_rate, night_rate, night_start, night_end, rules_json, created_at, updated_at)
+                   VALUES (:id,:ch,:bm,:bmn,:bp,:mh,:he,:bhe,:bhm,:dr,:nr,:ns,:ne,:rj, UTC_TIMESTAMP, UTC_TIMESTAMP)
+                   ON DUPLICATE KEY UPDATE contract_hours_per_week=VALUES(contract_hours_per_week), break_minutes_default=VALUES(break_minutes_default), break_minutes_night=VALUES(break_minutes_night), break_is_paid=VALUES(break_is_paid), min_hours_for_break=VALUES(min_hours_for_break), holiday_entitled=VALUES(holiday_entitled), bank_holiday_entitled=VALUES(bank_holiday_entitled), bank_holiday_multiplier=VALUES(bank_holiday_multiplier), day_rate=VALUES(day_rate), night_rate=VALUES(night_rate), night_start=VALUES(night_start), night_end=VALUES(night_end), rules_json=VALUES(rules_json), updated_at=UTC_TIMESTAMP")
       ->execute([
         ':id' => $id,
         ':ch' => $pp['contract_hours_per_week'],
         ':bm' => $pp['break_minutes_default'],
-        ':bmd' => $pp['break_minutes_day'],
         ':bmn' => $pp['break_minutes_night'],
         ':bp' => $pp['break_is_paid'],
         ':mh' => $pp['min_hours_for_break'],
@@ -98,6 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ':nr' => $pp['night_rate'],
         ':ns' => $pp['night_start'],
         ':ne' => $pp['night_end'],
+        ':rj' => json_encode($rulesToSave),
       ]);
 
     $success = 'Saved';
@@ -182,16 +231,7 @@ $readonly = !$canEdit;
                     <div class="text-xs uppercase tracking-widest text-white/50">Default break minutes</div>
                     <input name="break_minutes_default" value="<?= h((string)($pay['break_minutes_default'] ?? '')) ?>" <?= ro_attr($readonly) ?>
                       class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" placeholder="e.g. 30">
-                  </label>
-
-                  <label class="block">
-                    <div class="text-xs uppercase tracking-widest text-white/50">Day break minutes</div>
-                    <input name="break_minutes_day" value="<?= h((string)($pay['break_minutes_day'] ?? '')) ?>" <?= ro_attr($readonly) ?>
-                      class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" placeholder="e.g. 45">
-                    <div class="mt-2 text-xs text-white/50">Used when the shift is not classified as a night shift.</div>
-                  </label>
-
-                  <label class="block">
+                  </label>                  <label class="block">
                     <div class="text-xs uppercase tracking-widest text-white/50">Night break minutes</div>
                     <input name="break_minutes_night" value="<?= h((string)($pay['break_minutes_night'] ?? '')) ?>" <?= ro_attr($readonly) ?>
                       class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" placeholder="e.g. 30">
@@ -260,7 +300,70 @@ $readonly = !$canEdit;
               </div>
             </section>
 
-            <?php if ($canEdit): ?>
+            
+            <section class="rounded-3xl border border-white/10 bg-white/5 p-5">
+              <h2 class="text-lg font-semibold">Premiums & multipliers (Overrides)\</h2>
+              <p class="mt-1 text-sm text-white/70">Optional: contract overrides care-home settings. Leave blank to inherit.\</p>
+
+              <div class="mt-4 space-y-4">
+                <label class="block">
+                  <div class="text-xs uppercase tracking-widest text-white/50">Stacking override\</div>
+                  <select name="stacking_override" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" <?= ro_attr($readonly) ?>>
+                    <?php foreach (["inherit"=>"Inherit care-home","exclusive"=>"Exclusive (1 multiplier + 1 premium)","stack"=>"Stack (highest multiplier + highest premium)"] as $k=>$lab): ?>
+                      <option value="<?= h($k) ?>" <?= ($rules['stacking_override'] === $k) ? 'selected' : '' ?>><?= h($lab) ?>\</option>
+                    <?php endforeach; ?>
+                  </select>
+                </label>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div class="text-sm font-semibold">Premiums (£/hour)\</div>
+                    <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <label class="block">
+                        <div class="text-xs uppercase tracking-widest text-white/50">Night\</div>
+                        <input name="rule_night_premium" value="<?= h((string)($rules['premiums']['night'] ?? '')) ?>" <?= ro_attr($readonly) ?> class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2 text-sm outline-none focus:border-white/30" placeholder="e.g. 0.50">
+                      </label>
+                      <label class="block">
+                        <div class="text-xs uppercase tracking-widest text-white/50">Weekend\</div>
+                        <input name="rule_weekend_premium" value="<?= h((string)($rules['premiums']['weekend'] ?? '')) ?>" <?= ro_attr($readonly) ?> class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2 text-sm outline-none focus:border-white/30" placeholder="e.g. 0.50">
+                      </label>
+                      <label class="block">
+                        <div class="text-xs uppercase tracking-widest text-white/50">Bank Holiday\</div>
+                        <input name="rule_bank_holiday_premium" value="<?= h((string)($rules['premiums']['bank_holiday'] ?? '')) ?>" <?= ro_attr($readonly) ?> class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2 text-sm outline-none focus:border-white/30" placeholder="e.g. 0.50">
+                      </label>
+                      <label class="block">
+                        <div class="text-xs uppercase tracking-widest text-white/50">Overtime\</div>
+                        <input name="rule_overtime_premium" value="<?= h((string)($rules['premiums']['overtime'] ?? '')) ?>" <?= ro_attr($readonly) ?> class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2 text-sm outline-none focus:border-white/30" placeholder="e.g. 0.00">
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div class="text-sm font-semibold">Multipliers (x)\</div>
+                    <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <label class="block">
+                        <div class="text-xs uppercase tracking-widest text-white/50">Night\</div>
+                        <input name="rule_night_multiplier" value="<?= h((string)($rules['multipliers']['night'] ?? '')) ?>" <?= ro_attr($readonly) ?> class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2 text-sm outline-none focus:border-white/30" placeholder="e.g. 1.00">
+                      </label>
+                      <label class="block">
+                        <div class="text-xs uppercase tracking-widest text-white/50">Weekend\</div>
+                        <input name="rule_weekend_multiplier" value="<?= h((string)($rules['multipliers']['weekend'] ?? '')) ?>" <?= ro_attr($readonly) ?> class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2 text-sm outline-none focus:border-white/30" placeholder="e.g. 1.00">
+                      </label>
+                      <label class="block">
+                        <div class="text-xs uppercase tracking-widest text-white/50">Bank Holiday\</div>
+                        <input name="rule_bank_holiday_multiplier" value="<?= h((string)($rules['multipliers']['bank_holiday'] ?? '')) ?>" <?= ro_attr($readonly) ?> class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2 text-sm outline-none focus:border-white/30" placeholder="e.g. 1.50">
+                      </label>
+                      <label class="block">
+                        <div class="text-xs uppercase tracking-widest text-white/50">Overtime\</div>
+                        <input name="rule_overtime_multiplier" value="<?= h((string)($rules['multipliers']['overtime'] ?? '')) ?>" <?= ro_attr($readonly) ?> class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2 text-sm outline-none focus:border-white/30" placeholder="e.g. 1.00">
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+<?php if ($canEdit): ?>
               <div class="lg:col-span-2 flex items-center justify-end">
                 <button class="rounded-2xl bg-white text-slate-900 px-5 py-2.5 text-sm font-semibold hover:bg-white/90">Save contract</button>
               </div>

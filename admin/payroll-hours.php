@@ -429,6 +429,7 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
           'weekend' => 0,
           'bank_holiday' => 0,
           'night' => 0,
+          'callout' => 0,
           'dst_delta' => 0,
         ];
       }
@@ -473,6 +474,11 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
       if ($nightOverlap > 0 && $segMin > 0) {
         $days[$date]['night'] += (int)floor($nightOverlap * ($paidSeg / $segMin));
       }
+
+      // Call-out minutes (hours-only bucket)
+      if ((int)($s['is_callout'] ?? 0) === 1) {
+        $days[$date]['callout'] += $paidSeg;
+      }
     }
 
     // Accumulate ACTUAL worked minutes + bounds by day (independently)
@@ -493,6 +499,7 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
           'weekend' => 0,
           'bank_holiday' => 0,
           'night' => 0,
+          'callout' => 0,
           'dst_delta' => 0,
         ];
       }
@@ -515,6 +522,7 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
   $totalWeekend = 0;
   $totalBH = 0;
   $totalNight = 0;
+  $totalCallout = 0;
   $totalDst = 0;
 
   foreach ($days as $date => $d) {
@@ -534,6 +542,7 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
     $totalWeekend += (int)$d['weekend'];
     $totalBH += (int)$d['bank_holiday'];
     $totalNight += (int)$d['night'];
+    $totalCallout += (int)($d['callout'] ?? 0);
     $totalDst += (int)$d['dst_delta'];
   }
 
@@ -567,6 +576,7 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
       'weekend' => $totalWeekend,
       'bank_holiday' => $totalBH,
       'night' => $totalNight,
+      'callout' => $totalCallout,
       'dst_delta' => $totalDst,
       'regular' => $monthRegular,
       'overtime' => $monthOT,
@@ -676,7 +686,7 @@ $active = admin_url('payroll-hours.php');
           <?php
             // ALL EMPLOYEES SUMMARY
             if ($employeeId === 0):
-              $grand = ['paid'=>0,'unpaid_break'=>0,'weekend'=>0,'bank_holiday'=>0,'night'=>0,'overtime'=>0,'training'=>0,'dst_delta'=>0];
+              $grand = ['paid'=>0,'unpaid_break'=>0,'weekend'=>0,'bank_holiday'=>0,'night'=>0,'callout'=>0,'overtime'=>0,'training'=>0,'dst_delta'=>0];
           ?>
 
             <div class="mt-6 bg-white/5 border border-white/10 rounded-3xl overflow-hidden">
@@ -694,6 +704,7 @@ $active = admin_url('payroll-hours.php');
                       <th class="text-right px-4 py-3">Weekend (h)</th>
                       <th class="text-right px-4 py-3">Bank holiday (h)</th>
                       <th class="text-right px-4 py-3">Night (h)</th>
+                      <th class="text-right px-4 py-3">Call-out (h)</th>
                       <th class="text-right px-4 py-3">Overtime (h)</th>
                       <th class="text-right px-4 py-3">Training (h)</th>
                       <th class="text-right px-4 py-3">DST Δ (min)</th>
@@ -711,6 +722,7 @@ $active = admin_url('payroll-hours.php');
                         $grand['weekend'] += (int)$t['weekend'];
                         $grand['bank_holiday'] += (int)$t['bank_holiday'];
                         $grand['night'] += (int)$t['night'];
+                        $grand['callout'] += (int)($t['callout'] ?? 0);
                         $grand['overtime'] += (int)$t['overtime'];
                         $grand['training'] += $trainingMin;
                         $grand['dst_delta'] += (int)$t['dst_delta'];
@@ -725,6 +737,7 @@ $active = admin_url('payroll-hours.php');
                         <td class="px-4 py-3 text-right"><?= h(number_format(((int)$t['weekend'])/60, 2)) ?></td>
                         <td class="px-4 py-3 text-right"><?= h(number_format(((int)$t['bank_holiday'])/60, 2)) ?></td>
                         <td class="px-4 py-3 text-right"><?= h(number_format(((int)$t['night'])/60, 2)) ?></td>
+                        <td class="px-4 py-3 text-right"><?= h(number_format(((int)($t['callout'] ?? 0))/60, 2)) ?></td>
                         <td class="px-4 py-3 text-right"><?= h(number_format(((int)$t['overtime'])/60, 2)) ?></td>
                         <td class="px-4 py-3 text-right"><?= h(number_format($trainingMin/60, 2)) ?></td>
                         <td class="px-4 py-3 text-right"><?= (int)$t['dst_delta'] ?></td>
@@ -739,6 +752,7 @@ $active = admin_url('payroll-hours.php');
                       <th class="text-right px-4 py-3"><?= h(number_format($grand['weekend']/60, 2)) ?></th>
                       <th class="text-right px-4 py-3"><?= h(number_format($grand['bank_holiday']/60, 2)) ?></th>
                       <th class="text-right px-4 py-3"><?= h(number_format($grand['night']/60, 2)) ?></th>
+                      <th class="text-right px-4 py-3"><?= h(number_format($grand['callout']/60, 2)) ?></th>
                       <th class="text-right px-4 py-3"><?= h(number_format($grand['overtime']/60, 2)) ?></th>
                       <th class="text-right px-4 py-3"><?= h(number_format($grand['training']/60, 2)) ?></th>
                       <th class="text-right px-4 py-3"><?= (int)$grand['dst_delta'] ?></th>
@@ -802,6 +816,7 @@ $active = admin_url('payroll-hours.php');
                         <th class="text-right px-4 py-3">Weekend (h)</th>
                         <th class="text-right px-4 py-3">BH (h)</th>
                         <th class="text-right px-4 py-3">Night (h)</th>
+                        <th class="text-right px-4 py-3">Call-out (h)</th>
                         <th class="text-right px-4 py-3">DST Δ (min)</th>
                       </tr>
                     </thead>
@@ -822,6 +837,7 @@ $active = admin_url('payroll-hours.php');
                           <td class="px-4 py-3 text-right"><?= h(number_format(((int)$d['weekend'])/60, 2)) ?></td>
                           <td class="px-4 py-3 text-right"><?= h(number_format(((int)$d['bank_holiday'])/60, 2)) ?></td>
                           <td class="px-4 py-3 text-right"><?= h(number_format(((int)$d['night'])/60, 2)) ?></td>
+                          <td class="px-4 py-3 text-right"><?= h(number_format(((int)($d['callout'] ?? 0))/60, 2)) ?></td>
                           <td class="px-4 py-3 text-right"><?= (int)$d['dst_delta'] ?></td>
                         </tr>
                       <?php endforeach; ?>
@@ -840,6 +856,7 @@ $active = admin_url('payroll-hours.php');
                   <div>Weekend: <b><?= h(number_format(((int)$tot['weekend'])/60, 2)) ?>h</b></div>
                   <div>Bank holiday: <b><?= h(number_format(((int)$tot['bank_holiday'])/60, 2)) ?>h</b></div>
                   <div>Night: <b><?= h(number_format(((int)$tot['night'])/60, 2)) ?>h</b></div>
+                  <div>Call-out: <b><?= h(number_format(((int)($tot['callout'] ?? 0))/60, 2)) ?>h</b></div>
                   <div>Overtime (weekly): <b><?= h(number_format(((int)$tot['overtime'])/60, 2)) ?>h</b></div>
                   <div>Training (separate): <b><?= h(number_format($trainingMin/60, 2)) ?>h</b></div>
                   <div>DST Δ total: <b><?= (int)$tot['dst_delta'] ?> min</b></div>

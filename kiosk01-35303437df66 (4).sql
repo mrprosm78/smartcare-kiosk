@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: sdb-67.hosting.stackcp.net
--- Generation Time: Jan 17, 2026 at 11:15 PM
+-- Generation Time: Jan 18, 2026 at 01:48 AM
 -- Server version: 10.6.18-MariaDB-log
 -- PHP Version: 8.3.29
 
@@ -298,7 +298,8 @@ CREATE TABLE `kiosk_shifts` (
   `created_at` datetime DEFAULT current_timestamp(),
   `updated_at` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `training_minutes` int(11) DEFAULT NULL,
-  `training_note` varchar(255) DEFAULT NULL
+  `training_note` varchar(255) DEFAULT NULL,
+  `is_callout` tinyint(1) NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
 
 -- --------------------------------------------------------

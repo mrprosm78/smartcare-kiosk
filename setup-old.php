@@ -341,100 +341,112 @@ function seed_settings(PDO $pdo): void {
       'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 650, 'secret' => 0,
     ],
 
+
     // ===========================
-    // Payroll (Care-home Rules)
+    // Payroll (Carehome Rules)
     // ===========================
     [
       'key' => 'payroll_week_starts_on', 'value' => 'MONDAY', 'group' => 'payroll',
-      'label' => 'Payroll Week Starts On', 'description' => 'Defines the payroll week (Mon–Sun) for weekly overtime calculation.',
+      'label' => 'Payroll Week Starts On', 'description' => 'Defines the payroll week for weekly overtime calculation (e.g., MONDAY).',
       'type' => 'string', 'editable_by' => 'admin', 'sort' => 710, 'secret' => 0,
     ],
     [
       'key' => 'payroll_timezone', 'value' => 'Europe/London', 'group' => 'payroll',
-      'label' => 'Payroll Timezone', 'description' => 'Timezone used for day/week boundaries (weekend and bank holiday cutoffs).',
+      'label' => 'Payroll Timezone', 'description' => 'Timezone used for midnight/day boundaries (weekend/bank holiday until midnight).',
       'type' => 'string', 'editable_by' => 'admin', 'sort' => 715, 'secret' => 0,
     ],
     [
-      'key' => 'payroll_overtime_threshold_hours', 'value' => '40', 'group' => 'payroll',
-      'label' => 'Overtime Threshold (hours/week)', 'description' => 'If paid hours in the payroll week exceed this, the excess becomes overtime (contract rules can override enhancements).',
+      'key' => 'overtime_default_multiplier', 'value' => '1.5', 'group' => 'payroll',
+      'label' => 'Overtime Rate Multiplier', 'description' => 'Default overtime multiplier when employee profile does not specify one (e.g., 1.5).',
       'type' => 'string', 'editable_by' => 'admin', 'sort' => 720, 'secret' => 0,
     ],
     [
-      'key' => 'payroll_stacking_mode', 'value' => 'exclusive', 'group' => 'payroll',
-      'label' => 'Stacking Mode', 'description' => 'exclusive = apply at most ONE enhancement total per minute (highest wins). stack = allow ONE multiplier + ONE premium per minute.',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 730, 'secret' => 0,
+      'key' => 'night_shift_threshold_percent', 'value' => '50', 'group' => 'payroll',
+      'label' => 'Night Shift Threshold (%)', 'description' => 'If >= this % of a shift falls within the night window, apply night break minutes.',
+      'type' => 'string', 'editable_by' => 'admin', 'sort' => 725, 'secret' => 0,
     ],
     [
-      'key' => 'payroll_night_start', 'value' => '20:00', 'group' => 'payroll',
-      'label' => 'Night Start', 'description' => 'Night window start time (24h HH:MM).',
+      'key' => 'weekend_premium_enabled', 'value' => '0', 'group' => 'payroll',
+      'label' => 'Weekend Premium Enabled', 'description' => 'If 1, apply weekend premium multiplier for weekend days.',
+      'type' => 'bool', 'editable_by' => 'admin', 'sort' => 730, 'secret' => 0,
+    ],
+    [
+      'key' => 'weekend_days', 'value' => '["SAT","SUN"]', 'group' => 'payroll',
+      'label' => 'Weekend Days', 'description' => 'JSON array of weekend day codes (SAT,SUN).',
       'type' => 'string', 'editable_by' => 'admin', 'sort' => 740, 'secret' => 0,
     ],
     [
-      'key' => 'payroll_night_end', 'value' => '07:00', 'group' => 'payroll',
-      'label' => 'Night End', 'description' => 'Night window end time (24h HH:MM).',
-      'type' => 'string', 'editable_by' => 'admin', 'sort' => 741, 'secret' => 0,
-    ],
-    [
-      'key' => 'payroll_bank_holiday_cap_hours', 'value' => '12', 'group' => 'payroll',
-      'label' => 'Bank Holiday Cap (hours)', 'description' => 'Max bank holiday enhanced hours per shift (e.g., 12 hours).',
+      'key' => 'weekend_rate_multiplier', 'value' => '1.25', 'group' => 'payroll',
+      'label' => 'Weekend Rate Multiplier', 'description' => 'Multiplier for weekend hours when enabled (e.g., 1.25).',
       'type' => 'string', 'editable_by' => 'admin', 'sort' => 750, 'secret' => 0,
     ],
     [
-      'key' => 'payroll_callout_min_paid_hours', 'value' => '4', 'group' => 'payroll',
-      'label' => 'Call-out Minimum Paid Hours', 'description' => 'If a shift is marked call-out and paid hours are below this, uplift paid hours to this minimum BEFORE overtime is calculated.',
-      'type' => 'string', 'editable_by' => 'admin', 'sort' => 760, 'secret' => 0,
+      'key' => 'bank_holiday_enabled', 'value' => '1', 'group' => 'payroll',
+      'label' => 'Bank Holiday Enabled', 'description' => 'If 1, bank holiday logic is enabled.',
+      'type' => 'bool', 'editable_by' => 'admin', 'sort' => 760, 'secret' => 0,
+    ],
+    [
+      'key' => 'bank_holiday_paid', 'value' => '1', 'group' => 'payroll',
+      'label' => 'Bank Holiday Paid', 'description' => 'If 1, bank holiday shifts are payable (and may attract multiplier).',
+      'type' => 'bool', 'editable_by' => 'admin', 'sort' => 770, 'secret' => 0,
+    ],
+    [
+      'key' => 'bank_holiday_rate_multiplier', 'value' => '1.5', 'group' => 'payroll',
+      'label' => 'Bank Holiday Rate Multiplier', 'description' => 'Default bank holiday multiplier when employee profile does not specify one (e.g., 1.5).',
+      'type' => 'string', 'editable_by' => 'admin', 'sort' => 780, 'secret' => 0,
+    ],
+    [
+      'key' => 'payroll_overtime_priority', 'value' => 'PREMIUMS_THEN_OVERTIME', 'group' => 'payroll',
+      'label' => 'Overtime Priority Rule', 'description' => 'How premiums interact with overtime. For now, PREMIUMS_THEN_OVERTIME is implemented.',
+      'type' => 'string', 'editable_by' => 'admin', 'sort' => 790, 'secret' => 0,
     ],
 
-    // Default premiums & multipliers (care-home defaults). Contract overrides via employee pay profile rules_json.
+
+    // Premium/multiplier rules (care-home defaults). Contract can override via rules_json.
     [
-      'key' => 'default_night_multiplier', 'value' => '1.00', 'group' => 'payroll',
-      'label' => 'Default Night Multiplier', 'description' => 'Default night multiplier (1.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 800, 'secret' => 0,
+      'key' => 'premium_stacking_mode', 'value' => 'exclusive', 'group' => 'payroll',
+      'label' => 'Premium Stacking Mode', 'description' => 'exclusive = apply at most one multiplier and one premium (highest wins). stack = allow one highest multiplier + one highest premium for the same time.',
+      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 792, 'secret' => 0,
     ],
     [
       'key' => 'default_night_premium_per_hour', 'value' => '0.00', 'group' => 'payroll',
-      'label' => 'Default Night Premium (£/hour)', 'description' => 'Default night premium per hour (0.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 801, 'secret' => 0,
-    ],
-    [
-      'key' => 'default_weekend_multiplier', 'value' => '1.00', 'group' => 'payroll',
-      'label' => 'Default Weekend Multiplier', 'description' => 'Default weekend multiplier (1.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 810, 'secret' => 0,
+      'label' => 'Night Premium (£/hour)', 'description' => 'Default extra £ per hour for night work (used if contract does not override).',
+      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 793, 'secret' => 0,
     ],
     [
       'key' => 'default_weekend_premium_per_hour', 'value' => '0.00', 'group' => 'payroll',
-      'label' => 'Default Weekend Premium (£/hour)', 'description' => 'Default weekend premium per hour (0.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 811, 'secret' => 0,
-    ],
-    [
-      'key' => 'default_bank_holiday_multiplier', 'value' => '1.50', 'group' => 'payroll',
-      'label' => 'Default Bank Holiday Multiplier', 'description' => 'Default bank holiday multiplier (1.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 820, 'secret' => 0,
+      'label' => 'Weekend Premium (£/hour)', 'description' => 'Default extra £ per hour for weekend work (used if contract does not override).',
+      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 794, 'secret' => 0,
     ],
     [
       'key' => 'default_bank_holiday_premium_per_hour', 'value' => '0.00', 'group' => 'payroll',
-      'label' => 'Default Bank Holiday Premium (£/hour)', 'description' => 'Default bank holiday premium per hour (0.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 821, 'secret' => 0,
-    ],
-    [
-      'key' => 'default_overtime_multiplier', 'value' => '1.00', 'group' => 'payroll',
-      'label' => 'Default Overtime Multiplier', 'description' => 'Default overtime multiplier (1.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 830, 'secret' => 0,
+      'label' => 'Bank Holiday Premium (£/hour)', 'description' => 'Default extra £ per hour for bank holiday work (used if contract does not override).',
+      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 795, 'secret' => 0,
     ],
     [
       'key' => 'default_overtime_premium_per_hour', 'value' => '0.00', 'group' => 'payroll',
-      'label' => 'Default Overtime Premium (£/hour)', 'description' => 'Default overtime premium per hour (0.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 831, 'secret' => 0,
+      'label' => 'Overtime Premium (£/hour)', 'description' => 'Default extra £ per hour for overtime (used if contract does not override).',
+      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 796, 'secret' => 0,
     ],
     [
-      'key' => 'default_callout_multiplier', 'value' => '1.00', 'group' => 'payroll',
-      'label' => 'Default Call-out Multiplier', 'description' => 'Default call-out multiplier (1.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 840, 'secret' => 0,
+      'key' => 'default_night_multiplier', 'value' => '1.00', 'group' => 'payroll',
+      'label' => 'Night Multiplier', 'description' => 'Default night multiplier (1.00 = none).',
+      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 797, 'secret' => 0,
     ],
     [
-      'key' => 'default_callout_premium_per_hour', 'value' => '0.00', 'group' => 'payroll',
-      'label' => 'Default Call-out Premium (£/hour)', 'description' => 'Default call-out premium per hour (0.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 841, 'secret' => 0,
+      'key' => 'default_weekend_multiplier', 'value' => '1.00', 'group' => 'payroll',
+      'label' => 'Weekend Multiplier', 'description' => 'Default weekend multiplier (1.00 = none).',
+      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 798, 'secret' => 0,
+    ],
+    [
+      'key' => 'default_bank_holiday_multiplier', 'value' => '1.50', 'group' => 'payroll',
+      'label' => 'Bank Holiday Multiplier', 'description' => 'Default bank holiday multiplier (1.00 = none).',
+      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 799, 'secret' => 0,
+    ],
+    [
+      'key' => 'default_overtime_multiplier', 'value' => '1.00', 'group' => 'payroll',
+      'label' => 'Overtime Multiplier', 'description' => 'Default overtime multiplier (1.00 = none).',
+      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 800, 'secret' => 0,
     ],
   ];
 
@@ -586,16 +598,19 @@ function create_tables(PDO $pdo): void {
     CREATE TABLE IF NOT EXISTS kiosk_employee_pay_profiles (
       employee_id INT UNSIGNED PRIMARY KEY,
       contract_hours_per_week DECIMAL(6,2) NULL,
-
-      -- Break model (LOCKED): default + night only
       break_minutes_default INT NULL,
+      break_minutes_day INT NULL,
       break_minutes_night INT NULL,
       break_is_paid TINYINT(1) NOT NULL DEFAULT 0,
       min_hours_for_break DECIMAL(5,2) NULL,
-
-      -- Enhancement rules (LOCKED): stored in JSON (contract-first)
+      holiday_entitled TINYINT(1) NOT NULL DEFAULT 0,
+      bank_holiday_entitled TINYINT(1) NOT NULL DEFAULT 0,
+      bank_holiday_multiplier DECIMAL(5,2) NULL,
+      day_rate DECIMAL(10,2) NULL,
+      night_rate DECIMAL(10,2) NULL,
+      night_start TIME NULL,
+      night_end TIME NULL,
       rules_json JSON NULL,
-
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB;
@@ -637,7 +652,10 @@ function create_tables(PDO $pdo): void {
   add_column_if_missing($pdo, 'kiosk_shifts', 'payroll_locked_by', 'VARCHAR(100) NULL');
   add_column_if_missing($pdo, 'kiosk_shifts', 'payroll_batch_id', 'VARCHAR(64) NULL');
   add_column_if_missing($pdo, 'kiosk_shifts', 'is_callout', "TINYINT(1) NOT NULL DEFAULT 0");
-  // Pay profile additions (for older installs): keep night break support
+
+
+  // Pay profile additions for day/night breaks
+  add_column_if_missing($pdo, 'kiosk_employee_pay_profiles', 'break_minutes_day', 'INT NULL');
   add_column_if_missing($pdo, 'kiosk_employee_pay_profiles', 'break_minutes_night', 'INT NULL');
 
   // SHIFT CHANGES / AUDIT

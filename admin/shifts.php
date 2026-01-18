@@ -112,11 +112,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           'locked_at' => $shiftRow['payroll_locked_at'] ?? null,
           'batch_id'  => $shiftRow['payroll_batch_id'] ?? null,
         ],
+        'is_callout' => (int)($shiftRow['is_callout'] ?? 0),
       ];
 
       if ($action === 'approve') {
         admin_require_perm($user, 'approve_shifts');
         $note = trim((string)($_POST['note'] ?? ''));
+        $isCallout = (int)($_POST['is_callout'] ?? 0)===1 ? 1 : 0;
+        $snapshot['is_callout'] = $isCallout;
 
         $pdo->beginTransaction();
         try {
@@ -135,10 +138,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             json_encode($snapshot),
           ]);
 
-          $upd = $pdo->prepare("UPDATE kiosk_shifts SET approved_at=UTC_TIMESTAMP, approved_by=?, approval_note=?, updated_source='admin' WHERE id=?");
+          $upd = $pdo->prepare("UPDATE kiosk_shifts SET approved_at=UTC_TIMESTAMP, approved_by=?, approval_note=?, is_callout=?, updated_source='admin' WHERE id=?");
           $upd->execute([
             (string)($user['username'] ?? ''),
             $note !== '' ? $note : null,
+            $isCallout,
             $shiftId
           ]);
 
@@ -468,6 +472,10 @@ function badge(string $text, string $kind): string {
                               <button class="rounded-2xl bg-white/5 border border-white/10 px-3 py-2 text-xs hover:bg-white/10">Unapprove</button>
                             <?php else: ?>
                               <input type="hidden" name="action" value="approve"/>
+                              <label class="inline-flex items-center gap-2 mr-2 text-xs text-white/70">
+                                <input type="checkbox" name="is_callout" value="1" class="h-4 w-4 rounded" <?= ((int)($r['is_callout'] ?? 0)===1) ? 'checked' : '' ?> />
+                                Call-out
+                              </label>
                               <button class="rounded-2xl bg-white text-slate-900 px-3 py-2 text-xs font-semibold hover:bg-white/90">Approve</button>
                             <?php endif; ?>
                           </form>
