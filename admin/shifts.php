@@ -85,8 +85,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         admin_redirect(admin_url('shifts.php?' . http_build_query($_GET)));
       }
 
-      // If payroll locked, block approve/unapprove (and any future actions)
-      if ($isLocked && ($action === 'approve' || $action === 'unapprove')) {
+      // If payroll locked, block shift mutations (approve/unapprove/void)
+      if ($isLocked && ($action === 'approve' || $action === 'unapprove' || $action === 'void')) {
         admin_redirect(admin_url('shifts.php?' . http_build_query($_GET + ['n' => 'locked'])));
       }
 
@@ -114,6 +114,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ],
         'is_callout' => (int)($shiftRow['is_callout'] ?? 0),
       ];
+
+      if ($action === 'void') {
+        admin_require_perm($user, 'edit_shifts');
+        $note = trim((string)($_POST['note'] ?? ''));
+
+        $pdo->beginTransaction();
+        try {
+          // Mark as void without deleting (audit-safe)
+          $upd = $pdo->prepare("UPDATE kiosk_shifts
+              SET close_reason='void',
+                  duration_minutes=0,
+                  approved_at=NULL,
+                  approved_by=NULL,
+                  approval_note=NULL,
+                  updated_source='manager'
+              WHERE id=?");
+          $upd->execute([$shiftId]);
+
+          // Audit row (use 'edit' enum)
+          $ins = $pdo->prepare("INSERT INTO kiosk_shift_changes
+              (shift_id, change_type, changed_by_user_id, changed_by_username, changed_by_role, reason, note, old_json, new_json)
+              VALUES
+              (?, 'edit', ?, ?, ?, 'void', ?, ?, ?)");
+          $ins->execute([
+            $shiftId,
+            (int)$user['user_id'],
+            (string)($user['username'] ?? ''),
+            (string)($user['role'] ?? ''),
+            $note !== '' ? $note : null,
+            json_encode(['shift' => $shiftRow]),
+            json_encode($snapshot),
+          ]);
+
+          $pdo->commit();
+        } catch (Throwable $e) {
+          $pdo->rollBack();
+        }
+
+        admin_redirect(admin_url('shifts.php?' . http_build_query($_GET)));
+      }
 
       if ($action === 'approve') {
         admin_require_perm($user, 'approve_shifts');
@@ -193,7 +233,7 @@ $active = admin_url('shifts.php');
 $mode = (string)($_GET['mode'] ?? 'week'); // day|week|month|range
 $baseDate = (string)($_GET['date'] ?? gmdate('Y-m-d'));
 $empId = (int)($_GET['employee_id'] ?? 0);
-$status = (string)($_GET['status'] ?? 'all'); // all|open|closed|approved|unapproved|missing_out
+$status = (string)($_GET['status'] ?? 'all'); // all|open|closed|approved|unapproved|missing_out|voided
 
 $start = $baseDate;
 $end = $baseDate;
@@ -237,6 +277,11 @@ $emps = $pdo->query(
 $where = ["s.clock_in_at >= ? AND s.clock_in_at < ?"];
 $params = [$startSql, $endSql];
 
+// Default: hide voided shifts unless explicitly requested.
+if ($status !== 'voided') {
+  $where[] = "(s.close_reason IS NULL OR s.close_reason <> 'void')";
+}
+
 if ($empId > 0) {
   $where[] = "s.employee_id = ?";
   $params[] = $empId;
@@ -252,6 +297,8 @@ if ($status === 'open') {
   $where[] = "s.approved_at IS NULL";
 } elseif ($status === 'missing_out') {
   $where[] = "s.clock_out_at IS NULL";
+} elseif ($status === 'voided') {
+  $where[] = "s.close_reason = 'void'";
 }
 
 $sql = "
@@ -311,9 +358,11 @@ function badge(string $text, string $kind): string {
                 <h1 class="text-2xl font-semibold">Shifts</h1>
                 <p class="mt-2 text-sm text-white/70">Filter, edit (without overwriting originals), approve, and see rounded payroll times.</p>
               </div>
-              <?php if (admin_can($user, 'manage_settings')): ?>
-                <a href="<?= h(admin_url('settings.php')) ?>" class="rounded-2xl bg-white/10 border border-white/10 px-4 py-2 text-sm hover:bg-white/15">Rounding settings</a>
-              <?php endif; ?>
+              <div class="flex items-center gap-2">
+                <?php if (admin_can($user, 'edit_shifts')): ?>
+                  <a href="<?= h(admin_url('shift-add.php')) ?>" class="rounded-2xl bg-emerald-500/15 border border-emerald-400/20 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20">Add shift</a>
+                <?php endif; ?>
+              </div>
             </div>
           </header>
 
@@ -369,7 +418,7 @@ function badge(string $text, string $kind): string {
               <label class="md:col-span-1">
                 <div class="text-xs uppercase tracking-widest text-white/50">Status</div>
                 <select name="status" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30">
-                  <?php foreach (['all'=>'All','open'=>'Open','closed'=>'Closed','missing_out'=>'Missing clock-out','approved'=>'Approved','unapproved'=>'Unapproved'] as $k=>$lab): ?>
+                  <?php foreach (['all'=>'All (excluding voided)','open'=>'Open','closed'=>'Closed','missing_out'=>'Missing clock-out','approved'=>'Approved','unapproved'=>'Unapproved','voided'=>'Voided'] as $k=>$lab): ?>
                     <option value="<?= h($k) ?>" <?= $status===$k?'selected':'' ?>><?= h($lab) ?></option>
                   <?php endforeach; ?>
                 </select>
@@ -417,6 +466,7 @@ function badge(string $text, string $kind): string {
                     $mins = admin_minutes_between($effIn ?: null, $effOut ?: null);
                     $approved = !empty($r['approved_at']);
                     $locked = !empty($r['payroll_locked_at']);
+                    $voided = ((string)($r['close_reason'] ?? '') === 'void');
 
                     $name = (string)($r['full_name'] ?? 'Unknown');
                     if ((int)($r['is_agency'] ?? 0) === 1) {
@@ -425,6 +475,7 @@ function badge(string $text, string $kind): string {
                     }
 
                     $statusBadge = $approved ? badge('Approved', 'ok') : badge('Unapproved', 'warn');
+                    if ($voided) $statusBadge = badge('Voided', 'bad');
                     if (empty($r['clock_out_at'])) $statusBadge .= ' ' . badge('Missing OUT', 'bad');
                     if ((string)($r['latest_edit_json'] ?? '') !== '') $statusBadge .= ' ' . badge('Edited', 'neutral');
                     if ($locked) $statusBadge .= ' ' . badge('Payroll Locked', 'bad');
@@ -459,8 +510,17 @@ function badge(string $text, string $kind): string {
                     <td class="py-4 text-right">
                       <div class="flex items-center justify-end gap-2">
 
-                        <?php if (admin_can($user, 'edit_shifts') && !$locked): ?>
+                        <?php if (admin_can($user, 'edit_shifts') && !$locked && !$voided): ?>
                           <a href="<?= h(admin_url('shift-edit.php?id=' . (int)$r['id'])) ?>" class="rounded-2xl bg-white/10 border border-white/10 px-3 py-2 text-xs hover:bg-white/15">Edit</a>
+                        <?php endif; ?>
+
+                        <?php if (admin_can($user, 'edit_shifts') && !$locked && !$voided): ?>
+                          <form method="post" class="inline" onsubmit="return confirm('Void this shift? It will be excluded from payroll.');">
+                            <input type="hidden" name="csrf" value="<?= h(admin_csrf_token()) ?>"/>
+                            <input type="hidden" name="shift_id" value="<?= (int)$r['id'] ?>"/>
+                            <input type="hidden" name="action" value="void"/>
+                            <button class="rounded-2xl bg-rose-500/10 border border-rose-400/20 px-3 py-2 text-xs hover:bg-rose-500/15">Void</button>
+                          </form>
                         <?php endif; ?>
 
                         <?php if (admin_can($user, 'approve_shifts') && !$locked): ?>

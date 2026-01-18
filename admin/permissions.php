@@ -45,8 +45,7 @@ function admin_permissions_for_role(string $role): array {
       'approve_shifts',
       'view_employees',
       'manage_employees',
-      // Manager can only see basic settings (configurable allow-list)
-      'manage_settings_basic',
+      // Managers cannot change settings or contracts (LOCKED)
     ];
   }
 
