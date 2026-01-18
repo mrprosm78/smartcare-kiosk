@@ -213,7 +213,7 @@ if ((int)($shift['is_agency'] ?? 0) === 1) {
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <label class="block">
                     <div class="text-xs uppercase tracking-widest text-white/50">Clock in (effective)</div>
-                    <input type="datetime-local" name="clock_in_at" value="<?= h($inVal) ?>"
+                    <input type="datetime-local" id="clock_in_at" name="clock_in_at" value="<?= h($inVal) ?>"
                       class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30"
                       required <?= $isLocked ? 'disabled' : '' ?> />
                     <div class="mt-2 text-xs text-white/50">Original: <?= h(admin_fmt_dt((string)$shift['clock_in_at'])) ?></div>
@@ -221,7 +221,7 @@ if ((int)($shift['is_agency'] ?? 0) === 1) {
 
                   <label class="block">
                     <div class="text-xs uppercase tracking-widest text-white/50">Clock out (effective)</div>
-                    <input type="datetime-local" name="clock_out_at" value="<?= h($outVal) ?>"
+                    <input type="datetime-local" id="clock_out_at" name="clock_out_at" value="<?= h($outVal) ?>"
                       class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30"
                       <?= $isLocked ? 'disabled' : '' ?> />
                     <div class="mt-2 text-xs text-white/50">Original: <?= h(admin_fmt_dt((string)$shift['clock_out_at'])) ?></div>
@@ -342,5 +342,20 @@ if ((int)($shift['is_agency'] ?? 0) === 1) {
     </div>
   </div>
 </div>
+
+<script>
+(function(){
+  const p = new URLSearchParams(window.location.search);
+  const f = p.get('focus');
+  if (f === 'in') {
+    const el = document.getElementById('clock_in_at');
+    if (el && !el.disabled) { el.focus(); el.scrollIntoView({block:'center'}); }
+  }
+  if (f === 'out') {
+    const el = document.getElementById('clock_out_at');
+    if (el && !el.disabled) { el.focus(); el.scrollIntoView({block:'center'}); }
+  }
+})();
+</script>
 
 <?php admin_page_end(); ?>

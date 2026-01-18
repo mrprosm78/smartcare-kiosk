@@ -37,16 +37,23 @@ if (!function_exists('setting')) {
 
 /** Set a kiosk_settings value (insert or update). */
 function admin_set_setting(PDO $pdo, string $key, string $value): void {
-  $stmt = $pdo->prepare("SELECT id FROM kiosk_settings WHERE `key` = ? LIMIT 1");
+  // kiosk_settings schema uses `key` as the primary identifier (no numeric id).
+  // So we upsert by `key`.
+  $stmt = $pdo->prepare("SELECT `key` FROM kiosk_settings WHERE `key` = ? LIMIT 1");
   $stmt->execute([$key]);
   $row = $stmt->fetch(PDO::FETCH_ASSOC);
-  if ($row && isset($row['id'])) {
-    $upd = $pdo->prepare("UPDATE kiosk_settings SET value = ?, updated_at = UTC_TIMESTAMP WHERE id = ?");
-    $upd->execute([$value, (int)$row['id']]);
+
+  if ($row && isset($row['key'])) {
+    $upd = $pdo->prepare("UPDATE kiosk_settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE `key` = ?");
+    $upd->execute([$value, $key]);
     return;
   }
-  $ins = $pdo->prepare("INSERT INTO kiosk_settings (`group`,`key`,value,type,editable_by,is_secret,sort_order,created_at,updated_at)
-                        VALUES ('admin', ?, ?, 'text', 'superadmin', 0, 0, UTC_TIMESTAMP, UTC_TIMESTAMP)");
+
+  // Insert with your actual kiosk_settings column names.
+  $ins = $pdo->prepare(
+    "INSERT INTO kiosk_settings (`key`, `value`, group_name, label, description, type, editable_by, sort_order, is_secret, created_at, updated_at)
+     VALUES (?, ?, 'admin', NULL, NULL, 'string', 'superadmin', 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+  );
   $ins->execute([$key, $value]);
 }
 
