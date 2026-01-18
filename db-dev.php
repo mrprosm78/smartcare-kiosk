@@ -1,10 +1,9 @@
 <?php
 // db.php
-
 $host = 'sdb-67.hosting.stackcp.net';
 $db   = 'kiosk01-35303437df66';
 $user = 'kiosk01-35303437df66';
-$pass = 'oa|?Cy|Zo%zm'; // rotate later
+$pass = 'r2mspgngzy'; // rotate later
 $charset = 'utf8mb4';
 
 $dsn = "mysql:host=$host;dbname=$db;charset=$charset";
