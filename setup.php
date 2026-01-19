@@ -587,7 +587,6 @@ function create_tables(PDO $pdo): void {
       employee_id INT UNSIGNED PRIMARY KEY,
       contract_hours_per_week DECIMAL(6,2) NULL,
       hourly_rate DECIMAL(8,2) NULL,
-
       -- Break model (LOCKED): default + night only
       break_minutes_default INT NULL,
       break_minutes_night INT NULL,
@@ -641,7 +640,6 @@ function create_tables(PDO $pdo): void {
   // Pay profile additions (for older installs): keep night break support
   add_column_if_missing($pdo, 'kiosk_employee_pay_profiles', 'break_minutes_night', 'INT NULL');
   add_column_if_missing($pdo, 'kiosk_employee_pay_profiles', 'hourly_rate', 'DECIMAL(8,2) NULL');
-
   // SHIFT CHANGES / AUDIT
   $pdo->exec("
     CREATE TABLE IF NOT EXISTS kiosk_shift_changes (
@@ -691,6 +689,21 @@ function create_tables(PDO $pdo): void {
       KEY idx_shift (shift_id),
       KEY idx_result (result_status),
       KEY idx_kiosk (kiosk_code)
+    ) ENGINE=InnoDB;
+  ");
+
+  // PUNCH PHOTOS (camera add-on)
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS kiosk_punch_photos (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      event_uuid CHAR(36) NOT NULL UNIQUE,
+      action ENUM('IN','OUT') NOT NULL,
+      device_id VARCHAR(100) NULL,
+      device_name VARCHAR(150) NULL,
+      photo_path VARCHAR(255) NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_created_at (created_at),
+      KEY idx_action_created (action, created_at)
     ) ENGINE=InnoDB;
   ");
 

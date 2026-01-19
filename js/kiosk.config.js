@@ -7,6 +7,7 @@ const API_STATUS     = `${API_BASE}/api/kiosk/status.php`;
 const API_PAIR       = `${API_BASE}/api/kiosk/pair.php`;
 const ENDPOINT_PUNCH = `${API_BASE}/api/kiosk/punch.php`;
 const ENDPOINT_PING  = `${API_BASE}/api/kiosk/ping.php`;
+const ENDPOINT_PHOTO = `${API_BASE}/api/kiosk/photo_upload.php`;
 
 const KIOSK_CODE = "KIOSK-1";
 
@@ -17,6 +18,7 @@ let PIN_LENGTH = 4;
 
 let PING_INTERVAL_MS = 60000;
 let SYNC_INTERVAL_MS = 30000;
+let PHOTO_SYNC_INTERVAL_MS = 45000;
 let SYNC_COOLDOWN_MS = 8000;
 
 let SYNC_BATCH_SIZE = 20;

@@ -103,6 +103,7 @@ document.addEventListener("keydown", (e) => {
     if (window.__loopsStarted) return;
     window.__loopsStarted = true;
     if (typeof syncLoop === "function") syncLoop();
+    if (window.SC_PHOTO && typeof window.SC_PHOTO.photoSyncLoop === "function") window.SC_PHOTO.photoSyncLoop();
     if (typeof statusLoop === "function") statusLoop();
   };
 

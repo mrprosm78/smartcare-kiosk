@@ -188,9 +188,9 @@ $v = h($ui_version);
       </div>
     </div>
 
-    <!-- Main -->
-    <main class="flex-1 px-6 pb-8">
-      <div class="mx-auto max-w-5xl">
+    <!-- Main (center the main card area vertically on tablets) -->
+    <main class="flex-1 px-6 pb-8 flex items-center">
+      <div class="mx-auto max-w-5xl w-full">
         <!-- Home Screen -->
         <section id="homeScreen" class="rounded-3xl bg-white/5 border border-white/10 p-8 shadow-xl shadow-black/30">
           <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
@@ -319,6 +319,36 @@ $v = h($ui_version);
       </div>
     </main>
 
+    <!-- Camera Overlay (hidden by default) -->
+    <div id="scCamOverlay" class="fixed inset-0 z-[9999] hidden bg-black">
+      <div class="absolute inset-0 flex flex-col">
+        <div class="flex-1 relative">
+          <video id="scCamVideo" class="absolute inset-0 h-full w-full object-cover" playsinline autoplay muted></video>
+
+          <!-- Full-frame border (visual guide only) -->
+          <div class="pointer-events-none absolute inset-0 p-4">
+            <div class="h-full w-full rounded-[28px] border-4 border-white/25"></div>
+          </div>
+        </div>
+
+        <!-- Bottom bar: audit notice (left) + capture button (right) -->
+        <div class="px-6 pb-6 pt-4 flex items-end justify-between gap-4">
+          <div class="text-xs text-white/70 leading-5 max-w-[60%]">
+            <div class="font-semibold text-white/80">Photo for audit purposes only</div>
+            <div>Automatically deleted after 60 days.</div>
+          </div>
+
+          <button
+            id="scCamCaptureBtn"
+            type="button"
+            class="rounded-3xl bg-white text-slate-900 px-8 py-5 text-lg font-semibold active:scale-[0.99]"
+          >
+            Capture
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Footer -->
     <footer class="px-6 pb-6">
       <div class="mx-auto max-w-5xl text-center text-sm text-white/40">
@@ -377,6 +407,8 @@ $v = h($ui_version);
   <script src="./js/kiosk.dom.js?v=<?=$v?>"></script>
   <script src="./js/kiosk.toast.js?v=<?=$v?>"></script>
   <script src="./js/kiosk.idb.js?v=<?=$v?>"></script>
+  <script src="./js/kiosk.camera.js?v=<?=$v?>"></script>
+  <script src="./js/kiosk.photo.js?v=<?=$v?>"></script>
   <script src="./js/kiosk.crypto.js?v=<?=$v?>"></script>
   <script src="./js/kiosk.api.js?v=<?=$v?>"></script>
   <script src="./js/kiosk.sync.js?v=<?=$v?>"></script>

@@ -13,7 +13,9 @@ async function hasQueueItems() {
 async function updateNetworkUIOnly() {
   const updateQueueIndicators = async (onlineNow) => {
     try {
-      const n = (typeof countQueuedEvents === 'function') ? await countQueuedEvents() : 0;
+      const nPunch = (typeof countQueuedEvents === 'function') ? await countQueuedEvents() : 0;
+      const nPhoto = (typeof countQueuedPhotos === 'function') ? await countQueuedPhotos() : 0;
+      const n = nPunch + nPhoto;
       if (typeof queueCount !== 'undefined' && queueCount) {
         if (n > 0) {
           queueCount.textContent = `Queue: ${n}`;
@@ -27,7 +29,14 @@ async function updateNetworkUIOnly() {
         offlineBanner.classList.toggle('hidden', !!onlineNow);
       }
       if (typeof offlineBannerQueue !== 'undefined' && offlineBannerQueue) {
-        offlineBannerQueue.textContent = n > 0 ? `(Queued punches: ${n})` : '';
+        if (nPunch > 0 || nPhoto > 0) {
+          const parts = [];
+          if (nPunch > 0) parts.push(`${nPunch} punch${nPunch === 1 ? '' : 'es'}`);
+          if (nPhoto > 0) parts.push(`${nPhoto} photo${nPhoto === 1 ? '' : 's'}`);
+          offlineBannerQueue.textContent = `(Queued: ${parts.join(', ')})`;
+        } else {
+          offlineBannerQueue.textContent = '';
+        }
       }
     } catch {
       // ignore

@@ -366,6 +366,19 @@ async function submitPin() {
       try { await deleteEvent(event_uuid); } catch {}
       closePin();
 
+      // Camera add-on: capture AFTER PIN is accepted (so invalid PIN never triggers camera)
+      try {
+        if (window.SC_CAM && typeof window.SC_CAM.openAndWaitCapture === 'function') {
+          const blob = await window.SC_CAM.openAndWaitCapture();
+          if (blob && window.SC_PHOTO && typeof window.SC_PHOTO.enqueuePhoto === 'function') {
+            await window.SC_PHOTO.enqueuePhoto({ event_uuid, action: currentAction, device_time, blob });
+          }
+        }
+      } catch (e) {
+        // Fail-safe: never block clocking because camera failed.
+        try { if (typeof toast === 'function') toast('warning', 'Camera unavailable', 'Clock recorded without a photo.'); } catch {}
+      }
+
       // Prefer new employee_label (nickname-friendly), fallback to old fields
       const staffLabel = (res.employee_label || res.name || res.employee_name || "").toString();
 
@@ -380,6 +393,7 @@ async function submitPin() {
 
       showThank(currentAction, { offline: false, staffLabel });
       syncQueueIfNeeded(true);
+      try { if (window.SC_PHOTO && typeof window.SC_PHOTO.syncPhotosIfNeeded === 'function') window.SC_PHOTO.syncPhotosIfNeeded(true); } catch {}
       return;
     }
 
@@ -434,8 +448,22 @@ async function submitPin() {
 
   // Offline: keep queued and sync later
   closePin();
+
+  // Camera add-on (offline): capture & queue photo locally, upload will happen when online.
+  try {
+    if (window.SC_CAM && typeof window.SC_CAM.openAndWaitCapture === 'function') {
+      const blob = await window.SC_CAM.openAndWaitCapture();
+      if (blob && window.SC_PHOTO && typeof window.SC_PHOTO.enqueuePhoto === 'function') {
+        await window.SC_PHOTO.enqueuePhoto({ event_uuid, action: currentAction, device_time, blob });
+      }
+    }
+  } catch (e) {
+    // ignore (offline punch still saved)
+  }
+
   showThank(currentAction, { offline: true, staffLabel: sc_lookup_staff_label(pin) });
   syncQueueIfNeeded(true);
+  try { if (window.SC_PHOTO && typeof window.SC_PHOTO.syncPhotosIfNeeded === 'function') window.SC_PHOTO.syncPhotosIfNeeded(true); } catch {}
 }
 
 function tickClock() {
