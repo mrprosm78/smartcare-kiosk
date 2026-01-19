@@ -586,6 +586,7 @@ function create_tables(PDO $pdo): void {
     CREATE TABLE IF NOT EXISTS kiosk_employee_pay_profiles (
       employee_id INT UNSIGNED PRIMARY KEY,
       contract_hours_per_week DECIMAL(6,2) NULL,
+      hourly_rate DECIMAL(8,2) NULL,
 
       -- Break model (LOCKED): default + night only
       break_minutes_default INT NULL,
@@ -639,6 +640,7 @@ function create_tables(PDO $pdo): void {
   add_column_if_missing($pdo, 'kiosk_shifts', 'is_callout', "TINYINT(1) NOT NULL DEFAULT 0");
   // Pay profile additions (for older installs): keep night break support
   add_column_if_missing($pdo, 'kiosk_employee_pay_profiles', 'break_minutes_night', 'INT NULL');
+  add_column_if_missing($pdo, 'kiosk_employee_pay_profiles', 'hourly_rate', 'DECIMAL(8,2) NULL');
 
   // SHIFT CHANGES / AUDIT
   $pdo->exec("

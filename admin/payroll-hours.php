@@ -31,6 +31,24 @@ function calendar_month_period(int $year, int $month): array {
   ];
 }
 
+
+/** @return array{start:string,end:string,start_date:string,end_date:string} */
+function period_from_local_dates(string $startYmd, string $endYmd, string $tz): array {
+  $tzObj = new DateTimeZone($tz);
+  $sLocal = new DateTimeImmutable($startYmd.' 00:00:00', $tzObj);
+  $eLocal = new DateTimeImmutable($endYmd.' 00:00:00', $tzObj);
+  // end is exclusive: next day midnight
+  $eLocalExclusive = $eLocal->modify('+1 day');
+  $sUtc = $sLocal->setTimezone(new DateTimeZone('UTC'));
+  $eUtc = $eLocalExclusive->setTimezone(new DateTimeZone('UTC'));
+  return [
+    'start' => $sUtc->format('Y-m-d H:i:s'),
+    'end' => $eUtc->format('Y-m-d H:i:s'),
+    'start_date' => $startYmd,
+    'end_date' => $endYmd,
+  ];
+}
+
 /** @return array<string,mixed> */
 function load_payroll_settings(PDO $pdo): array {
   // Settings keys are seeded by setup.php (Payroll Rules section).
@@ -318,11 +336,16 @@ function employee_contract_meta_from_rows(array $rows): array {
 function compute_employee_month(PDO $pdo, int $employeeId, array $period, array $settings, array $bankHolidayIndex): array {
   $tz = (string)$settings['payroll_timezone'];
 
+  $monthStartDate = (string)($period['month_start_date'] ?? $period['start_date']);
+  $monthEndDate = (string)($period['month_end_date'] ?? $period['end_date']);
+
+
   $sql = "
     SELECT
       s.*,
       e.employee_code, e.first_name, e.last_name, e.nickname, e.is_agency, e.agency_label,
       p.contract_hours_per_week,
+      p.hourly_rate, p.rules_json,
       p.break_minutes_default, p.break_minutes_night,
       p.break_is_paid, p.min_hours_for_break,
       NULL AS latest_edit_json
@@ -426,6 +449,7 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
       if (!isset($days[$date])) {
         $days[$date] = [
           'date' => $date,
+          'in_month' => ($date >= $monthStartDate && $date <= $monthEndDate),
           'actual_start' => null,
           'actual_end' => null,
           'rounded_start' => null,
@@ -526,6 +550,7 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
         // If rounding moved all paid time away, still create day entry so payroll sees actual.
         $days[$date] = [
           'date' => $date,
+          'in_month' => ($date >= $monthStartDate && $date <= $monthEndDate),
           'actual_start' => null,
           'actual_end' => null,
           'rounded_start' => null,
@@ -563,6 +588,16 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
   $totalCallout = 0;
   $totalDst = 0;
 
+  // Totals within the selected calendar month (exclude grey context days)
+  $monthPaid = 0;
+  $monthUnpaidBreak = 0;
+  $monthWeekend = 0;
+  $monthBH = 0;
+  $monthNight = 0;
+  $monthCallout = 0;
+  $monthDst = 0;
+
+
   foreach ($days as $date => $d) {
     $wk = week_start_date($date, (string)$settings['payroll_week_starts_on'], $tz);
     if (!isset($weeks[$wk])) {
@@ -582,6 +617,16 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
     $totalNight += (int)$d['night'];
     $totalCallout += (int)($d['callout'] ?? 0);
     $totalDst += (int)$d['dst_delta'];
+
+    if ((bool)($d['in_month'] ?? true)) {
+      $monthPaid += (int)$d['paid'];
+      $monthUnpaidBreak += (int)$d['unpaid_break'];
+      $monthWeekend += (int)$d['weekend'];
+      $monthBH += (int)$d['bank_holiday'];
+      $monthNight += (int)$d['night'];
+      $monthCallout += (int)($d['callout'] ?? 0);
+      $monthDst += (int)$d['dst_delta'];
+    }
   }
 
   foreach ($weeks as $wk => &$w) {
@@ -600,9 +645,20 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
 
   $monthOT = 0;
   $monthRegular = 0;
-  foreach ($weeks as $w) {
+  $monthOTInMonth = 0;
+  $monthRegularInMonth = 0;
+  foreach ($weeks as $wkStart => $w) {
     $monthOT += (int)$w['totals']['overtime'];
     $monthRegular += (int)$w['totals']['regular'];
+
+    // Attribute weekly OT to the week-end day (Sunday if week starts Monday).
+    try {
+      $we = (new DateTimeImmutable($wkStart." 00:00:00", new DateTimeZone($tz)))->modify("+6 days")->format("Y-m-d");
+      if ($we >= $monthStartDate && $we <= $monthEndDate) {
+        $monthOTInMonth += (int)$w['totals']['overtime'];
+        $monthRegularInMonth += (int)$w['totals']['regular'];
+      }
+    } catch (Throwable $e) {}
   }
 
   return [
@@ -619,8 +675,21 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
       'regular' => $monthRegular,
       'overtime' => $monthOT,
     ],
+    'month_totals' => [
+      'paid' => $monthPaid,
+      'unpaid_break' => $monthUnpaidBreak,
+      'weekend' => $monthWeekend,
+      'bank_holiday' => $monthBH,
+      'night' => $monthNight,
+      'callout' => $monthCallout,
+      'dst_delta' => $monthDst,
+      'regular' => $monthRegularInMonth,
+      'overtime' => $monthOTInMonth,
+    ],
     'training_minutes' => $trainingMinutes,
     'contract_week_minutes' => $contractWeekMinutes,
+    'hourly_rate' => (float)($shifts[0]['hourly_rate'] ?? 0),
+    'rules_json' => (string)($shifts[0]['rules_json'] ?? ''),
   ];
 }
 
@@ -629,13 +698,48 @@ $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
 $defaultMonth = (int)$now->modify('-1 month')->format('n');
 $defaultYear  = (int)$now->modify('-1 month')->format('Y');
 
-$month = int_param('month', $defaultMonth);
-$year  = int_param('year', $defaultYear);
+$periodMode = (string)($_GET['period_mode'] ?? 'last_month');
+
+// Period selection
+if ($periodMode === 'this_month') {
+  $month = (int)$now->format('n');
+  $year  = (int)$now->format('Y');
+} elseif ($periodMode === 'custom') {
+  $month = int_param('month', $defaultMonth);
+  $year  = int_param('year', $defaultYear);
+} else { // last_month (default)
+  $month = (int)$now->modify('-1 month')->format('n');
+  $year  = (int)$now->modify('-1 month')->format('Y');
+  // Allow override if user explicitly set month/year with custom
+  if (isset($_GET['month']) || isset($_GET['year'])) {
+    $month = int_param('month', $month);
+    $year  = int_param('year', $year);
+  }
+}
+
 $employeeId = (int)($_GET['employee_id'] ?? 0);
 
-$period = calendar_month_period($year, $month);
 $settings = load_payroll_settings($pdo);
 $tz = (string)$settings['payroll_timezone'];
+
+$monthPeriod = calendar_month_period($year, $month);
+$period = $monthPeriod; // default
+
+// For employee detail view, expand to full weeks so weekly overtime can be understood across month boundaries.
+$monthStart = $monthPeriod['start_date'];
+$monthEnd   = $monthPeriod['end_date'];
+$period['month_start_date'] = $monthStart;
+$period['month_end_date'] = $monthEnd;
+
+if ($employeeId !== 0) {
+  $weekStart = week_start_date($monthStart, (string)$settings['payroll_week_starts_on'], $tz);
+  $endWeekStart = week_start_date($monthEnd, (string)$settings['payroll_week_starts_on'], $tz);
+  $endWeekEnd = (new DateTimeImmutable($endWeekStart.' 00:00:00', new DateTimeZone($tz)))->modify('+6 days')->format('Y-m-d');
+  $period = period_from_local_dates($weekStart, $endWeekEnd, $tz);
+  $period['month_start_date'] = $monthStart;
+  $period['month_end_date'] = $monthEnd;
+}
+
 $bankHolidayIndex = load_bank_holiday_index($pdo, $period['start_date'], $period['end_date']);
 
 // Employee list (active)
@@ -684,7 +788,15 @@ $active = admin_url('payroll-hours.php');
           </div>
 
           <div class="mt-4 bg-white/5 border border-white/10 rounded-3xl p-4">
-            <form method="get" class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+            <form method="get" class="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+              <div>
+                <label class="text-xs text-white/60">Period preset</label>
+                <select name="period_mode" id="period_mode" class="mt-1 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30">
+                  <option value="last_month" <?= $periodMode==='last_month'?'selected':'' ?>>Last month</option>
+                  <option value="this_month" <?= $periodMode==='this_month'?'selected':'' ?>>This month</option>
+                  <option value="custom" <?= $periodMode==='custom'?'selected':'' ?>>Custom</option>
+                </select>
+              </div>
               <div>
                 <label class="text-xs text-white/60">Year</label>
                 <input name="year" value="<?= (int)$year ?>" class="mt-1 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
@@ -706,6 +818,29 @@ $active = admin_url('payroll-hours.php');
                 <button class="w-full rounded-2xl px-4 py-2.5 text-sm font-semibold bg-sky-600 hover:bg-sky-500">View</button>
               </div>
             </form>
+            <script>
+              // autoFillPeriod
+              (function(){
+                const sel=document.getElementById('period_mode');
+                if(!sel) return;
+                sel.addEventListener('change', function(){
+                  const v=sel.value;
+                  const y=document.querySelector('input[name=year]');
+                  const m=document.querySelector('input[name=month]');
+                  if(!y||!m) return;
+                  const now=new Date();
+                  let yr=now.getUTCFullYear();
+                  let mo=now.getUTCMonth()+1;
+                  if(v==='last_month'){
+                    mo-=1;
+                    if(mo<=0){mo=12; yr-=1;}
+                  }
+                  if(v==='custom') return;
+                  y.value=yr;
+                  m.value=mo;
+                });
+              })();
+            </script>
           </div>
 
           <?php if ($unapprovedCount > 0): ?>
@@ -806,6 +941,8 @@ $active = admin_url('payroll-hours.php');
               $calc = compute_employee_month($pdo, $employeeId, $period, $settings, $bankHolidayIndex);
               $weeks = $calc['weeks'];
               $tot = $calc['totals'];
+              $monthTot = $calc['month_totals'];
+              $monthTot = $calc['month_totals'] ?? $tot;
               $trainingMin = (int)$calc['training_minutes'];
 
               $empName = '';
@@ -855,12 +992,13 @@ $active = admin_url('payroll-hours.php');
                         <th class="text-right px-4 py-3">BH (h)</th>
                         <th class="text-right px-4 py-3">Night (h)</th>
                         <th class="text-right px-4 py-3">Call-out (h)</th>
+                        <th class="text-right px-4 py-3">OT (h)</th>
                         <th class="text-right px-4 py-3">DST Δ (min)</th>
                       </tr>
                     </thead>
                     <tbody>
                       <?php foreach ($w['days'] as $date => $d): ?>
-                        <tr class="border-t border-white/10">
+                        <tr class="border-t border-white/10 <?= (isset($d['in_month']) && !$d['in_month']) ? 'bg-slate-950/50 text-white/50' : '' ?>">
                           <td class="px-4 py-3 font-semibold"><?= h($date) ?></td>
                           <td class="px-4 py-3">
                             <div class="font-semibold text-white">
@@ -876,9 +1014,32 @@ $active = admin_url('payroll-hours.php');
                           <td class="px-4 py-3 text-right"><?= h(number_format(((int)$d['bank_holiday'])/60, 2)) ?></td>
                           <td class="px-4 py-3 text-right"><?= h(number_format(((int)$d['night'])/60, 2)) ?></td>
                           <td class="px-4 py-3 text-right"><?= h(number_format(((int)($d['callout'] ?? 0))/60, 2)) ?></td>
+                          <td class="px-4 py-3 text-right">—</td>
                           <td class="px-4 py-3 text-right"><?= (int)$d['dst_delta'] ?></td>
                         </tr>
                       <?php endforeach; ?>
+                      <?php
+                        $wkUnpaid=0; $wkWeekend=0; $wkBH=0; $wkNight=0; $wkCallout=0; $wkDst=0;
+                        foreach ($w['days'] as $_dd) {
+                          $wkUnpaid += (int)($_dd['unpaid_break'] ?? 0);
+                          $wkWeekend += (int)($_dd['weekend'] ?? 0);
+                          $wkBH += (int)($_dd['bank_holiday'] ?? 0);
+                          $wkNight += (int)($_dd['night'] ?? 0);
+                          $wkCallout += (int)($_dd['callout'] ?? 0);
+                          $wkDst += (int)($_dd['dst_delta'] ?? 0);
+                        }
+                      ?>
+                      <tr class="border-t border-white/20 bg-white/5">
+                        <td class="px-4 py-3 font-semibold" colspan="2">Week total</td>
+                        <td class="px-4 py-3 text-right font-semibold"><?= h(number_format(((int)$w['totals']['paid'])/60, 2)) ?></td>
+                        <td class="px-4 py-3 text-right font-semibold"><?= h(number_format($wkUnpaid/60, 2)) ?></td>
+                        <td class="px-4 py-3 text-right font-semibold"><?= h(number_format($wkWeekend/60, 2)) ?></td>
+                        <td class="px-4 py-3 text-right font-semibold"><?= h(number_format($wkBH/60, 2)) ?></td>
+                        <td class="px-4 py-3 text-right font-semibold"><?= h(number_format($wkNight/60, 2)) ?></td>
+                        <td class="px-4 py-3 text-right font-semibold"><?= h(number_format($wkCallout/60, 2)) ?></td>
+                        <td class="px-4 py-3 text-right font-semibold"><?= h(number_format(((int)$w['totals']['overtime'])/60, 2)) ?></td>
+                        <td class="px-4 py-3 text-right font-semibold"><?= (int)$wkDst ?></td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -886,21 +1047,78 @@ $active = admin_url('payroll-hours.php');
             <?php endforeach; ?>
 
             <div class="mt-6 bg-white/5 border border-white/10 rounded-3xl p-4">
-              <div class="text-sm text-white/60">Month totals</div>
+              <div class="text-sm text-white/60">Month totals (selected month)</div>
               <div class="mt-2 text-sm text-white">
                 <div class="flex flex-wrap gap-x-6 gap-y-2">
-                  <div>Paid: <b><?= h(number_format(((int)$tot['paid'])/60, 2)) ?>h</b></div>
-                  <div>Unpaid break: <b><?= h(number_format(((int)$tot['unpaid_break'])/60, 2)) ?>h</b></div>
-                  <div>Weekend: <b><?= h(number_format(((int)$tot['weekend'])/60, 2)) ?>h</b></div>
-                  <div>Bank holiday: <b><?= h(number_format(((int)$tot['bank_holiday'])/60, 2)) ?>h</b></div>
-                  <div>Night: <b><?= h(number_format(((int)$tot['night'])/60, 2)) ?>h</b></div>
-                  <div>Call-out: <b><?= h(number_format(((int)($tot['callout'] ?? 0))/60, 2)) ?>h</b></div>
-                  <div>Overtime (weekly): <b><?= h(number_format(((int)$tot['overtime'])/60, 2)) ?>h</b></div>
+                  <div>Paid: <b><?= h(number_format(((int)$monthTot['paid'])/60, 2)) ?>h</b></div>
+                  <div>Unpaid break: <b><?= h(number_format(((int)$monthTot['unpaid_break'])/60, 2)) ?>h</b></div>
+                  <div>Weekend: <b><?= h(number_format(((int)$monthTot['weekend'])/60, 2)) ?>h</b></div>
+                  <div>Bank holiday: <b><?= h(number_format(((int)$monthTot['bank_holiday'])/60, 2)) ?>h</b></div>
+                  <div>Night: <b><?= h(number_format(((int)$monthTot['night'])/60, 2)) ?>h</b></div>
+                  <div>Call-out: <b><?= h(number_format(((int)($monthTot['callout'] ?? 0))/60, 2)) ?>h</b></div>
+                  <div>Overtime (weekly): <b><?= h(number_format(((int)($monthTot['overtime'] ?? $monthTot['overtime']))/60, 2)) ?>h</b></div>
                   <div>Training (separate): <b><?= h(number_format($trainingMin/60, 2)) ?>h</b></div>
-                  <div>DST Δ total: <b><?= (int)$tot['dst_delta'] ?> min</b></div>
+                  <div>DST Δ total: <b><?= (int)$monthTot['dst_delta'] ?> min</b></div>
                 </div>
               </div>
-              <div class="mt-2 text-xs text-white/50">Note: OT here is calculated from paid hours only (training excluded).</div>
+              <div class="mt-2 text-xs text-white/50">Note: OT here is calculated from paid hours only (training excluded). Grey rows are outside the selected month and are shown for weekly overtime context.</div>
+              <?php
+                $baseRate = (float)($calc['hourly_rate'] ?? 0);
+                $rules = [];
+                $rj = (string)($calc['rules_json'] ?? '');
+                if ($rj !== '') {
+                  $tmp = json_decode($rj, true);
+                  if (is_array($tmp)) $rules = $tmp;
+                }
+                function rule_mult($rules, $k){
+                  $v = $rules[$k.'_multiplier'] ?? null;
+                  return is_numeric($v) ? (float)$v : null;
+                }
+                function rule_prem($rules, $k){
+                  $v = $rules[$k.'_premium_per_hour'] ?? null;
+                  return is_numeric($v) ? (float)$v : null;
+                }
+                function enhancement_extra_amount(float $hours, float $baseRate, ?float $mult, ?float $prem): float {
+                  if ($mult !== null && $mult != 1.0) {
+                    return $hours * $baseRate * ($mult - 1.0);
+                  }
+                  if ($prem !== null && $prem != 0.0) {
+                    return $hours * $prem;
+                  }
+                  return 0.0;
+                }
+                $hrsWeekend = ((int)($monthTot['weekend'] ?? 0))/60.0;
+                $hrsBH = ((int)($monthTot['bank_holiday'] ?? 0))/60.0;
+                $hrsNight = ((int)($monthTot['night'] ?? 0))/60.0;
+                $hrsOT = ((int)($monthTot['overtime'] ?? 0))/60.0;
+                $hrsCallout = ((int)($monthTot['callout'] ?? 0))/60.0;
+
+                $amtWeekend = $baseRate>0 ? enhancement_extra_amount($hrsWeekend, $baseRate, rule_mult($rules,'weekend'), rule_prem($rules,'weekend')) : 0.0;
+                $amtBH = $baseRate>0 ? enhancement_extra_amount($hrsBH, $baseRate, rule_mult($rules,'bank_holiday'), rule_prem($rules,'bank_holiday')) : 0.0;
+                $amtNight = $baseRate>0 ? enhancement_extra_amount($hrsNight, $baseRate, rule_mult($rules,'night'), rule_prem($rules,'night')) : 0.0;
+                $amtOT = $baseRate>0 ? enhancement_extra_amount($hrsOT, $baseRate, rule_mult($rules,'overtime'), rule_prem($rules,'overtime')) : 0.0;
+                $amtCallout = $baseRate>0 ? enhancement_extra_amount($hrsCallout, $baseRate, rule_mult($rules,'callout'), rule_prem($rules,'callout')) : 0.0;
+              ?>
+
+              <div class="mt-4 border-t border-white/10 pt-4">
+                <div class="text-sm text-white/60">Snapshot (based on base rate)</div>
+                <?php if ($baseRate <= 0): ?>
+                  <div class="mt-1 text-sm text-white/70">No hourly_rate found for this employee in <code>kiosk_employee_pay_profiles.hourly_rate</code>.</div>
+                <?php else: ?>
+                  <div class="mt-2 text-sm text-white">
+                    <div>Base rate: <b>£<?= h(number_format($baseRate, 2)) ?>/hr</b></div>
+                    <div class="mt-2 flex flex-wrap gap-x-6 gap-y-2">
+                      <div>Weekend extra: <b>£<?= h(number_format($amtWeekend, 2)) ?></b></div>
+                      <div>Bank holiday extra: <b>£<?= h(number_format($amtBH, 2)) ?></b></div>
+                      <div>Night extra: <b>£<?= h(number_format($amtNight, 2)) ?></b></div>
+                      <div>Overtime extra: <b>£<?= h(number_format($amtOT, 2)) ?></b></div>
+                      <div>Call-out extra: <b>£<?= h(number_format($amtCallout, 2)) ?></b></div>
+                    </div>
+                    <div class="mt-2 text-xs text-white/50">Extra = multiplier uplift (base × (mult-1)) or premium (£/hr). This is a visibility snapshot only, not final pay.</div>
+                  </div>
+                <?php endif; ?>
+              </div>
+
             </div>
 
           <?php endif; ?>
