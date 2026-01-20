@@ -18,6 +18,7 @@ function admin_permissions_for_role(string $role): array {
     // general
     'view_dashboard',
     'view_shifts',
+    'view_punches',
     'edit_shifts',
     'approve_shifts',
     'view_employees',
@@ -41,6 +42,7 @@ function admin_permissions_for_role(string $role): array {
     return [
       'view_dashboard',
       'view_shifts',
+      'view_punches',
       'edit_shifts',
       'approve_shifts',
       'view_employees',
@@ -54,6 +56,7 @@ function admin_permissions_for_role(string $role): array {
     return [
       'view_dashboard',
       'view_shifts',
+      'view_punches',
       'view_employees',
       'view_contract',
       'view_payroll',
@@ -67,6 +70,7 @@ function admin_permissions_for_role(string $role): array {
     return [
       'view_dashboard',
       'view_shifts',
+      'view_punches',
       'edit_shifts',
       'approve_shifts',
       'view_employees',

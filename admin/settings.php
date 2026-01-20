@@ -72,6 +72,8 @@ $basicAllow = [
 
 $highLevelKeys = [
   // Admin pairing / device authorisation is high-level
+  // File-system paths should be superadmin-only.
+  'uploads_base_path',
   'admin_pairing_mode',
   'admin_pairing_mode_until',
   'admin_pairing_code',
@@ -110,6 +112,11 @@ $vals = [
   'admin_pairing_mode_until' => admin_setting_str($pdo, 'admin_pairing_mode_until', ''),
   'admin_pairing_code' => admin_setting_str($pdo, 'admin_pairing_code', ''),
   'admin_pairing_version' => admin_setting_int($pdo, 'admin_pairing_version', 1),
+
+  // uploads
+  // This is a base directory used to resolve kiosk upload paths (e.g., punch photos).
+  // Can be inside or outside public folder.
+  'uploads_base_path' => admin_setting_str($pdo, 'uploads_base_path', ''),
 ];
 
 $success = '';
@@ -190,6 +197,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // High-level: admin pairing (superadmin only)
     if ($canHigh) {
+      // Global uploads base path (superadmin)
+      if (isset($_POST['uploads_base_path'])) {
+        admin_set_setting($pdo, 'uploads_base_path', trim((string)($_POST['uploads_base_path'] ?? '')));
+      }
+
       admin_set_setting($pdo, 'admin_pairing_mode', isset($_POST['admin_pairing_mode']) ? '1' : '0');
       admin_set_setting($pdo, 'admin_pairing_mode_until', trim((string)($_POST['admin_pairing_mode_until'] ?? '')));
       $code = trim((string)($_POST['admin_pairing_code'] ?? ''));
@@ -235,6 +247,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $vals['admin_pairing_mode_until'] = admin_setting_str($pdo, 'admin_pairing_mode_until', '');
   $vals['admin_pairing_code'] = admin_setting_str($pdo, 'admin_pairing_code', '');
   $vals['admin_pairing_version'] = admin_setting_int($pdo, 'admin_pairing_version', 1);
+  $vals['uploads_base_path'] = admin_setting_str($pdo, 'uploads_base_path', '');
 }
 
 admin_page_start($pdo, 'Settings');
@@ -489,6 +502,13 @@ $active = admin_url('settings.php');
                 </div>
 
                 <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <label class="rounded-2xl border border-white/10 bg-white/5 p-4 md:col-span-2">
+                    <div class="text-xs uppercase tracking-widest text-white/50">Uploads base path</div>
+                    <input name="uploads_base_path" value="<?= h($vals['uploads_base_path']) ?>" placeholder="/home/sites/.../private_uploads or /home/sites/.../public_html/uploads"
+                      class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                    <div class="mt-2 text-xs text-white/50">Base folder for uploads (e.g., punch photos). Leave blank to use <code class="px-2 py-1 rounded-xl bg-white/10">../uploads</code>.</div>
+                  </label>
+
                   <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
                     <input type="checkbox" name="admin_pairing_mode" class="h-4 w-4 rounded" <?= $vals['admin_pairing_mode'] ? 'checked' : '' ?>/>
                     <div>
