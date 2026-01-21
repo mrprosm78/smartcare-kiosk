@@ -4,6 +4,86 @@ declare(strict_types=1);
 require_once __DIR__ . '/layout.php';
 admin_require_perm($user, 'view_payroll');
 
+
+/**
+ * Compact display for shift times (option B):
+ * - show time-only, because row already shows the date
+ * - if end falls on a different local date than start, append " (+1)" or "(+N)"
+ */
+function fmt_dt_time_only(string $utcDt, string $tz): string {
+  if ($utcDt === '') return '';
+  try {
+    $d = new DateTimeImmutable($utcDt, new DateTimeZone('UTC'));
+    $d = $d->setTimezone(new DateTimeZone($tz));
+    return $d->format('H:i');
+  } catch (Throwable $e) {
+    return $utcDt;
+  }
+}
+
+function fmt_dt_range_compact(string $utcStart, string $utcEnd, string $tz): string {
+  if ($utcStart === '' || $utcEnd === '') return '—';
+  try {
+    $s = (new DateTimeImmutable($utcStart, new DateTimeZone('UTC')))->setTimezone(new DateTimeZone($tz));
+    $e = (new DateTimeImmutable($utcEnd, new DateTimeZone('UTC')))->setTimezone(new DateTimeZone($tz));
+
+    $out = $s->format('H:i') . ' → ' . $e->format('H:i');
+
+    // day delta in local timezone (handles DST too)
+    $sd = $s->format('Y-m-d');
+    $ed = $e->format('Y-m-d');
+    if ($sd !== $ed) {
+      $days = (int)$s->diff($e)->format('%r%a');
+      // For overnight shifts, this will typically be +1. Keep it simple for display.
+      if ($days === 0) $days = 1;
+      $out .= ' (+' . $days . ')';
+    }
+    return $out;
+  } catch (Throwable $e) {
+    // fallback: show raw
+    return $utcStart . ' → ' . $utcEnd;
+  }
+}
+
+/**
+ * Build a fully-populated per-day aggregate row.
+ * Keeps rendering stable (no undefined index warnings) even when a day has no shifts.
+ *
+ * @return array<string,mixed>
+ */
+function day_row_default(string $date): array {
+  return [
+    'date' => $date,
+    'actual_start' => null,
+    'actual_end' => null,
+    'rounded_start' => null,
+    'rounded_end' => null,
+    'actual_worked' => 0,
+    'rounded_worked' => 0,
+    'break_total' => 0,
+    'paid_break' => 0,
+    'unpaid_break' => 0,
+    'paid' => 0,
+    'weekend' => 0,
+    'bank_holiday' => 0,
+    'night' => 0,
+    'callout' => 0,
+    'training' => 0,
+    'dst_delta' => 0,
+    'shifts' => [],
+  ];
+}
+// Payroll UI date formatter (easier to scan than weekday-based formats).
+// Storage remains UTC; this is display-only.
+function payroll_fmt_date_ui(string $dateYmd, string $tz): string {
+  try {
+    return (new DateTimeImmutable($dateYmd . ' 00:00:00', new DateTimeZone($tz)))->format('d M Y');
+  } catch (Throwable $e) {
+    return $dateYmd;
+  }
+}
+
+
 // Payroll Hours (Month)
 // Hours-only view for feeding into Sage:
 // - Shows ACTUAL vs ROUNDED times (rounding applied only for payroll-time)
@@ -451,24 +531,7 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
     $d1 = new DateTimeImmutable((string)$period['month_end_date'] . ' 00:00:00', new DateTimeZone($tz));
     for ($d = $d0; $d <= $d1; $d = $d->modify('+1 day')) {
       $k = $d->format('Y-m-d');
-      $days[$k] = [
-        'date' => $k,
-        'rounded_start' => null,
-        'rounded_end' => null,
-        'actual_start' => null,
-        'actual_end' => null,
-        'rounded_worked' => 0,
-        'break_minutes' => 0,
-        'paid_break_minutes' => 0,
-        'to_pay_minutes' => 0,
-        'weekend' => 0,
-        'bank_holiday' => 0,
-        'night' => 0,
-        'callout' => 0,
-        'training' => 0,
-        'dst_delta' => 0,
-        'shifts' => [],
-      ];
+      $days[$k] = day_row_default($k);
     }
   } catch (Throwable $e) { /* ignore */ }
   foreach ($shifts as $s) {
@@ -540,24 +603,7 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
       $date = (string)$seg['date'];
 
       if (!isset($days[$date])) {
-        $days[$date] = [
-          'date' => $date,
-          'actual_start' => null,
-          'actual_end' => null,
-          'rounded_start' => null,
-          'rounded_end' => null,
-          'actual_worked' => 0,
-          'rounded_worked' => 0,
-          'break_total' => 0,
-          'paid_break' => 0,
-          'unpaid_break' => 0,
-          'paid' => 0,
-          'weekend' => 0,
-          'bank_holiday' => 0,
-          'night' => 0,
-          'callout' => 0,
-          'dst_delta' => 0,
-        ];
+        $days[$date] = day_row_default($date);
       }
 
       // Rounded time bounds
@@ -618,22 +664,7 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
       if ($minPaidMin > 0 && $shiftPaidTotal > 0 && $shiftPaidTotal < $minPaidMin) {
         $uplift = $minPaidMin - $shiftPaidTotal;
         if (!isset($days[$shiftStartDate])) {
-          $days[$shiftStartDate] = [
-            'date' => $shiftStartDate,
-            'actual_start' => null,
-            'actual_end' => null,
-            'rounded_start' => null,
-            'rounded_end' => null,
-            'actual_worked' => 0,
-            'rounded_worked' => 0,
-            'unpaid_break' => 0,
-            'paid' => 0,
-            'weekend' => 0,
-            'bank_holiday' => 0,
-            'night' => 0,
-            'callout' => 0,
-            'dst_delta' => 0,
-          ];
+          $days[$shiftStartDate] = day_row_default($shiftStartDate);
         }
         $days[$shiftStartDate]['paid'] += $uplift;
         $days[$shiftStartDate]['callout'] += $uplift;
@@ -644,24 +675,7 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
       $date = (string)$aseg['date'];
       if (!isset($days[$date])) {
         // If rounding moved all paid time away, still create day entry so payroll sees actual.
-        $days[$date] = [
-          'date' => $date,
-          'actual_start' => null,
-          'actual_end' => null,
-          'rounded_start' => null,
-          'rounded_end' => null,
-          'actual_worked' => 0,
-          'rounded_worked' => 0,
-          'break_total' => 0,
-          'paid_break' => 0,
-          'unpaid_break' => 0,
-          'paid' => 0,
-          'weekend' => 0,
-          'bank_holiday' => 0,
-          'night' => 0,
-          'callout' => 0,
-          'dst_delta' => 0,
-        ];
+        $days[$date] = day_row_default($date);
       }
       $days[$date]['actual_worked'] += (int)$aseg['minutes_utc'];
       if ($days[$date]['actual_start'] === null || (string)$aseg['start_utc'] < (string)$days[$date]['actual_start']) {
@@ -765,6 +779,11 @@ $month = int_param('month', $defaultMonth);
 $year  = int_param('year', $defaultYear);
 $employeeId = (int)($_GET['employee_id'] ?? 0);
 
+// Dropdown options (were accidentally removed in some edits).
+$monthOptions = range(1, 12);
+// Show a sensible rolling window; you can widen this later if needed.
+$yearOptions = range($defaultYear - 2, $defaultYear + 1);
+
 $monthPeriod = calendar_month_period($year, $month);
 $settings = load_payroll_settings($pdo);
 $tz = (string)$settings['payroll_timezone'];
@@ -809,11 +828,11 @@ $active = admin_url('payroll-hours.php');
             <div>
               <h1 class="text-2xl font-semibold">Payroll Hours</h1>
               <div class="mt-1 text-sm text-white/70">
-                Period: <span class="font-semibold text-white"><?= h(fmt_date_ui($monthPeriod['start_date'], $tz)) ?></span> to <span class="font-semibold text-white"><?= h(fmt_date_ui($monthPeriod['end_date'], $tz)) ?></span>
+                Period: <span class="font-semibold text-white"><?= h(payroll_fmt_date_ui($monthPeriod['start_date'], $tz)) ?></span> to <span class="font-semibold text-white"><?= h(payroll_fmt_date_ui($monthPeriod['end_date'], $tz)) ?></span>
                 · Timezone: <span class="font-semibold text-white"><?= h($tz) ?></span>
                 · Week starts: <span class="font-semibold text-white"><?= h((string)$settings['payroll_week_starts_on']) ?></span>
               </div>
-              <div class="mt-1 text-xs text-white/50">OT context range: <?= h(fmt_date_ui($period['start_date'], $tz)) ?> → <?= h(fmt_date_ui($period['end_date'], $tz)) ?> (context days are greyed and excluded from month totals)</div>
+              <div class="mt-1 text-xs text-white/50">OT context range: <?= h(payroll_fmt_date_ui($period['start_date'], $tz)) ?> → <?= h(payroll_fmt_date_ui($period['end_date'], $tz)) ?> (context days are greyed and excluded from month totals)</div>
               <div class="mt-1 text-xs text-white/50">Hours-only view (no pay). Training is separate and excluded from overtime here.</div>
             </div>
           </div>
@@ -859,7 +878,7 @@ $active = admin_url('payroll-hours.php');
             <div class="mt-4 rounded-3xl border border-amber-500/30 bg-amber-500/10 p-4">
               <div class="font-semibold text-amber-100">Unapproved shifts in this period</div>
               <div class="mt-1 text-sm text-amber-100/90">
-                There are <b><?= (int)$unapprovedCount ?></b> unapproved shifts between <?= h(fmt_date_ui($monthPeriod['start_date'], $tz)) ?> and <?= h(fmt_date_ui($monthPeriod['end_date'], $tz)) ?>.
+                There are <b><?= (int)$unapprovedCount ?></b> unapproved shifts between <?= h(payroll_fmt_date_ui($monthPeriod['start_date'], $tz)) ?> and <?= h(payroll_fmt_date_ui($monthPeriod['end_date'], $tz)) ?>.
                 Payroll should not be finalised until managers approve everything.
               </div>
               <div class="mt-2">
@@ -1017,7 +1036,7 @@ $active = admin_url('payroll-hours.php');
                         <?php $inMonth = ($date >= (string)$period['month_start_date'] && $date <= (string)$period['month_end_date']); ?>
                         <tr class="border-t border-white/10 <?= $inMonth ? '' : 'bg-white/5 text-white/50' ?>">
                           <td class="px-4 py-3 font-semibold">
-                            <?= h(fmt_date_ui($date, $tz)) ?>
+                            <?= h(payroll_fmt_date_ui($date, $tz)) ?>
                             <div class="text-xs text-white/40"><?= h($date) ?></div>
                           </td>
                           <td class="px-4 py-3">
@@ -1028,10 +1047,10 @@ $active = admin_url('payroll-hours.php');
                                 $as = (string)($d['actual_start'] ?? '');
                                 $ae = (string)($d['actual_end'] ?? '');
                               ?>
-                              <?= h(($rs !== '' && $re !== '') ? (fmt_dt_compact($rs, $tz) . ' → ' . fmt_dt_compact($re, $tz)) : '—') ?>
+                              <?= h(($rs !== '' && $re !== '') ? (fmt_dt_range_compact($rs, $re, $tz)) : '—') ?>
                             </div>
                             <div class="mt-1 text-[11px] leading-4 text-white/50">
-                              Actual: <?= h(($as !== '' && $ae !== '') ? (fmt_dt_compact($as, $tz) . ' → ' . fmt_dt_compact($ae, $tz)) : '—') ?>
+                              Actual: <?= h(($as !== '' && $ae !== '') ? (fmt_dt_range_compact($as, $ae, $tz)) : '—') ?>
                             </div>
                           </td>
                           <td class="px-4 py-3 text-right"><?= h(number_format(((int)($d['rounded_worked'] ?? 0))/60, 2)) ?></td>
@@ -1105,13 +1124,3 @@ $active = admin_url('payroll-hours.php');
 </div>
 
 <?php admin_page_end(); ?>
-function fmt_dt_compact(string $utcDt, string $tz): string {
-  if ($utcDt === '') return '';
-  try {
-    $d = new DateTimeImmutable($utcDt, new DateTimeZone('UTC'));
-    $d = $d->setTimezone(new DateTimeZone($tz));
-    return $d->format('H:i, d/m/y');
-  } catch (Throwable $e) {
-    return $utcDt;
-  }
-}
