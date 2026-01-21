@@ -83,13 +83,16 @@ try {
         bad('no_matching_punch', 409);
     }
 
-    // Save path relative to project root (works whether installed at / or /app)
-    $root = realpath(__DIR__ . '/../../');
-    if (!$root) bad('server_error', 500);
+    // Determine uploads base path (configurable) and resolve to filesystem path.
+    // For portability across duplicated installs (/yyy/), store uploads_base_path as
+    // a RELATIVE path like "uploads".
+    $baseCfg = (string)setting($pdo, 'uploads_base_path', 'uploads');
+    $base = resolve_uploads_base_path($baseCfg);
 
     $dateFolder = gmdate('Y-m-d');
-    $relDir = 'uploads/kiosk_photos/' . $dateFolder;
-    $absDir = $root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relDir);
+    // Store relative path in DB (relative to uploads_base_path)
+    $relDir = 'kiosk_photos/' . $dateFolder;
+    $absDir = rtrim($base, '/\\') . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relDir);
 
     if (!is_dir($absDir)) {
         @mkdir($absDir, 0775, true);

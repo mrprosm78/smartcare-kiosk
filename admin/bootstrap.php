@@ -310,10 +310,6 @@ function admin_employee_display_name(array $employeeRow): string {
   return $code !== '' ? $code : 'Employee';
 }
 
-function admin_redirect(string $to): void {
-  header('Location: ' . $to);
-  exit;
-}
 
 function admin_layout_start(PDO $pdo, string $title): void {
   $css = admin_asset_css($pdo);

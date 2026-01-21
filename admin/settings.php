@@ -30,8 +30,9 @@ $basicAllow = [
     'round_increment_minutes',
     'round_grace_minutes',
     // Payroll (carehome rules)
-    'payroll_week_starts_on',
     'payroll_timezone',
+    'default_break_minutes',
+    'default_break_is_paid',
     'night_shift_threshold_percent',
     // Night premium window for "Night hours" bucket
     'night_premium_enabled',
@@ -54,6 +55,8 @@ $basicAllow = [
     // Payroll (carehome rules)
     'payroll_week_starts_on',
     'payroll_timezone',
+    'default_break_minutes',
+    'default_break_is_paid',
     'night_shift_threshold_percent',
     'night_premium_enabled',
     'night_premium_start',
@@ -90,9 +93,14 @@ $vals = [
   'round_increment_minutes' => admin_setting_int($pdo, 'round_increment_minutes', 15),
   'round_grace_minutes' => admin_setting_int($pdo, 'round_grace_minutes', 5),
 
+  // system lock
+  'app_initialized' => admin_setting_bool($pdo, 'app_initialized', true),
+
   // payroll (admin/superadmin)
   'payroll_week_starts_on' => admin_setting_str($pdo, 'payroll_week_starts_on', 'MONDAY'),
   'payroll_timezone' => admin_setting_str($pdo, 'payroll_timezone', 'Europe/London'),
+  'default_break_minutes' => admin_setting_int($pdo, 'default_break_minutes', 30),
+  'default_break_is_paid' => admin_setting_bool($pdo, 'default_break_is_paid', false),
   'night_shift_threshold_percent' => admin_setting_int($pdo, 'night_shift_threshold_percent', 50),
   'night_premium_enabled' => admin_setting_bool($pdo, 'night_premium_enabled', true),
   'night_premium_start' => admin_setting_str($pdo, 'night_premium_start', '22:00:00'),
@@ -122,6 +130,9 @@ $vals = [
 $success = '';
 $err = '';
 
+// Week start is setup-only once app is initialized
+$weekLocked = (bool)($vals['app_initialized'] ?? true);
+
 // For superadmin: load complete kiosk_settings so it can be managed in an accordion.
 $allSettings = [];
 if ($canHigh) {
@@ -149,11 +160,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // Payroll (admin/superadmin)
-    if (in_array('payroll_week_starts_on', $allowedBasic, true)) {
+    // Week start is setup-only. Once app_initialized=1, it cannot be changed.
+    $weekLocked = (bool)($vals['app_initialized'] ?? true);
+    if (!$weekLocked && $role === 'superadmin' && in_array('payroll_week_starts_on', $allowedBasic, true)) {
       admin_set_setting($pdo, 'payroll_week_starts_on', strtoupper(trim((string)($_POST['payroll_week_starts_on'] ?? 'MONDAY'))));
     }
     if (in_array('payroll_timezone', $allowedBasic, true)) {
       admin_set_setting($pdo, 'payroll_timezone', trim((string)($_POST['payroll_timezone'] ?? 'Europe/London')));
+    }
+    if (in_array('default_break_minutes', $allowedBasic, true)) {
+      admin_set_setting($pdo, 'default_break_minutes', (string)max(0, (int)($_POST['default_break_minutes'] ?? 30)));
+    }
+    if (in_array('default_break_is_paid', $allowedBasic, true)) {
+      admin_set_setting($pdo, 'default_break_is_paid', isset($_POST['default_break_is_paid']) ? '1' : '0');
     }
     if (in_array('night_shift_threshold_percent', $allowedBasic, true)) {
       admin_set_setting($pdo, 'night_shift_threshold_percent', (string)max(0, min(100, (int)($_POST['night_shift_threshold_percent'] ?? 50))));
@@ -329,7 +348,7 @@ $active = admin_url('settings.php');
 
             <?php
               $payrollKeys = [
-                'payroll_week_starts_on','payroll_timezone','night_shift_threshold_percent','overtime_default_multiplier',
+                'payroll_week_starts_on','payroll_timezone','default_break_minutes','default_break_is_paid','night_shift_threshold_percent','overtime_default_multiplier',
                 'weekend_premium_enabled','weekend_days','weekend_rate_multiplier',
                 'bank_holiday_enabled','bank_holiday_paid','bank_holiday_rate_multiplier',
                 'payroll_overtime_priority',
@@ -347,11 +366,12 @@ $active = admin_url('settings.php');
                   <?php if (in_array('payroll_week_starts_on', $allowedBasic, true)): ?>
                     <label class="rounded-2xl border border-white/10 bg-white/5 p-4">
                       <div class="text-xs uppercase tracking-widest text-white/50">Week starts on</div>
-                      <select name="payroll_week_starts_on" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30">
+                      <select name="payroll_week_starts_on" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" <?= $weekLocked ? "disabled" : "" ?>>
                         <?php foreach (['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'] as $d): ?>
                           <option value="<?= h($d) ?>" <?= strtoupper((string)$vals['payroll_week_starts_on'])===$d ? 'selected' : '' ?>><?= h($d) ?></option>
                         <?php endforeach; ?>
                       </select>
+                      <div class="mt-2 text-xs text-white/50"><?php if ($weekLocked): ?>Locked after initial setup<?php else: ?>Set once at initial setup<?php endif; ?></div>
                     </label>
                   <?php endif; ?>
 
@@ -361,6 +381,25 @@ $active = admin_url('settings.php');
                       <input name="payroll_timezone" value="<?= h((string)$vals['payroll_timezone']) ?>" placeholder="Europe/London"
                         class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
                       <div class="mt-2 text-xs text-white/50">Used for midnight/day boundaries for premiums.</div>
+                    </label>
+                  <?php endif; ?>
+
+                  <?php if (in_array('default_break_minutes', $allowedBasic, true)): ?>
+                    <label class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div class="text-xs uppercase tracking-widest text-white/50">Default break minutes</div>
+                      <input type="number" min="0" step="1" name="default_break_minutes" value="<?= h((string)$vals['default_break_minutes']) ?>"
+                        class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                      <div class="mt-2 text-xs text-white/50">Fallback deducted when no break rule matches.</div>
+                    </label>
+                  <?php endif; ?>
+
+                  <?php if (in_array('default_break_is_paid', $allowedBasic, true)): ?>
+                    <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <input type="checkbox" name="default_break_is_paid" class="h-4 w-4 rounded" <?= $vals['default_break_is_paid'] ? 'checked' : '' ?> />
+                      <div>
+                        <div class="text-sm font-semibold">Default break is paid</div>
+                        <div class="text-xs text-white/60">Normally off (unpaid).</div>
+                      </div>
                     </label>
                   <?php endif; ?>
 

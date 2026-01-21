@@ -342,17 +342,41 @@ function seed_settings(PDO $pdo): void {
     ],
 
     // ===========================
+    // System / Setup Locks
+    // ===========================
+    [
+      'key' => 'uploads_base_path', 'value' => 'uploads', 'group' => 'system',
+      'label' => 'Uploads Base Path', 'description' => 'Filesystem base directory for uploads. Use a relative value like "uploads" for portable installs (resolved from project root).',
+      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 704, 'secret' => 0,
+    ],
+    [
+      'key' => 'app_initialized', 'value' => '0', 'group' => 'system',
+      'label' => 'App Initialized', 'description' => 'Internal lock flag. Once set to 1, setup-only settings become read-only.',
+      'type' => 'bool', 'editable_by' => 'superadmin', 'sort' => 705, 'secret' => 0,
+    ],
+
+    // ===========================
     // Payroll (Care-home Rules)
     // ===========================
     [
       'key' => 'payroll_week_starts_on', 'value' => 'MONDAY', 'group' => 'payroll',
-      'label' => 'Payroll Week Starts On', 'description' => 'Defines the payroll week (Mon–Sun) for weekly overtime calculation.',
-      'type' => 'string', 'editable_by' => 'admin', 'sort' => 710, 'secret' => 0,
+      'label' => 'Week Starts On', 'description' => 'Defines the week boundary used everywhere (payroll, overtime, rota/week views). Set once at initial setup and cannot be changed later.',
+      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 710, 'secret' => 0,
     ],
     [
       'key' => 'payroll_timezone', 'value' => 'Europe/London', 'group' => 'payroll',
       'label' => 'Payroll Timezone', 'description' => 'Timezone used for day/week boundaries (weekend and bank holiday cutoffs).',
       'type' => 'string', 'editable_by' => 'admin', 'sort' => 715, 'secret' => 0,
+    ],
+    [
+      'key' => 'default_break_minutes', 'value' => '30', 'group' => 'payroll',
+      'label' => 'Default Break Minutes', 'description' => 'Fallback unpaid break minutes deducted when no shift break rule matches.',
+      'type' => 'string', 'editable_by' => 'admin', 'sort' => 716, 'secret' => 0,
+    ],
+    [
+      'key' => 'default_break_is_paid', 'value' => '0', 'group' => 'payroll',
+      'label' => 'Default Break Is Paid', 'description' => 'If 1, default break is treated as paid; normally 0 (unpaid).',
+      'type' => 'bool', 'editable_by' => 'admin', 'sort' => 717, 'secret' => 0,
     ],
     [
       'key' => 'payroll_overtime_threshold_hours', 'value' => '40', 'group' => 'payroll',
@@ -596,6 +620,10 @@ function create_tables(PDO $pdo): void {
       -- Enhancement rules (LOCKED): stored in JSON (contract-first)
       rules_json JSON NULL,
 
+      -- Inheritance + overtime threshold (hours/week)
+      inherit_from_carehome TINYINT(1) NOT NULL DEFAULT 1,
+      overtime_threshold_hours DECIMAL(6,2) NULL,
+
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB;
@@ -640,6 +668,8 @@ function create_tables(PDO $pdo): void {
   // Pay profile additions (for older installs): keep night break support
   add_column_if_missing($pdo, 'kiosk_employee_pay_profiles', 'break_minutes_night', 'INT NULL');
   add_column_if_missing($pdo, 'kiosk_employee_pay_profiles', 'hourly_rate', 'DECIMAL(8,2) NULL');
+  add_column_if_missing($pdo, 'kiosk_employee_pay_profiles', 'inherit_from_carehome', 'TINYINT(1) NOT NULL DEFAULT 1');
+  add_column_if_missing($pdo, 'kiosk_employee_pay_profiles', 'overtime_threshold_hours', 'DECIMAL(6,2) NULL');
   // SHIFT CHANGES / AUDIT
   $pdo->exec("
     CREATE TABLE IF NOT EXISTS kiosk_shift_changes (
@@ -704,6 +734,23 @@ function create_tables(PDO $pdo): void {
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       KEY idx_created_at (created_at),
       KEY idx_action_created (action, created_at)
+    ) ENGINE=InnoDB;
+  ");
+
+
+  // BREAK RULES (shift windows; matched by shift start time)
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS kiosk_break_rules (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      start_time CHAR(5) NOT NULL,
+      end_time CHAR(5) NOT NULL,
+      break_minutes INT NOT NULL,
+      is_paid_break TINYINT(1) NOT NULL DEFAULT 0,
+      priority INT NOT NULL DEFAULT 0,
+      is_enabled TINYINT(1) NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      KEY idx_enabled_priority (is_enabled, priority)
     ) ENGINE=InnoDB;
   ");
 
@@ -880,6 +927,10 @@ try {
     seed_settings($pdo);
     seed_employee_categories($pdo);
     seed_admin_users($pdo);
+    // Lock setup-only settings after first successful install/repair
+    try {
+      $pdo->prepare("UPDATE kiosk_settings SET value='1' WHERE `key`='app_initialized'")->execute();
+    } catch (Throwable $e) { /* ignore */ }
     exit("✅ Install / repair completed");
   }
 
@@ -893,6 +944,10 @@ try {
     seed_settings($pdo);
     seed_employee_categories($pdo);
     seed_admin_users($pdo);
+    // Lock setup-only settings after reset too
+    try {
+      $pdo->prepare("UPDATE kiosk_settings SET value='1' WHERE `key`='app_initialized'")->execute();
+    } catch (Throwable $e) { /* ignore */ }
     exit("🔥 Database reset completed");
   }
 
