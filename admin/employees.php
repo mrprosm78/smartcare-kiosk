@@ -41,9 +41,10 @@ if ($q !== '') {
   for ($i=0;$i<5;$i++) $params[] = '%' . $q . '%';
 }
 
-$sql = "SELECT e.*, c.name AS category_name, p.contract_hours_per_week
+$sql = "SELECT e.*, c.name AS department_name, t.name AS team_name, p.contract_hours_per_week
         FROM kiosk_employees e
         LEFT JOIN kiosk_employee_categories c ON c.id = e.category_id
+   LEFT JOIN kiosk_employee_teams t ON t.id = e.team_id
         LEFT JOIN kiosk_employee_pay_profiles p ON p.employee_id = e.id";
 if ($where) {
   $sql .= ' WHERE ' . implode(' AND ', $where);
@@ -84,7 +85,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
               </div>
 
               <div class="md:col-span-3">
-                <label class="block text-xs font-semibold text-white/70">Category</label>
+                <label class="block text-xs font-semibold text-white/70">Department</label>
                 <select name="cat" class="mt-1 w-full rounded-2xl bg-slate-950/50 border border-white/10 px-3 py-2 text-sm">
                   <option value="0">All</option>
                   <?php foreach ($cats as $c): ?>
@@ -128,7 +129,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                   <tr>
                     <th class="text-left font-semibold px-4 py-3">Name</th>
                     <th class="text-left font-semibold px-4 py-3">Type</th>
-                    <th class="text-left font-semibold px-4 py-3">Category</th>
+                    <th class="text-left font-semibold px-4 py-3">Department</th>
                     <?php if ($showContract): ?>
                       <th class="text-left font-semibold px-4 py-3">Contract</th>
                     <?php endif; ?>
@@ -153,7 +154,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                         <div class="text-xs text-white/50">ID: <?= (int)$r['id'] ?> <?= $r['employee_code'] ? '• ' . h((string)$r['employee_code']) : '' ?></div>
                       </td>
                       <td class="px-4 py-3"><span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold <?= ((int)$r['is_agency']===1) ? 'bg-sky-500/15 border border-sky-500/30 text-sky-100' : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-100' ?>"><?= h($type) ?></span></td>
-                      <td class="px-4 py-3 text-white/80"><?= h((string)($r['category_name'] ?? '—')) ?></td>
+                      <td class="px-4 py-3 text-white/80"><?= h((string)($r['department_name'] ?? '—')) ?></td>
                       <?php if ($showContract): ?>
                         <td class="px-4 py-3 text-white/80"><?= h($contract) ?></td>
                       <?php endif; ?>

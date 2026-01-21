@@ -18,7 +18,10 @@ $items[] = ['href' => admin_url('index.php'), 'label' => 'Dashboard', 'perm' => 
 $items[] = ['href' => admin_url('shifts.php'), 'label' => 'Shifts', 'perm' => 'view_shifts'];
 $items[] = ['href' => admin_url('punch-details.php'), 'label' => 'Punch Details', 'perm' => 'view_punches'];
 $items[] = ['href' => admin_url('employees.php'), 'label' => 'Employees', 'perm' => 'view_employees'];
+$items[] = ['href' => admin_url('categories.php'), 'label' => 'Departments', 'perm' => 'manage_employees'];
+$items[] = ['href' => admin_url('teams.php'), 'label' => 'Teams', 'perm' => 'manage_employees'];
 $items[] = ['href' => admin_url('payroll-hours.php'), 'label' => 'Payroll Hours', 'perm' => 'view_payroll'];
+$items[] = ['href' => admin_url('break-rules.php'), 'label' => 'Shift Rules', 'perm' => 'manage_settings_basic'];
 $items[] = ['href' => admin_url('settings.php'), 'label' => 'Settings', 'perm' => 'manage_settings_basic'];
 
 ?>
@@ -44,7 +47,6 @@ $items[] = ['href' => admin_url('settings.php'), 'label' => 'Settings', 'perm' =
     </div>
 
     <div class="mt-4 border-t border-white/10 pt-4 flex items-center justify-between">
-      <a href="<?= h(app_url('index.php')) ?>" class="text-xs font-semibold text-white/70 hover:text-white">Open Kiosk</a>
       <span class="text-[11px] text-white/40">UTC</span>
     </div>
   </div>

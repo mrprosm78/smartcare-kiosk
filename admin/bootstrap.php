@@ -111,6 +111,19 @@ function admin_asset_css(PDO $pdo): string {
   return app_url('assets/kiosk.css') . '?v=' . rawurlencode($v);
 }
 
+
+
+if (!function_exists('fmt_date_ui')) {
+  function fmt_date_ui(string $dateYmd, string $tz): string {
+    try {
+      // Display-only helper for UI: keep UTC storage, show local date as D, d M Y.
+      return (new DateTimeImmutable($dateYmd . ' 00:00:00', new DateTimeZone($tz)))->format('D, d M Y');
+    } catch (Throwable $e) {
+      return $dateYmd;
+    }
+  }
+}
+
 function admin_setting_bool(PDO $pdo, string $key, bool $default): bool {
   return setting($pdo, $key, $default ? '1' : '0') === '1';
 }
@@ -386,7 +399,7 @@ function admin_fmt_dt(?string $dt): string {
   if (!$dt) return '—';
   try {
     $d = new DateTimeImmutable($dt, new DateTimeZone('UTC'));
-    return $d->format('d M Y, H:i');
+    return $d->format('D, d M Y, H:i');
   } catch (Throwable $e) {
     return $dt;
   }

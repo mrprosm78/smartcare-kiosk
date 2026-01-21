@@ -31,6 +31,42 @@ function calendar_month_period(int $year, int $month): array {
   ];
 }
 
+/**
+ * Expand a month period to full payroll weeks (context days) based on immutable week start.
+ * Month totals should still only count days within the calendar month.
+ *
+ * @return array{start:string,end:string,start_date:string,end_date:string,month_start_date:string,month_end_date:string}
+ */
+function month_context_period(array $monthPeriod, array $settings): array {
+  $tz = (string)($settings['payroll_timezone'] ?? 'UTC');
+  $weekStartsOn = (string)($settings['payroll_week_starts_on'] ?? 'MONDAY');
+
+  $monthStart = (string)$monthPeriod['start_date'];
+  $monthEnd = (string)$monthPeriod['end_date'];
+
+  $ctxStartDate = week_start_date($monthStart, $weekStartsOn, $tz);
+  $lastWeekStart = week_start_date($monthEnd, $weekStartsOn, $tz);
+  $ctxEndDate = (new DateTimeImmutable($lastWeekStart . ' 00:00:00', new DateTimeZone($tz)))
+    ->modify('+6 days')
+    ->format('Y-m-d');
+
+  $ctxStartUtc = (new DateTimeImmutable($ctxStartDate . ' 00:00:00', new DateTimeZone($tz)))
+    ->setTimezone(new DateTimeZone('UTC'));
+  $ctxEndExclusiveUtc = (new DateTimeImmutable($ctxEndDate . ' 00:00:00', new DateTimeZone($tz)))
+    ->modify('+1 day')
+    ->setTimezone(new DateTimeZone('UTC'));
+
+  return [
+    'start' => $ctxStartUtc->format('Y-m-d H:i:s'),
+    'end' => $ctxEndExclusiveUtc->format('Y-m-d H:i:s'),
+    'start_date' => $ctxStartDate,
+    'end_date' => $ctxEndDate,
+    'month_start_date' => $monthStart,
+    'month_end_date' => $monthEnd,
+  ];
+}
+
+
 /** @return array<string,mixed> */
 function load_payroll_settings(PDO $pdo): array {
   // Settings keys are seeded by setup.php (Payroll Rules section).
@@ -40,6 +76,7 @@ function load_payroll_settings(PDO $pdo): array {
     'round_grace_minutes' => 5,
     'payroll_week_starts_on' => 'MONDAY',
     'payroll_timezone' => 'Europe/London',
+    'default_break_minutes' => 0,
     'payroll_overtime_threshold_hours' => 40,
     'payroll_stacking_mode' => 'exclusive',
     'payroll_night_start' => '20:00',
@@ -73,6 +110,10 @@ function load_payroll_settings(PDO $pdo): array {
   if (isset($map['payroll_timezone']) && trim($map['payroll_timezone']) !== '') {
     $out['payroll_timezone'] = trim($map['payroll_timezone']);
   }
+  if (isset($map['default_break_minutes']) && is_numeric($map['default_break_minutes'])) {
+    $out['default_break_minutes'] = (int)$map['default_break_minutes'];
+  }
+  // Paid vs unpaid break is determined per employee contract (pay profile).
   if (isset($map['payroll_overtime_threshold_hours']) && is_numeric($map['payroll_overtime_threshold_hours'])) {
     $out['payroll_overtime_threshold_hours'] = (float)$map['payroll_overtime_threshold_hours'];
   }
@@ -119,6 +160,7 @@ function load_payroll_settings(PDO $pdo): array {
 
   $out['round_increment_minutes'] = max(1, (int)$out['round_increment_minutes']);
   $out['round_grace_minutes'] = max(0, (int)$out['round_grace_minutes']);
+  $out['default_break_minutes'] = max(0, (int)$out['default_break_minutes']);
   $out['payroll_overtime_threshold_hours'] = max(0.0, (float)$out['payroll_overtime_threshold_hours']);
   $out['payroll_bank_holiday_cap_hours'] = max(0, (int)$out['payroll_bank_holiday_cap_hours']);
   $out['payroll_callout_min_paid_hours'] = max(0.0, (float)$out['payroll_callout_min_paid_hours']);
@@ -139,6 +181,49 @@ function load_bank_holiday_index(PDO $pdo, string $startDate, string $endDate): 
   $idx = [];
   foreach ($rows as $r) $idx[(string)$r['holiday_date']] = (string)($r['name'] ?? '');
   return $idx;
+}
+
+/** @return array<int,array{start_time:string,end_time:string,break_minutes:int,priority:int}> */
+function load_break_rules(PDO $pdo): array {
+  try {
+    $rows = $pdo->query("SELECT start_time,end_time,break_minutes,priority FROM kiosk_break_rules WHERE is_enabled=1 ORDER BY priority DESC, id DESC")
+      ->fetchAll(PDO::FETCH_ASSOC) ?: [];
+  } catch (Throwable $e) {
+    return [];
+  }
+  $out = [];
+  foreach ($rows as $r) {
+    $out[] = [
+      'start_time' => (string)$r['start_time'],
+      'end_time' => (string)$r['end_time'],
+      'break_minutes' => (int)$r['break_minutes'],
+      'priority' => (int)$r['priority'],
+    ];
+  }
+  return $out;
+}
+
+/** @return array{break_minutes:int} */
+function match_break_rule(string $shiftStartHm, array $rules, int $defaultMinutes): array {
+  $shiftStartHm = substr($shiftStartHm, 0, 5);
+  foreach ($rules as $r) {
+    $s = substr((string)($r['start_time'] ?? ''), 0, 5);
+    $e = substr((string)($r['end_time'] ?? ''), 0, 5);
+    if (!preg_match('/^\d{2}:\d{2}$/', $s) || !preg_match('/^\d{2}:\d{2}$/', $e)) continue;
+
+    if ($s <= $e) {
+      // Normal window: [s,e)
+      if ($shiftStartHm >= $s && $shiftStartHm < $e) {
+        return ['break_minutes' => max(0,(int)($r['break_minutes'] ?? 0))];
+      }
+    } else {
+      // Cross-midnight: match if start >= s OR start < e
+      if ($shiftStartHm >= $s || $shiftStartHm < $e) {
+        return ['break_minutes' => max(0,(int)($r['break_minutes'] ?? 0))];
+      }
+    }
+  }
+  return ['break_minutes' => max(0,$defaultMinutes)];
 }
 
 function week_start_date(string $dateYmd, string $weekStartsOn, string $tz): string {
@@ -315,7 +400,7 @@ function employee_contract_meta_from_rows(array $rows): array {
 }
 
 /** @return array{days:array<string,array>, weeks:array<string,array>, totals:array, training_minutes:int, contract_week_minutes:int} */
-function compute_employee_month(PDO $pdo, int $employeeId, array $period, array $settings, array $bankHolidayIndex): array {
+function compute_employee_month(PDO $pdo, int $employeeId, array $period, array $settings, array $bankHolidayIndex, array $breakRules): array {
   $tz = (string)$settings['payroll_timezone'];
 
   $sql = "
@@ -323,8 +408,8 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
       s.*,
       e.employee_code, e.first_name, e.last_name, e.nickname, e.is_agency, e.agency_label,
       p.contract_hours_per_week,
-      p.break_minutes_default, p.break_minutes_night,
-      p.break_is_paid, p.min_hours_for_break,
+      p.break_is_paid,
+      p.inherit_from_carehome, p.overtime_threshold_hours,
       NULL AS latest_edit_json
     FROM kiosk_shifts s
     JOIN kiosk_employees e ON e.id = s.employee_id
@@ -340,9 +425,17 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
   $shifts = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
   $contractHours = (float)($shifts[0]['contract_hours_per_week'] ?? 0);
-  // LOCKED: overtime threshold is a care-home payroll setting (Mon–Sun week).
-  $thresholdHours = (float)($settings['payroll_overtime_threshold_hours'] ?? 0);
+
+  // Overtime threshold (minutes/week): employee profile overrides contract hours.
+  $th = $shifts ? ($shifts[0]['overtime_threshold_hours'] ?? null) : null;
+  $thresholdHours = 0.0;
+  if ($th !== null && is_numeric($th)) {
+    $thresholdHours = (float)$th;
+  } else {
+    $thresholdHours = (float)($shifts[0]['contract_hours_per_week'] ?? 0);
+  }
   $contractWeekMinutes = (int)round(max(0.0, $thresholdHours) * 60);
+
 
   // Training minutes are shown separately and excluded from OT on this page.
   $trainingMinutes = 0;
@@ -352,6 +445,32 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
   }
 
   $days = []; // date => aggregates
+  // Pre-fill all days in the selected month (so employee view always shows a full month)
+  try {
+    $d0 = new DateTimeImmutable((string)$period['month_start_date'] . ' 00:00:00', new DateTimeZone($tz));
+    $d1 = new DateTimeImmutable((string)$period['month_end_date'] . ' 00:00:00', new DateTimeZone($tz));
+    for ($d = $d0; $d <= $d1; $d = $d->modify('+1 day')) {
+      $k = $d->format('Y-m-d');
+      $days[$k] = [
+        'date' => $k,
+        'rounded_start' => null,
+        'rounded_end' => null,
+        'actual_start' => null,
+        'actual_end' => null,
+        'rounded_worked' => 0,
+        'break_minutes' => 0,
+        'paid_break_minutes' => 0,
+        'to_pay_minutes' => 0,
+        'weekend' => 0,
+        'bank_holiday' => 0,
+        'night' => 0,
+        'callout' => 0,
+        'training' => 0,
+        'dst_delta' => 0,
+        'shifts' => [],
+      ];
+    }
+  } catch (Throwable $e) { /* ignore */ }
   foreach ($shifts as $s) {
     $eff = admin_shift_effective($s);
     $in = (string)($eff['clock_in_at'] ?? '');
@@ -373,23 +492,17 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
     $workedRounded = admin_minutes_between($rin, $rout) ?? 0;
     if ($workedRounded <= 0) continue;
 
-    // Break minutes
-    $isNightForBreak = is_night_shift_for_break($rin, $rout, $s, $settings);
-    $breakMinutes = $eff['break_minutes'] !== null
-      ? (int)$eff['break_minutes']
-      : (int)($isNightForBreak
-        ? ($s['break_minutes_night'] ?? ($s['break_minutes_default'] ?? 0))
-        : ($s['break_minutes_default'] ?? 0)
-      );
-    $breakMinutes = max(0, $breakMinutes);
+    // Break minutes (LOCKED): match by shift start time against care-home break rules.
+    $shiftStartLocalHm = (new DateTimeImmutable($rin, new DateTimeZone('UTC')))->setTimezone(new DateTimeZone($tz))->format('H:i');
+    $defaultBreakMin = (int)($settings['default_break_minutes'] ?? 0);
+    $br = match_break_rule($shiftStartLocalHm, $breakRules, $defaultBreakMin);
+    $breakMinutes = max(0, (int)$br['break_minutes']);
+    $breakMinutes = min($breakMinutes, $workedRounded);
+    $employeeBreakPaid = ((int)($s['break_is_paid'] ?? 0) === 1);
 
-    $breakIsPaid = ((int)($s['break_is_paid'] ?? 0) === 1);
-    $minHours = $s['min_hours_for_break'] !== null ? (float)$s['min_hours_for_break'] : 0.0;
-    if ($minHours > 0 && ($workedRounded/60.0) < $minHours) {
-      $breakMinutes = 0;
-    }
-    $unpaidBreakTotal = $breakIsPaid ? 0 : $breakMinutes;
-    $unpaidBreakTotal = min($unpaidBreakTotal, $workedRounded);
+    $breakTotal = $breakMinutes;
+    $paidBreakTotal = $employeeBreakPaid ? $breakMinutes : 0;
+    $unpaidBreakTotal = $employeeBreakPaid ? 0 : $breakMinutes;
 
     // Split both actual and rounded intervals by local day
     $actualSegs = split_by_day_detailed($actualIn, $actualOut, $period['start'], $period['end'], $tz);
@@ -399,27 +512,30 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
     foreach ($roundedSegs as $seg) $roundedTotalSegMin += (int)$seg['minutes_utc'];
     if ($roundedTotalSegMin <= 0) continue;
 
-    // Allocate unpaid break across rounded segments proportionally.
+    // Allocate break across rounded segments proportionally.
     $shiftPaidTotal = 0;
     $shiftStartDate = (new DateTimeImmutable($rin, new DateTimeZone('UTC')))->setTimezone(new DateTimeZone($tz))->format('Y-m-d');
     $isCallout = ((int)($s['is_callout'] ?? 0) === 1);
-    $remainingBreak = $unpaidBreakTotal;
+    $remainingBreak = $breakTotal;
     foreach ($roundedSegs as $idx => $seg) {
       $segMin = (int)$seg['minutes_utc'];
       if ($segMin <= 0) continue;
 
-      $allocBreak = 0;
-      if ($unpaidBreakTotal > 0) {
+      $allocBreakTotal = 0;
+      if ($breakTotal > 0) {
         if ($idx === array_key_last($roundedSegs)) {
-          $allocBreak = $remainingBreak;
+          $allocBreakTotal = $remainingBreak;
         } else {
-          $allocBreak = (int)floor($unpaidBreakTotal * ($segMin / $roundedTotalSegMin));
-          $allocBreak = min($allocBreak, $remainingBreak);
+          $allocBreakTotal = (int)floor($breakTotal * ($segMin / $roundedTotalSegMin));
+          $allocBreakTotal = min($allocBreakTotal, $remainingBreak);
         }
       }
-      $remainingBreak -= $allocBreak;
+      $remainingBreak -= $allocBreakTotal;
 
-      $paidSeg = max(0, $segMin - max(0, $allocBreak));
+      $allocPaidBreak = $employeeBreakPaid ? $allocBreakTotal : 0;
+      $allocUnpaidBreak = $employeeBreakPaid ? 0 : $allocBreakTotal;
+
+      $paidSeg = max(0, $segMin - max(0, $allocUnpaidBreak));
       $shiftPaidTotal += $paidSeg;
       $date = (string)$seg['date'];
 
@@ -432,6 +548,8 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
           'rounded_end' => null,
           'actual_worked' => 0,
           'rounded_worked' => 0,
+          'break_total' => 0,
+          'paid_break' => 0,
           'unpaid_break' => 0,
           'paid' => 0,
           'weekend' => 0,
@@ -444,15 +562,17 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
 
       // Rounded time bounds
       $days[$date]['rounded_worked'] += $segMin;
-      $days[$date]['unpaid_break'] += $allocBreak;
+      $days[$date]['break_total'] += $allocBreakTotal;
+      $days[$date]['paid_break'] += $allocPaidBreak;
+      $days[$date]['unpaid_break'] += $allocUnpaidBreak;
       $days[$date]['paid'] += $paidSeg;
       $days[$date]['dst_delta'] += (int)($seg['dst_delta'] ?? 0);
 
-      if ($days[$date]['rounded_start'] === null || (string)$seg['start_local'] < (string)$days[$date]['rounded_start']) {
-        $days[$date]['rounded_start'] = (string)$seg['start_local'];
+      if ($days[$date]['rounded_start'] === null || (string)$seg['start_utc'] < (string)$days[$date]['rounded_start']) {
+        $days[$date]['rounded_start'] = (string)$seg['start_utc'];
       }
-      if ($days[$date]['rounded_end'] === null || (string)$seg['end_local'] > (string)$days[$date]['rounded_end']) {
-        $days[$date]['rounded_end'] = (string)$seg['end_local'];
+      if ($days[$date]['rounded_end'] === null || (string)$seg['end_utc'] > (string)$days[$date]['rounded_end']) {
+        $days[$date]['rounded_end'] = (string)$seg['end_utc'];
       }
 
       // Weekend/BH (hours only)
@@ -532,6 +652,8 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
           'rounded_end' => null,
           'actual_worked' => 0,
           'rounded_worked' => 0,
+          'break_total' => 0,
+          'paid_break' => 0,
           'unpaid_break' => 0,
           'paid' => 0,
           'weekend' => 0,
@@ -542,11 +664,11 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
         ];
       }
       $days[$date]['actual_worked'] += (int)$aseg['minutes_utc'];
-      if ($days[$date]['actual_start'] === null || (string)$aseg['start_local'] < (string)$days[$date]['actual_start']) {
-        $days[$date]['actual_start'] = (string)$aseg['start_local'];
+      if ($days[$date]['actual_start'] === null || (string)$aseg['start_utc'] < (string)$days[$date]['actual_start']) {
+        $days[$date]['actual_start'] = (string)$aseg['start_utc'];
       }
-      if ($days[$date]['actual_end'] === null || (string)$aseg['end_local'] > (string)$days[$date]['actual_end']) {
-        $days[$date]['actual_end'] = (string)$aseg['end_local'];
+      if ($days[$date]['actual_end'] === null || (string)$aseg['end_utc'] > (string)$days[$date]['actual_end']) {
+        $days[$date]['actual_end'] = (string)$aseg['end_utc'];
       }
     }
   }
@@ -556,7 +678,9 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
   // Week grouping + OT (training excluded)
   $weeks = []; // weekStart => ['days'=>[date=>ref], 'totals'=>...]
   $totalPaid = 0;
-  $totalUnpaidBreak = 0;
+  $totalBreak = 0;
+  $totalPaidBreak = 0;
+  $totalUnpaidBreak = 0; // kept for backwards compatibility
   $totalWeekend = 0;
   $totalBH = 0;
   $totalNight = 0;
@@ -564,6 +688,7 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
   $totalDst = 0;
 
   foreach ($days as $date => $d) {
+    $inMonth = ($date >= (string)$period['month_start_date'] && $date <= (string)$period['month_end_date']);
     $wk = week_start_date($date, (string)$settings['payroll_week_starts_on'], $tz);
     if (!isset($weeks[$wk])) {
       $weeks[$wk] = [
@@ -575,13 +700,18 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
     $weeks[$wk]['days'][$date] = $d;
     $weeks[$wk]['totals']['paid'] += (int)$d['paid'];
 
-    $totalPaid += (int)$d['paid'];
-    $totalUnpaidBreak += (int)$d['unpaid_break'];
-    $totalWeekend += (int)$d['weekend'];
-    $totalBH += (int)$d['bank_holiday'];
-    $totalNight += (int)$d['night'];
-    $totalCallout += (int)($d['callout'] ?? 0);
-    $totalDst += (int)$d['dst_delta'];
+    // Month totals exclude context days.
+    if ($inMonth) {
+      $totalPaid += (int)$d['paid'];
+      $totalBreak += (int)($d['break_total'] ?? 0);
+      $totalPaidBreak += (int)($d['paid_break'] ?? 0);
+      $totalUnpaidBreak += (int)($d['unpaid_break'] ?? 0);
+      $totalWeekend += (int)$d['weekend'];
+      $totalBH += (int)$d['bank_holiday'];
+      $totalNight += (int)$d['night'];
+      $totalCallout += (int)($d['callout'] ?? 0);
+      $totalDst += (int)$d['dst_delta'];
+    }
   }
 
   foreach ($weeks as $wk => &$w) {
@@ -610,6 +740,8 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
     'weeks' => $weeks,
     'totals' => [
       'paid' => $totalPaid,
+      'break_total' => $totalBreak,
+      'paid_break' => $totalPaidBreak,
       'unpaid_break' => $totalUnpaidBreak,
       'weekend' => $totalWeekend,
       'bank_holiday' => $totalBH,
@@ -626,17 +758,19 @@ function compute_employee_month(PDO $pdo, int $employeeId, array $period, array 
 
 // Defaults: previous month
 $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
-$defaultMonth = (int)$now->modify('-1 month')->format('n');
-$defaultYear  = (int)$now->modify('-1 month')->format('Y');
+$defaultMonth = (int)$now->format('n');
+$defaultYear  = (int)$now->format('Y');
 
 $month = int_param('month', $defaultMonth);
 $year  = int_param('year', $defaultYear);
 $employeeId = (int)($_GET['employee_id'] ?? 0);
 
-$period = calendar_month_period($year, $month);
+$monthPeriod = calendar_month_period($year, $month);
 $settings = load_payroll_settings($pdo);
 $tz = (string)$settings['payroll_timezone'];
+$period = month_context_period($monthPeriod, $settings);
 $bankHolidayIndex = load_bank_holiday_index($pdo, $period['start_date'], $period['end_date']);
+$breakRules = load_break_rules($pdo);
 
 // Employee list (active)
 $empSql = "
@@ -650,7 +784,7 @@ $employees = $pdo->query($empSql)->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 // Unapproved shifts warning (block in payroll-run; here we just show)
 $stmt = $pdo->prepare("SELECT COUNT(*) AS c FROM kiosk_shifts WHERE clock_in_at >= :s AND clock_in_at < :e AND approved_at IS NULL");
-$stmt->execute([':s'=>$period['start'], ':e'=>$period['end']]);
+$stmt->execute([':s'=>$monthPeriod['start'], ':e'=>$monthPeriod['end']]);
 $unapprovedCount = (int)($stmt->fetch(PDO::FETCH_ASSOC)['c'] ?? 0);
 
 $periodLabel = sprintf('%04d-%02d', $year, $month);
@@ -675,10 +809,11 @@ $active = admin_url('payroll-hours.php');
             <div>
               <h1 class="text-2xl font-semibold">Payroll Hours</h1>
               <div class="mt-1 text-sm text-white/70">
-                Period: <span class="font-semibold text-white"><?= h($period['start_date']) ?></span> to <span class="font-semibold text-white"><?= h($period['end_date']) ?></span>
+                Period: <span class="font-semibold text-white"><?= h(fmt_date_ui($monthPeriod['start_date'], $tz)) ?></span> to <span class="font-semibold text-white"><?= h(fmt_date_ui($monthPeriod['end_date'], $tz)) ?></span>
                 · Timezone: <span class="font-semibold text-white"><?= h($tz) ?></span>
                 · Week starts: <span class="font-semibold text-white"><?= h((string)$settings['payroll_week_starts_on']) ?></span>
               </div>
+              <div class="mt-1 text-xs text-white/50">OT context range: <?= h(fmt_date_ui($period['start_date'], $tz)) ?> → <?= h(fmt_date_ui($period['end_date'], $tz)) ?> (context days are greyed and excluded from month totals)</div>
               <div class="mt-1 text-xs text-white/50">Hours-only view (no pay). Training is separate and excluded from overtime here.</div>
             </div>
           </div>
@@ -687,11 +822,19 @@ $active = admin_url('payroll-hours.php');
             <form method="get" class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
               <div>
                 <label class="text-xs text-white/60">Year</label>
-                <input name="year" value="<?= (int)$year ?>" class="mt-1 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                <select name="year" class="mt-1 w-full rounded-2xl bg-slate-900/60 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30">
+                  <?php foreach ($yearOptions as $yy): ?>
+                    <option value="<?= (int)$yy ?>" <?= ((int)$yy===$year)?'selected':'' ?>><?= (int)$yy ?></option>
+                  <?php endforeach; ?>
+                </select>
               </div>
               <div>
                 <label class="text-xs text-white/60">Month</label>
-                <input name="month" value="<?= (int)$month ?>" class="mt-1 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                <select name="month" class="mt-1 w-full rounded-2xl bg-slate-900/60 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30">
+                  <?php foreach ($monthOptions as $mm): ?>
+                    <option value="<?= (int)$mm ?>" <?= ((int)$mm===$month)?'selected':'' ?>><?= (int)$mm ?> - <?= h(date('F', mktime(0,0,0,$mm,1,$year))) ?></option>
+                  <?php endforeach; ?>
+                </select>
               </div>
               <div>
                 <label class="text-xs text-white/60">Employee</label>
@@ -701,6 +844,10 @@ $active = admin_url('payroll-hours.php');
                     <option value="<?= (int)$e['id'] ?>" <?= ((int)$e['id']===$employeeId)?'selected':'' ?>><?= h((string)$e['display_name']) ?> (<?= h((string)$e['employee_code']) ?>)</option>
                   <?php endforeach; ?>
                 </select>
+              </div>
+              <div class="flex gap-2">
+                <button type="button" data-preset="this" class="w-full text-center rounded-2xl px-4 py-2.5 text-sm font-semibold bg-white/5 border border-white/10 text-white/80 hover:bg-white/10">This month</button>
+                <button type="button" data-preset="last" class="w-full text-center rounded-2xl px-4 py-2.5 text-sm font-semibold bg-white/5 border border-white/10 text-white/80 hover:bg-white/10">Last month</button>
               </div>
               <div>
                 <button class="w-full rounded-2xl px-4 py-2.5 text-sm font-semibold bg-sky-600 hover:bg-sky-500">View</button>
@@ -712,11 +859,11 @@ $active = admin_url('payroll-hours.php');
             <div class="mt-4 rounded-3xl border border-amber-500/30 bg-amber-500/10 p-4">
               <div class="font-semibold text-amber-100">Unapproved shifts in this period</div>
               <div class="mt-1 text-sm text-amber-100/90">
-                There are <b><?= (int)$unapprovedCount ?></b> unapproved shifts between <?= h($period['start_date']) ?> and <?= h($period['end_date']) ?>.
+                There are <b><?= (int)$unapprovedCount ?></b> unapproved shifts between <?= h(fmt_date_ui($monthPeriod['start_date'], $tz)) ?> and <?= h(fmt_date_ui($monthPeriod['end_date'], $tz)) ?>.
                 Payroll should not be finalised until managers approve everything.
               </div>
               <div class="mt-2">
-                <a class="underline text-amber-100" href="shifts.php?mode=range&from=<?= h($period['start_date']) ?>&to=<?= h($period['end_date']) ?>&status=unapproved">Open unapproved shifts</a>
+                <a class="underline text-amber-100" href="shifts.php?mode=range&from=<?= h($monthPeriod['start_date']) ?>&to=<?= h($monthPeriod['end_date']) ?>&status=unapproved">Open unapproved shifts</a>
               </div>
             </div>
           <?php endif; ?>
@@ -724,7 +871,7 @@ $active = admin_url('payroll-hours.php');
           <?php
             // ALL EMPLOYEES SUMMARY
             if ($employeeId === 0):
-              $grand = ['paid'=>0,'unpaid_break'=>0,'weekend'=>0,'bank_holiday'=>0,'night'=>0,'callout'=>0,'overtime'=>0,'training'=>0,'dst_delta'=>0];
+              $grand = ['paid'=>0,'break_total'=>0,'paid_break'=>0,'unpaid_break'=>0,'weekend'=>0,'bank_holiday'=>0,'night'=>0,'callout'=>0,'overtime'=>0,'training'=>0,'dst_delta'=>0];
           ?>
 
             <div class="mt-6 bg-white/5 border border-white/10 rounded-3xl overflow-hidden">
@@ -737,8 +884,9 @@ $active = admin_url('payroll-hours.php');
                   <thead class="text-white/70">
                     <tr class="border-t border-white/10">
                       <th class="text-left px-4 py-3">Employee</th>
-                      <th class="text-right px-4 py-3">Paid (h)</th>
-                      <th class="text-right px-4 py-3">Unpaid break (h)</th>
+                      <th class="text-right px-4 py-3">To pay (h)</th>
+	                      <th class="text-right px-4 py-3">Break (min)</th>
+	                      <th class="text-right px-4 py-3">Paid break (min)</th>
                       <th class="text-right px-4 py-3">Weekend (h)</th>
                       <th class="text-right px-4 py-3">Bank holiday (h)</th>
                       <th class="text-right px-4 py-3">Night (h)</th>
@@ -752,11 +900,13 @@ $active = admin_url('payroll-hours.php');
                     <?php foreach ($employees as $e): ?>
                       <?php
                         $empId = (int)$e['id'];
-                        $calc = compute_employee_month($pdo, $empId, $period, $settings, $bankHolidayIndex);
+                        $calc = compute_employee_month($pdo, $empId, $period, $settings, $bankHolidayIndex, $breakRules);
                         $t = $calc['totals'];
                         $trainingMin = (int)$calc['training_minutes'];
                         $grand['paid'] += (int)$t['paid'];
-                        $grand['unpaid_break'] += (int)$t['unpaid_break'];
+                        $grand['break_total'] += (int)($t['break_total'] ?? 0);
+                        $grand['paid_break'] += (int)($t['paid_break'] ?? 0);
+                        $grand['unpaid_break'] += (int)($t['unpaid_break'] ?? 0);
                         $grand['weekend'] += (int)$t['weekend'];
                         $grand['bank_holiday'] += (int)$t['bank_holiday'];
                         $grand['night'] += (int)$t['night'];
@@ -771,7 +921,8 @@ $active = admin_url('payroll-hours.php');
                           <div class="text-xs text-white/40"><?= h((string)$e['employee_code']) ?></div>
                         </td>
                         <td class="px-4 py-3 text-right"><?= h(number_format(((int)$t['paid'])/60, 2)) ?></td>
-                        <td class="px-4 py-3 text-right"><?= h(number_format(((int)$t['unpaid_break'])/60, 2)) ?></td>
+	                        <td class="px-4 py-3 text-right"><?= h((string)(int)($t['break_total'] ?? 0)) ?></td>
+	                        <td class="px-4 py-3 text-right"><?= h((string)(int)($t['paid_break'] ?? 0)) ?></td>
                         <td class="px-4 py-3 text-right"><?= h(number_format(((int)$t['weekend'])/60, 2)) ?></td>
                         <td class="px-4 py-3 text-right"><?= h(number_format(((int)$t['bank_holiday'])/60, 2)) ?></td>
                         <td class="px-4 py-3 text-right"><?= h(number_format(((int)$t['night'])/60, 2)) ?></td>
@@ -786,7 +937,8 @@ $active = admin_url('payroll-hours.php');
                     <tr class="border-t border-white/20 bg-slate-950/40">
                       <th class="text-left px-4 py-3">Grand total</th>
                       <th class="text-right px-4 py-3"><?= h(number_format($grand['paid']/60, 2)) ?></th>
-                      <th class="text-right px-4 py-3"><?= h(number_format($grand['unpaid_break']/60, 2)) ?></th>
+	                      <th class="text-right px-4 py-3"><?= h((string)(int)$grand['break_total']) ?></th>
+	                      <th class="text-right px-4 py-3"><?= h((string)(int)$grand['paid_break']) ?></th>
                       <th class="text-right px-4 py-3"><?= h(number_format($grand['weekend']/60, 2)) ?></th>
                       <th class="text-right px-4 py-3"><?= h(number_format($grand['bank_holiday']/60, 2)) ?></th>
                       <th class="text-right px-4 py-3"><?= h(number_format($grand['night']/60, 2)) ?></th>
@@ -803,7 +955,7 @@ $active = admin_url('payroll-hours.php');
           <?php
             // SINGLE EMPLOYEE DETAIL
             else:
-              $calc = compute_employee_month($pdo, $employeeId, $period, $settings, $bankHolidayIndex);
+              $calc = compute_employee_month($pdo, $employeeId, $period, $settings, $bankHolidayIndex, $breakRules);
               $weeks = $calc['weeks'];
               $tot = $calc['totals'];
               $trainingMin = (int)$calc['training_minutes'];
@@ -849,8 +1001,10 @@ $active = admin_url('payroll-hours.php');
                       <tr class="border-t border-white/10">
                         <th class="text-left px-4 py-3">Date</th>
                         <th class="text-left px-4 py-3">Shift (rounded)</th>
-                        <th class="text-right px-4 py-3">Paid (h)</th>
-                        <th class="text-right px-4 py-3">Unpaid break (h)</th>
+                        <th class="text-right px-4 py-3">Worked (h)</th>
+	                        <th class="text-right px-4 py-3">Break (min)</th>
+	                        <th class="text-right px-4 py-3">Paid break (min)</th>
+                        <th class="text-right px-4 py-3">To pay (h)</th>
                         <th class="text-right px-4 py-3">Weekend (h)</th>
                         <th class="text-right px-4 py-3">BH (h)</th>
                         <th class="text-right px-4 py-3">Night (h)</th>
@@ -860,18 +1014,30 @@ $active = admin_url('payroll-hours.php');
                     </thead>
                     <tbody>
                       <?php foreach ($w['days'] as $date => $d): ?>
-                        <tr class="border-t border-white/10">
-                          <td class="px-4 py-3 font-semibold"><?= h($date) ?></td>
+                        <?php $inMonth = ($date >= (string)$period['month_start_date'] && $date <= (string)$period['month_end_date']); ?>
+                        <tr class="border-t border-white/10 <?= $inMonth ? '' : 'bg-white/5 text-white/50' ?>">
+                          <td class="px-4 py-3 font-semibold">
+                            <?= h(fmt_date_ui($date, $tz)) ?>
+                            <div class="text-xs text-white/40"><?= h($date) ?></div>
+                          </td>
                           <td class="px-4 py-3">
                             <div class="font-semibold text-white">
-                              <?= h((string)($d['rounded_start'] ?? '—')) ?> → <?= h((string)($d['rounded_end'] ?? '—')) ?>
+                              <?php
+                                $rs = (string)($d['rounded_start'] ?? '');
+                                $re = (string)($d['rounded_end'] ?? '');
+                                $as = (string)($d['actual_start'] ?? '');
+                                $ae = (string)($d['actual_end'] ?? '');
+                              ?>
+                              <?= h(($rs !== '' && $re !== '') ? (fmt_dt_compact($rs, $tz) . ' → ' . fmt_dt_compact($re, $tz)) : '—') ?>
                             </div>
                             <div class="mt-1 text-[11px] leading-4 text-white/50">
-                              Actual: <?= h((string)($d['actual_start'] ?? '—')) ?> → <?= h((string)($d['actual_end'] ?? '—')) ?>
+                              Actual: <?= h(($as !== '' && $ae !== '') ? (fmt_dt_compact($as, $tz) . ' → ' . fmt_dt_compact($ae, $tz)) : '—') ?>
                             </div>
                           </td>
+                          <td class="px-4 py-3 text-right"><?= h(number_format(((int)($d['rounded_worked'] ?? 0))/60, 2)) ?></td>
+	                          <td class="px-4 py-3 text-right"><?= h((string)(int)($d['break_total'] ?? 0)) ?></td>
+	                          <td class="px-4 py-3 text-right"><?= h((string)(int)($d['paid_break'] ?? 0)) ?></td>
                           <td class="px-4 py-3 text-right"><?= h(number_format(((int)$d['paid'])/60, 2)) ?></td>
-                          <td class="px-4 py-3 text-right"><?= h(number_format(((int)$d['unpaid_break'])/60, 2)) ?></td>
                           <td class="px-4 py-3 text-right"><?= h(number_format(((int)$d['weekend'])/60, 2)) ?></td>
                           <td class="px-4 py-3 text-right"><?= h(number_format(((int)$d['bank_holiday'])/60, 2)) ?></td>
                           <td class="px-4 py-3 text-right"><?= h(number_format(((int)$d['night'])/60, 2)) ?></td>
@@ -889,8 +1055,9 @@ $active = admin_url('payroll-hours.php');
               <div class="text-sm text-white/60">Month totals</div>
               <div class="mt-2 text-sm text-white">
                 <div class="flex flex-wrap gap-x-6 gap-y-2">
-                  <div>Paid: <b><?= h(number_format(((int)$tot['paid'])/60, 2)) ?>h</b></div>
-                  <div>Unpaid break: <b><?= h(number_format(((int)$tot['unpaid_break'])/60, 2)) ?>h</b></div>
+                  <div>To pay: <b><?= h(number_format(((int)$tot['paid'])/60, 2)) ?>h</b></div>
+	                  <div>Break: <b><?= h((string)(int)($tot['break_total'] ?? 0)) ?> min</b></div>
+	                  <div>Paid break: <b><?= h((string)(int)($tot['paid_break'] ?? 0)) ?> min</b></div>
                   <div>Weekend: <b><?= h(number_format(((int)$tot['weekend'])/60, 2)) ?>h</b></div>
                   <div>Bank holiday: <b><?= h(number_format(((int)$tot['bank_holiday'])/60, 2)) ?>h</b></div>
                   <div>Night: <b><?= h(number_format(((int)$tot['night'])/60, 2)) ?>h</b></div>
@@ -900,15 +1067,51 @@ $active = admin_url('payroll-hours.php');
                   <div>DST Δ total: <b><?= (int)$tot['dst_delta'] ?> min</b></div>
                 </div>
               </div>
-              <div class="mt-2 text-xs text-white/50">Note: OT here is calculated from paid hours only (training excluded).</div>
+              <div class="mt-2 text-xs text-white/50">Note: OT here is calculated from to-pay hours only (training excluded). Month totals exclude context days outside the calendar month.</div>
             </div>
 
           <?php endif; ?>
 
-        </main>
+        
+<script>
+(function(){
+  const form = document.querySelector('form[method="get"]');
+  if (!form) return;
+  const yearSel = form.querySelector('select[name="year"]');
+  const monthSel = form.querySelector('select[name="month"]');
+  const btns = form.querySelectorAll('button[data-preset]');
+  if (!yearSel || !monthSel || !btns.length) return;
+  const now = new Date();
+  function setYM(d){
+    yearSel.value = String(d.getFullYear());
+    monthSel.value = String(d.getMonth()+1);
+  }
+  btns.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const preset = btn.getAttribute('data-preset');
+      const d = new Date(now.getTime());
+      if (preset === 'last') d.setMonth(d.getMonth()-1);
+      setYM(d);
+      form.submit();
+    });
+  });
+})();
+</script>
+
+</main>
       </div>
     </div>
   </div>
 </div>
 
 <?php admin_page_end(); ?>
+function fmt_dt_compact(string $utcDt, string $tz): string {
+  if ($utcDt === '') return '';
+  try {
+    $d = new DateTimeImmutable($utcDt, new DateTimeZone('UTC'));
+    $d = $d->setTimezone(new DateTimeZone($tz));
+    return $d->format('H:i, d/m/y');
+  } catch (Throwable $e) {
+    return $utcDt;
+  }
+}

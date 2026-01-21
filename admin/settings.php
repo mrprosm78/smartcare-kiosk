@@ -32,7 +32,6 @@ $basicAllow = [
     // Payroll (carehome rules)
     'payroll_timezone',
     'default_break_minutes',
-    'default_break_is_paid',
     'night_shift_threshold_percent',
     // Night premium window for "Night hours" bucket
     'night_premium_enabled',
@@ -56,7 +55,6 @@ $basicAllow = [
     'payroll_week_starts_on',
     'payroll_timezone',
     'default_break_minutes',
-    'default_break_is_paid',
     'night_shift_threshold_percent',
     'night_premium_enabled',
     'night_premium_start',
@@ -72,6 +70,31 @@ $basicAllow = [
     'payroll_overtime_priority',
   ],
 ];
+$stripCarehomePayrollKeys = [
+  'night_shift_threshold_percent',
+  'night_premium_enabled',
+  'night_premium_start',
+  'night_premium_end',
+  'overtime_default_multiplier',
+  'weekend_premium_enabled',
+  'weekend_days',
+  'weekend_rate_multiplier',
+  'bank_holiday_enabled',
+  'bank_holiday_paid',
+  'bank_holiday_paid_cap_hours',
+  'bank_holiday_rate_multiplier',
+  'payroll_overtime_priority',
+];
+
+foreach ($basicAllow as $rk => &$list) {
+  if (!is_array($list)) continue;
+  $list = array_values(array_filter($list, function($k) use ($stripCarehomePayrollKeys) {
+    return !in_array($k, $stripCarehomePayrollKeys, true);
+  }));
+}
+unset($list);
+
+
 
 $highLevelKeys = [
   // Admin pairing / device authorisation is high-level
@@ -100,7 +123,6 @@ $vals = [
   'payroll_week_starts_on' => admin_setting_str($pdo, 'payroll_week_starts_on', 'MONDAY'),
   'payroll_timezone' => admin_setting_str($pdo, 'payroll_timezone', 'Europe/London'),
   'default_break_minutes' => admin_setting_int($pdo, 'default_break_minutes', 30),
-  'default_break_is_paid' => admin_setting_bool($pdo, 'default_break_is_paid', false),
   'night_shift_threshold_percent' => admin_setting_int($pdo, 'night_shift_threshold_percent', 50),
   'night_premium_enabled' => admin_setting_bool($pdo, 'night_premium_enabled', true),
   'night_premium_start' => admin_setting_str($pdo, 'night_premium_start', '22:00:00'),
@@ -170,9 +192,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     if (in_array('default_break_minutes', $allowedBasic, true)) {
       admin_set_setting($pdo, 'default_break_minutes', (string)max(0, (int)($_POST['default_break_minutes'] ?? 30)));
-    }
-    if (in_array('default_break_is_paid', $allowedBasic, true)) {
-      admin_set_setting($pdo, 'default_break_is_paid', isset($_POST['default_break_is_paid']) ? '1' : '0');
     }
     if (in_array('night_shift_threshold_percent', $allowedBasic, true)) {
       admin_set_setting($pdo, 'night_shift_threshold_percent', (string)max(0, min(100, (int)($_POST['night_shift_threshold_percent'] ?? 50))));
@@ -348,11 +367,16 @@ $active = admin_url('settings.php');
 
             <?php
               $payrollKeys = [
-                'payroll_week_starts_on','payroll_timezone','default_break_minutes','default_break_is_paid','night_shift_threshold_percent','overtime_default_multiplier',
+                'payroll_week_starts_on','payroll_timezone','default_break_minutes','night_shift_threshold_percent','overtime_default_multiplier',
                 'weekend_premium_enabled','weekend_days','weekend_rate_multiplier',
                 'bank_holiday_enabled','bank_holiday_paid','bank_holiday_rate_multiplier',
                 'payroll_overtime_priority',
               ];
+$payrollKeys = array_values(array_filter($payrollKeys, function($k) use ($stripCarehomePayrollKeys) {
+  return !in_array($k, $stripCarehomePayrollKeys, true);
+}));
+
+
               $canSeePayroll = false;
               foreach ($payrollKeys as $k) { if (in_array($k, $allowedBasic, true)) { $canSeePayroll = true; break; } }
             ?>
@@ -393,15 +417,7 @@ $active = admin_url('settings.php');
                     </label>
                   <?php endif; ?>
 
-                  <?php if (in_array('default_break_is_paid', $allowedBasic, true)): ?>
-                    <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <input type="checkbox" name="default_break_is_paid" class="h-4 w-4 rounded" <?= $vals['default_break_is_paid'] ? 'checked' : '' ?> />
-                      <div>
-                        <div class="text-sm font-semibold">Default break is paid</div>
-                        <div class="text-xs text-white/60">Normally off (unpaid).</div>
-                      </div>
-                    </label>
-                  <?php endif; ?>
+
 
                   <?php if (in_array('night_shift_threshold_percent', $allowedBasic, true)): ?>
                     <label class="rounded-2xl border border-white/10 bg-white/5 p-4">

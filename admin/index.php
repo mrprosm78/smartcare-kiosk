@@ -60,7 +60,7 @@ $active = admin_url('index.php');
               </div>
 
               <div class="flex flex-wrap items-center gap-2">
-                <?php if (admin_can($user, 'manage_settings')): ?>
+                <?php if (admin_can($user, 'manage_settings_basic')): ?>
                   <a href="<?= h(admin_url('settings.php')) ?>" class="rounded-2xl px-3 py-2 text-sm font-semibold bg-white/5 border border-white/10 text-white/80 hover:bg-white/10">Settings</a>
                 <?php endif; ?>
               </div>

@@ -14,9 +14,10 @@ if ($employeeId <= 0) {
 
 // Load employee
 $stmt = $pdo->prepare(
-  "SELECT e.*, c.name AS category_name
+  "SELECT e.*, c.name AS department_name, t.name AS team_name
    FROM kiosk_employees e
    LEFT JOIN kiosk_employee_categories c ON c.id = e.category_id
+   LEFT JOIN kiosk_employee_teams t ON t.id = e.team_id
    WHERE e.id = ?
    LIMIT 1"
 );
@@ -33,7 +34,7 @@ $success = '';
 
 /**
  * LOCKED model:
- * - Only default + night break minutes
+ * - Break minutes come from Shift Rules (care home). Contract only controls paid/unpaid breaks.
  * - No legacy BH fields, no day/night rates
  * - Per-category rules stored in rules_json:
  *   *_multiplier (nullable), *_premium_per_hour (nullable)
@@ -42,10 +43,7 @@ $success = '';
 
 $pay = [
   'contract_hours_per_week' => null,
-  'break_minutes_default' => null,
-  'break_minutes_night' => null,
   'break_is_paid' => 0,
-  'min_hours_for_break' => null,
   'rules_json' => null,
 ];
 
@@ -58,7 +56,6 @@ $ruleKeys = [
 ];
 
 $rules = [
-  'stacking_override' => 'inherit', // inherit | exclusive | stack
 ];
 foreach ($ruleKeys as $k) {
   $rules[$k . '_multiplier'] = null;
@@ -77,10 +74,6 @@ if ($prow) {
   if (!empty($prow['rules_json'])) {
     $decoded = json_decode((string)$prow['rules_json'], true);
     if (is_array($decoded)) {
-      if (isset($decoded['stacking_override'])) {
-        $sv = (string)$decoded['stacking_override'];
-        if (in_array($sv, ['inherit','exclusive','stack'], true)) $rules['stacking_override'] = $sv;
-      }
       foreach ($ruleKeys as $k) {
         $mk = $k . '_multiplier';
         $pk = $k . '_premium_per_hour';
@@ -114,16 +107,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   try {
     $pp = [
       'contract_hours_per_week' => null_if_empty((string)($_POST['contract_hours_per_week'] ?? '')),
-      'break_minutes_default' => null_if_empty((string)($_POST['break_minutes_default'] ?? '')),
-      'break_minutes_night' => null_if_empty((string)($_POST['break_minutes_night'] ?? '')),
       'break_is_paid' => ((int)($_POST['break_is_paid'] ?? 0) === 1) ? 1 : 0,
-      'min_hours_for_break' => null_if_empty((string)($_POST['min_hours_for_break'] ?? '')),
     ];
-
-    $stack = (string)($_POST['stacking_override'] ?? 'inherit');
-    if (!in_array($stack, ['inherit','exclusive','stack'], true)) $stack = 'inherit';
-
-    $rulesToSave = ['stacking_override' => $stack];
+  $rulesToSave = [];
     foreach ($ruleKeys as $k) {
       $rulesToSave[$k . '_multiplier'] = to_nullable_float(null_if_empty((string)($_POST[$k . '_multiplier'] ?? '')));
       $rulesToSave[$k . '_premium_per_hour'] = to_nullable_float(null_if_empty((string)($_POST[$k . '_premium_per_hour'] ?? '')));
@@ -132,26 +118,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $rulesJson = json_encode($rulesToSave, JSON_UNESCAPED_SLASHES);
 
     // Clean schema update (compatible with your updated setup.php)
-    $sql = "INSERT INTO kiosk_employee_pay_profiles
-              (employee_id, contract_hours_per_week, break_minutes_default, break_minutes_night, break_is_paid, min_hours_for_break, rules_json, created_at, updated_at)
-            VALUES
-              (:id, :ch, :bmd, :bmn, :bip, :mh, :rj, UTC_TIMESTAMP, UTC_TIMESTAMP)
-            ON DUPLICATE KEY UPDATE
-              contract_hours_per_week = VALUES(contract_hours_per_week),
-              break_minutes_default = VALUES(break_minutes_default),
-              break_minutes_night = VALUES(break_minutes_night),
-              break_is_paid = VALUES(break_is_paid),
-              min_hours_for_break = VALUES(min_hours_for_break),
-              rules_json = VALUES(rules_json),
-              updated_at = UTC_TIMESTAMP";
+	    $sql = "INSERT INTO kiosk_employee_pay_profiles
+	              (employee_id, contract_hours_per_week, break_is_paid, rules_json, created_at, updated_at)
+	            VALUES
+	              (:id, :ch, :bip, :rj, UTC_TIMESTAMP, UTC_TIMESTAMP)
+	            ON DUPLICATE KEY UPDATE
+	              contract_hours_per_week = VALUES(contract_hours_per_week),
+	              break_is_paid = VALUES(break_is_paid),
+	              rules_json = VALUES(rules_json),
+	              updated_at = UTC_TIMESTAMP";
 
     $pdo->prepare($sql)->execute([
       ':id' => $employeeId,
       ':ch' => $pp['contract_hours_per_week'],
-      ':bmd' => $pp['break_minutes_default'],
-      ':bmn' => $pp['break_minutes_night'],
       ':bip' => $pp['break_is_paid'],
-      ':mh' => $pp['min_hours_for_break'],
       ':rj' => $rulesJson,
     ]);
 
@@ -183,8 +163,8 @@ admin_page_start($pdo, $title);
               <div class="mt-1 text-sm text-white/70">
                 <span class="font-semibold text-white"><?= h(admin_employee_display_name($employee)) ?></span>
                 · Code: <span class="font-semibold text-white"><?= h((string)($employee['employee_code'] ?? '')) ?></span>
-                <?php if (!empty($employee['category_name'])): ?>
-                  · Category: <span class="font-semibold text-white"><?= h((string)$employee['category_name']) ?></span>
+                <?php if (!empty($employee['department_name'])): ?>
+                  · Department: <span class="font-semibold text-white"><?= h((string)$employee['department_name']) ?></span>
                 <?php endif; ?>
               </div>
             </div>
@@ -214,22 +194,9 @@ admin_page_start($pdo, $title);
             </div>
 
             <div>
-              <h2 class="text-lg font-semibold">Breaks</h2>
-              <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
-                <label class="block">
-                  <div class="text-sm text-white/70">Default break minutes</div>
-                  <input name="break_minutes_default" value="<?= h((string)($prow['break_minutes_default'] ?? '')) ?>" class="mt-1 w-full rounded-xl bg-white/10 border border-white/10 px-3 py-2">
-                </label>
-                <label class="block">
-                  <div class="text-sm text-white/70">Night break minutes</div>
-                  <input name="break_minutes_night" value="<?= h((string)($prow['break_minutes_night'] ?? '')) ?>" class="mt-1 w-full rounded-xl bg-white/10 border border-white/10 px-3 py-2">
-                </label>
-                <label class="block">
-                  <div class="text-sm text-white/70">Min hours for break (optional)</div>
-                  <input name="min_hours_for_break" value="<?= h((string)($prow['min_hours_for_break'] ?? '')) ?>" class="mt-1 w-full rounded-xl bg-white/10 border border-white/10 px-3 py-2">
-                </label>
-              </div>
-              <div class="mt-3">
+	              <h2 class="text-lg font-semibold">Breaks</h2>
+	              <div class="mt-1 text-sm text-white/60">Break minutes are configured in <b>Shift Rules</b> (care-home). This contract only controls whether those break minutes are treated as paid or unpaid for this employee.</div>
+	              <div class="mt-3">
                 <label class="inline-flex items-center gap-2">
                   <input type="checkbox" name="break_is_paid" value="1" <?= ((int)($prow['break_is_paid'] ?? 0)===1) ? 'checked' : '' ?> class="rounded">
                   <span class="text-sm text-white/80">Break is paid</span>

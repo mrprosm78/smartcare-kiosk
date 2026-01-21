@@ -278,7 +278,7 @@ $active = admin_url('punch-details.php');
                       $uuid = (string)($r['event_uuid'] ?? '');
                     ?>
                       <tr class="align-top">
-                        <td class="py-3 pr-4 whitespace-nowrap text-white/90"><?= h($t !== '' ? $t : '—') ?></td>
+                        <td class="py-3 pr-4 whitespace-nowrap text-white/90"><?= h($t !== '' ? admin_fmt_dt($t) : '—') ?></td>
                         <td class="py-3 pr-4 whitespace-nowrap"><?= h($empLabel) ?></td>
                         <td class="py-3 pr-4"><?= $act === 'IN' ? badge('IN','ok') : ($act === 'OUT' ? badge('OUT','warn') : badge('—')) ?></td>
                         <td class="py-3 pr-4">

@@ -1,12 +1,12 @@
 <?php
 // https://zapsite.co.uk/kiosk-dev/setup.php?action=install
-// https://zapsite.co.uk/kiosk-dev/setup.php?action=reset&pin=4321
+// https://zapsite.co.uk/kiosk-dev/setup.php?action=reset&pin=2468
 declare(strict_types=1);
 
 ini_set('display_errors', '1');
 error_reporting(E_ALL);
 
-const RESET_PIN = '4321';
+const RESET_PIN = '2468';
 
 // db.php must define $pdo (PDO instance)
 require __DIR__ . '/db.php';
@@ -32,6 +32,31 @@ if (!function_exists('add_column_if_missing')) {
     if ($exists) return;
 
     $pdo->exec("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$ddl}");
+  }
+}
+
+if (!function_exists('drop_column_if_exists')) {
+  function drop_column_if_exists(PDO $pdo, string $table, string $column): void {
+    $sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = :t
+              AND COLUMN_NAME = :c";
+    $st = $pdo->prepare($sql);
+    $st->execute([':t' => $table, ':c' => $column]);
+    $exists = (int)$st->fetchColumn() > 0;
+    if (!$exists) return;
+    $pdo->exec("ALTER TABLE `{$table}` DROP COLUMN `{$column}`");
+  }
+}
+
+if (!function_exists('delete_setting_if_exists')) {
+  function delete_setting_if_exists(PDO $pdo, string $key): void {
+    try {
+      $st = $pdo->prepare('DELETE FROM kiosk_settings WHERE `key` = :k');
+      $st->execute([':k' => $key]);
+    } catch (Throwable $e) {
+      // ignore
+    }
   }
 }
 
@@ -94,10 +119,16 @@ function seed_settings(PDO $pdo): void {
       'type' => 'int', 'editable_by' => 'superadmin', 'sort' => 40, 'secret' => 0,
     ],
     [
-      'key' => 'pairing_code', 'value' => '4321', 'group' => 'pairing',
+      'key' => 'pairing_code', 'value' => '2468', 'group' => 'pairing',
       'label' => 'Pairing Passcode', 'description' => 'Passcode required to pair a device (only works if pairing_mode is enabled).',
       'type' => 'secret', 'editable_by' => 'superadmin', 'sort' => 50, 'secret' => 1,
     ],
+    [
+      'key' => 'manager_pin', 'value' => '2468', 'group' => 'security',
+      'label' => 'Manager PIN', 'description' => 'PIN used for manager-only actions (must be different from pairing_code).',
+      'type' => 'secret', 'editable_by' => 'superadmin', 'sort' => 55, 'secret' => 1,
+    ],
+
     [
       'key' => 'pairing_mode', 'value' => '1', 'group' => 'pairing',
       'label' => 'Pairing Mode Enabled', 'description' => 'When 0, /api/kiosk/pair.php rejects pairing even if the passcode is known.',
@@ -123,7 +154,7 @@ function seed_settings(PDO $pdo): void {
       'type' => 'int', 'editable_by' => 'superadmin', 'sort' => 90, 'secret' => 0,
     ],
     [
-      'key' => 'admin_pairing_code', 'value' => '4321', 'group' => 'admin',
+      'key' => 'admin_pairing_code', 'value' => '2468', 'group' => 'admin',
       'label' => 'Admin Pairing Passcode', 'description' => 'Passcode required to authorise a device for /admin (only works if admin_pairing_mode is enabled).',
       'type' => 'secret', 'editable_by' => 'superadmin', 'sort' => 100, 'secret' => 1,
     ],
@@ -369,14 +400,9 @@ function seed_settings(PDO $pdo): void {
       'type' => 'string', 'editable_by' => 'admin', 'sort' => 715, 'secret' => 0,
     ],
     [
-      'key' => 'default_break_minutes', 'value' => '30', 'group' => 'payroll',
+      'key' => 'default_break_minutes', 'value' => '0', 'group' => 'payroll',
       'label' => 'Default Break Minutes', 'description' => 'Fallback unpaid break minutes deducted when no shift break rule matches.',
       'type' => 'string', 'editable_by' => 'admin', 'sort' => 716, 'secret' => 0,
-    ],
-    [
-      'key' => 'default_break_is_paid', 'value' => '0', 'group' => 'payroll',
-      'label' => 'Default Break Is Paid', 'description' => 'If 1, default break is treated as paid; normally 0 (unpaid).',
-      'type' => 'bool', 'editable_by' => 'admin', 'sort' => 717, 'secret' => 0,
     ],
     [
       'key' => 'payroll_overtime_threshold_hours', 'value' => '40', 'group' => 'payroll',
@@ -461,8 +487,60 @@ function seed_settings(PDO $pdo): void {
       'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 841, 'secret' => 0,
     ],
   ];
+  $stripKeys = [
+    'night_shift_threshold_percent',
+    'night_premium_enabled',
+    'night_premium_start',
+    'night_premium_end',
+    'overtime_default_multiplier',
+    'weekend_premium_enabled',
+    'weekend_days',
+    'weekend_rate_multiplier',
+    'bank_holiday_enabled',
+    'bank_holiday_paid',
+    'bank_holiday_paid_cap_hours',
+    'bank_holiday_rate_multiplier',
+    'payroll_overtime_priority',
+    'payroll_overtime_threshold_hours',
+    'payroll_stacking_mode',
+    'payroll_night_start',
+    'payroll_night_end',
+    'payroll_bank_holiday_cap_hours',
+    'payroll_callout_min_paid_hours',
+    'default_night_multiplier',
+    'default_night_premium_per_hour',
+    'default_weekend_multiplier',
+    'default_weekend_premium_per_hour',
+    'default_bank_holiday_multiplier',
+    'default_bank_holiday_premium_per_hour',
+    'default_overtime_multiplier',
+    'default_overtime_premium_per_hour',
+    'default_callout_multiplier',
+    'default_callout_premium_per_hour',
+  ];
 
-  $sql = "
+  $defs = array_values(array_filter($defs, function(array $d) use ($stripKeys) {
+    $k = $d['key'] ?? null;
+    if ($k === null) return true;
+    return !in_array((string)$k, $stripKeys, true);
+  }));
+
+
+
+  
+
+  // Cleanup: ensure legacy care-home payroll rules are removed from kiosk_settings.
+  try {
+    if (!empty($stripKeys)) {
+      $in = implode(',', array_fill(0, count($stripKeys), '?'));
+      $del = $pdo->prepare("DELETE FROM kiosk_settings WHERE `key` IN ($in)");
+      $del->execute(array_values($stripKeys));
+    }
+  } catch (Throwable $e) {
+    // Ignore cleanup errors to avoid blocking install/upgrade.
+  }
+
+$sql = "
     INSERT INTO kiosk_settings
       (`key`, `value`, `group_name`, `label`, `description`, `type`, `editable_by`, `sort_order`, `is_secret`)
     VALUES
@@ -493,6 +571,9 @@ function seed_settings(PDO $pdo): void {
       ':sec' => (int)$d['secret'],
     ]);
   }
+
+  // Cleanup legacy settings that are no longer used.
+  delete_setting_if_exists($pdo, 'default_break_is_paid');
 }
 
 function seed_admin_users(PDO $pdo): void {
@@ -578,6 +659,22 @@ function create_tables(PDO $pdo): void {
     ) ENGINE=InnoDB;
   ");
 
+  // EMPLOYEE TEAMS
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS kiosk_employee_teams (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(100) NOT NULL,
+      slug VARCHAR(120) NOT NULL UNIQUE,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      sort_order INT NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      KEY idx_active (is_active),
+      KEY idx_sort (sort_order)
+    ) ENGINE=InnoDB;
+  ");
+
+
   // EMPLOYEES
   $pdo->exec("
     CREATE TABLE IF NOT EXISTS kiosk_employees (
@@ -587,9 +684,11 @@ function create_tables(PDO $pdo): void {
       last_name VARCHAR(100),
       nickname VARCHAR(100) NULL,
       category_id INT UNSIGNED NULL,
+      team_id INT UNSIGNED NULL,
       is_agency TINYINT(1) NOT NULL DEFAULT 0,
       agency_label VARCHAR(100) NULL,
       pin_hash VARCHAR(255),
+      pin_fingerprint CHAR(64) NULL,
       pin_updated_at DATETIME NULL,
       archived_at DATETIME NULL,
       is_active TINYINT(1) DEFAULT 1,
@@ -597,10 +696,16 @@ function create_tables(PDO $pdo): void {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       KEY idx_active (is_active),
       KEY idx_category (category_id),
+      KEY idx_team (team_id),
+      UNIQUE KEY uq_pin_fp (pin_fingerprint),
       KEY idx_agency (is_agency)
     ) ENGINE=InnoDB;
   ");
   add_column_if_missing($pdo, 'kiosk_employees', 'category_id', 'INT UNSIGNED NULL');
+  add_column_if_missing($pdo, 'kiosk_employees', 'team_id', 'INT UNSIGNED NULL');
+  add_column_if_missing($pdo, 'kiosk_employees', 'pin_fingerprint', 'CHAR(64) NULL');
+  try { $pdo->exec("ALTER TABLE kiosk_employees ADD UNIQUE KEY uq_pin_fp (pin_fingerprint)"); } catch (Throwable $e) { /* ignore */ }
+
   add_column_if_missing($pdo, 'kiosk_employees', 'is_agency', "TINYINT(1) NOT NULL DEFAULT 0");
   add_column_if_missing($pdo, 'kiosk_employees', 'agency_label', 'VARCHAR(100) NULL');
   add_column_if_missing($pdo, 'kiosk_employees', 'nickname', 'VARCHAR(100) NULL');
@@ -611,11 +716,8 @@ function create_tables(PDO $pdo): void {
       employee_id INT UNSIGNED PRIMARY KEY,
       contract_hours_per_week DECIMAL(6,2) NULL,
       hourly_rate DECIMAL(8,2) NULL,
-      -- Break model (LOCKED): default + night only
-      break_minutes_default INT NULL,
-      break_minutes_night INT NULL,
+      -- Break model (LOCKED): break minutes come from Shift Rules; this flag controls paid/unpaid per contract
       break_is_paid TINYINT(1) NOT NULL DEFAULT 0,
-      min_hours_for_break DECIMAL(5,2) NULL,
 
       -- Enhancement rules (LOCKED): stored in JSON (contract-first)
       rules_json JSON NULL,
@@ -665,8 +767,10 @@ function create_tables(PDO $pdo): void {
   add_column_if_missing($pdo, 'kiosk_shifts', 'payroll_locked_by', 'VARCHAR(100) NULL');
   add_column_if_missing($pdo, 'kiosk_shifts', 'payroll_batch_id', 'VARCHAR(64) NULL');
   add_column_if_missing($pdo, 'kiosk_shifts', 'is_callout', "TINYINT(1) NOT NULL DEFAULT 0");
-  // Pay profile additions (for older installs): keep night break support
-  add_column_if_missing($pdo, 'kiosk_employee_pay_profiles', 'break_minutes_night', 'INT NULL');
+  // Pay profile cleanup (break minutes are now shift-rule based)
+  drop_column_if_exists($pdo, 'kiosk_employee_pay_profiles', 'break_minutes_default');
+  drop_column_if_exists($pdo, 'kiosk_employee_pay_profiles', 'break_minutes_night');
+  drop_column_if_exists($pdo, 'kiosk_employee_pay_profiles', 'min_hours_for_break');
   add_column_if_missing($pdo, 'kiosk_employee_pay_profiles', 'hourly_rate', 'DECIMAL(8,2) NULL');
   add_column_if_missing($pdo, 'kiosk_employee_pay_profiles', 'inherit_from_carehome', 'TINYINT(1) NOT NULL DEFAULT 1');
   add_column_if_missing($pdo, 'kiosk_employee_pay_profiles', 'overtime_threshold_hours', 'DECIMAL(6,2) NULL');
@@ -954,7 +1058,7 @@ try {
   echo '<h3>SmartCare Kiosk – Setup</h3>
   <ul>
     <li><a href="?action=install">Install / Repair</a></li>
-    <li><a href="?action=reset&pin=4321" onclick="return confirm(\'RESET DATABASE?\')">Reset (PIN required)</a></li>
+    <li><a href="?action=reset&pin=2468" onclick="return confirm(\'RESET DATABASE?\')">Reset (PIN required)</a></li>
   </ul>';
 
 } catch (Throwable $e) {

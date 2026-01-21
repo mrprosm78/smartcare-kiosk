@@ -349,7 +349,7 @@ $sql = "
          " . admin_sql_employee_display_name('e') . " AS full_name,
          " . admin_sql_employee_number('e') . " AS employee_number,
          e.is_agency, e.agency_label,
-         cat.name AS category_name,
+         cat.name AS department_name,
          c.new_json AS latest_edit_json
   FROM kiosk_shifts s
   LEFT JOIN kiosk_employees e ON e.id = s.employee_id
@@ -497,6 +497,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                     <th class="text-left py-3 pr-4"><input type="checkbox" id="select-all" class="h-4 w-4 rounded" /></th>
                   <?php endif; ?>
                   <th class="text-left py-3 pr-4">Employee</th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-white/60">Reason</th>
                   <th class="text-left py-3 pr-4">Clock In</th>
                   <th class="text-left py-3 pr-4">Clock Out</th>
                   <th class="text-left py-3 pr-4">Duration</th>
@@ -554,7 +555,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                     <td class="py-4 pr-4">
                       <div class="font-semibold"><?= h($name) ?></div>
                       <div class="text-xs text-white/50">
-                        <?= h((string)($r['category_name'] ?? '—')) ?>
+                        <?= h((string)($r['department_name'] ?? '—')) ?>
                         <?php if (!empty($r['employee_number'])): ?> • #<?= h((string)$r['employee_number']) ?><?php endif; ?>
                       </div>
                     </td>
@@ -734,3 +735,15 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 </script>
 
 <?php admin_page_end(); ?>
+function sc_shift_reason_badge(array $s): string {
+  $created = (string)($s['created_source'] ?? '');
+  $updated = (string)($s['updated_source'] ?? '');
+  $reason  = (string)($s['last_modified_reason'] ?? '');
+  $bits = [];
+  if ($created !== '') $bits[] = 'Created: ' . $created;
+  if ($updated !== '' && $updated !== $created) $bits[] = 'Updated: ' . $updated;
+  if ($reason !== '') $bits[] = 'Reason: ' . $reason;
+  if (!$bits) return '—';
+  return implode(' · ', $bits);
+}
+

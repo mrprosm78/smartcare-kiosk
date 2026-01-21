@@ -30,9 +30,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   admin_verify_csrf($_POST['csrf'] ?? null);
 
   $employeeId = (int)($_POST['employee_id'] ?? 0);
-  $clockIn = trim((string)($_POST['clock_in_at'] ?? ''));
-  $clockOut = trim((string)($_POST['clock_out_at'] ?? ''));
-  $isCallout = (int)($_POST['is_callout'] ?? 0) === 1 ? 1 : 0;
+  $clockInLocal = trim((string)($_POST['clock_in_at'] ?? ''));
+    $clockIn = admin_input_to_utc($clockInLocal, $tz) ?? '';
+    $clockOutLocal = trim((string)($_POST['clock_out_at'] ?? ''));
+    $clockOut = admin_input_to_utc($clockOutLocal, $tz) ?? '';
+    $isCallout = (int)($_POST['is_callout'] ?? 0) === 1 ? 1 : 0;
   $trainingMinutes = trim((string)($_POST['training_minutes'] ?? ''));
   $trainingNote = trim((string)($_POST['training_note'] ?? ''));
   $note = trim((string)($_POST['note'] ?? ''));
@@ -244,12 +246,12 @@ $active = admin_url('shifts.php');
 
               <label>
                 <div class="text-xs uppercase tracking-widest text-white/50">Clock in (local)</div>
-                <input name="clock_in_at" type="datetime-local" value="<?= h($clockIn) ?>" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                <input name="clock_in_at" type="datetime-local" value="<?= h($clockInInput) ?>" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
               </label>
 
               <label>
                 <div class="text-xs uppercase tracking-widest text-white/50">Clock out (local)</div>
-                <input name="clock_out_at" type="datetime-local" value="<?= h($clockOut) ?>" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                <input name="clock_out_at" type="datetime-local" value="<?= h($clockOutInput) ?>" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
               </label>
 
               <label>

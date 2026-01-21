@@ -10,8 +10,13 @@ $id = (int)($_GET['id'] ?? 0);
 $isNew = ($id <= 0);
 $err = '';
 
-// load categories
+// load departments
+
 $cats = $pdo->query("SELECT id, name FROM kiosk_employee_categories WHERE is_active=1 ORDER BY sort_order ASC, name ASC")
+  ->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+// load teams
+$teams = $pdo->query("SELECT id, name FROM kiosk_employee_teams WHERE is_active=1 ORDER BY sort_order ASC, name ASC")
   ->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 $employee = [
@@ -21,6 +26,7 @@ $employee = [
   'last_name' => '',
   'nickname' => '',
   'category_id' => null,
+  'team_id' => null,
   'is_agency' => 0,
   'agency_label' => '',
   'is_active' => 1,
@@ -63,17 +69,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // PIN
     $pin = trim((string)($_POST['pin'] ?? ''));
     $pin_hash = null;
+    $pin_fingerprint = null;
     if ($pin !== '') {
       if (!preg_match('/^\d{4,10}$/', $pin)) {
         throw new RuntimeException('PIN must be 4-10 digits');
       }
       $pin_hash = password_hash($pin, PASSWORD_BCRYPT);
+      $pin_fingerprint = hash('sha256', $pin);
+
+      // Ensure employee PIN is unique
+      $chk = $pdo->prepare("SELECT id FROM kiosk_employees WHERE pin_fingerprint = ? AND archived_at IS NULL LIMIT 1");
+      $chk->execute([$pin_fingerprint]);
+      $existingId = (int)($chk->fetchColumn() ?: 0);
+      if ($existingId > 0 && ($isNew || $existingId !== (int)$id)) {
+        throw new RuntimeException('PIN is already in use by another employee');
+      }
     }
 
     if ($isNew) {
       $stmt = $pdo->prepare(
-        'INSERT INTO kiosk_employees (employee_code, first_name, last_name, nickname, category_id, is_agency, agency_label, pin_hash, pin_updated_at, is_active, created_at, updated_at)
-         VALUES (:code,:first,:last,:nick,:cat,:ag,:al,:pin, UTC_TIMESTAMP, :active, UTC_TIMESTAMP, UTC_TIMESTAMP)'
+        'INSERT INTO kiosk_employees (employee_code, first_name, last_name, nickname, category_id, team_id, is_agency, agency_label, pin_hash, pin_fingerprint, pin_updated_at, is_active, created_at, updated_at)
+         VALUES (:code,:first,:last,:nick,:cat,:team,:ag,:al,:pin,:pinfp, UTC_TIMESTAMP, :active, UTC_TIMESTAMP, UTC_TIMESTAMP)'
       );
       $stmt->execute([
         ':code' => $employee_code !== '' ? $employee_code : null,
@@ -81,9 +97,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ':last' => $last,
         ':nick' => $nick !== '' ? $nick : null,
         ':cat' => $category_id,
+        ':team' => $team_id,
         ':ag' => $is_agency,
         ':al' => $agency_label !== '' ? $agency_label : null,
         ':pin' => $pin_hash ?? '',
+        ':pinfp' => $pin_fingerprint,
         ':active' => $is_active,
       ]);
       $id = (int)$pdo->lastInsertId();
@@ -93,8 +111,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $pdo->prepare('INSERT IGNORE INTO kiosk_employee_pay_profiles (employee_id, created_at, updated_at) VALUES (?, UTC_TIMESTAMP, UTC_TIMESTAMP)')
         ->execute([$id]);
     } else {
-      $sql = 'UPDATE kiosk_employees SET employee_code=:code, first_name=:first, last_name=:last, nickname=:nick, category_id=:cat, is_agency=:ag, agency_label=:al, is_active=:active, updated_at=UTC_TIMESTAMP';
+      $sql = 'UPDATE kiosk_employees SET employee_code=:code, first_name=:first, last_name=:last, nickname=:nick, category_id=:cat, team_id=:team, is_agency=:ag, agency_label=:al, is_active=:active, updated_at=UTC_TIMESTAMP';
       $params = [
+        ':team' => $team_id,
         ':code' => $employee_code !== '' ? $employee_code : null,
         ':first' => $first,
         ':last' => $last,
@@ -106,8 +125,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ':id' => $id,
       ];
       if ($pin_hash !== null) {
-        $sql .= ', pin_hash=:pin, pin_updated_at=UTC_TIMESTAMP';
+        $sql .= ', pin_hash=:pin, pin_fingerprint=:pinfp, pin_updated_at=UTC_TIMESTAMP';
         $params[':pin'] = $pin_hash;
+        $params[':pinfp'] = $pin_fingerprint;
       }
       $sql .= ' WHERE id=:id LIMIT 1';
       $stmt = $pdo->prepare($sql);
@@ -158,7 +178,7 @@ admin_page_start($pdo, $isNew ? 'Add Employee' : 'Edit Employee');
                 </div>
 
                 <div>
-                  <label class="block text-xs font-semibold text-white/70">Category</label>
+                  <label class="block text-xs font-semibold text-white/70">Department</label>
                   <select name="category_id" class="mt-1 w-full rounded-2xl bg-slate-950/50 border border-white/10 px-3 py-2 text-sm">
                     <option value="0">—</option>
                     <?php foreach ($cats as $c): ?>
@@ -167,6 +187,16 @@ admin_page_start($pdo, $isNew ? 'Add Employee' : 'Edit Employee');
                   </select>
                   <div class="mt-2 text-xs text-white/50"><a class="underline hover:text-white" href="<?= h(admin_url('categories.php')) ?>">Manage categories</a></div>
                 </div>
+              <div class="mt-4">
+                <label class="text-xs text-white/60">Team</label>
+                <select name="team_id" class="mt-1 w-full rounded-2xl bg-slate-900/60 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30">
+                  <option value="0">—</option>
+                  <?php foreach ($teams as $t): ?>
+                    <option value="<?= (int)$t['id'] ?>" <?= ((int)$employee['team_id']===(int)$t['id'])?'selected':'' ?>><?= h((string)$t['name']) ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+
 
                 <div>
                   <label class="block text-xs font-semibold text-white/70">First name</label>

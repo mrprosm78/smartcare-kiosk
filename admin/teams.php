@@ -4,7 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/layout.php';
 admin_require_perm($user, 'manage_employees');
 
-$active = admin_url('categories.php'); // keep Employees highlighted
+$active = admin_url('teams.php'); // keep Employees highlighted
 $err = '';
 
 function sc_slugify(string $s): string {
@@ -28,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       if ($slug === '') throw new RuntimeException('Slug is required');
       $sort = (int)($_POST['sort_order'] ?? 0);
 
-      $stmt = $pdo->prepare("INSERT INTO kiosk_employee_categories (name, slug, sort_order, is_active) VALUES (?,?,?,1)");
+      $stmt = $pdo->prepare("INSERT INTO kiosk_employee_teams (name, slug, sort_order, is_active) VALUES (?,?,?,1)");
       $stmt->execute([$name, $slug, $sort]);
       admin_redirect(admin_url('categories.php'));
     }
@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'toggle') {
       $id = (int)($_POST['id'] ?? 0);
       if ($id <= 0) throw new RuntimeException('Invalid category');
-      $pdo->prepare("UPDATE kiosk_employee_categories SET is_active = IF(is_active=1,0,1) WHERE id=?")->execute([$id]);
+      $pdo->prepare("UPDATE kiosk_employee_teams SET is_active = IF(is_active=1,0,1) WHERE id=?")->execute([$id]);
       admin_redirect(admin_url('categories.php'));
     }
 
@@ -49,9 +49,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $stmtC = $pdo->prepare("SELECT COUNT(*) FROM kiosk_employees WHERE category_id=?");
       $stmtC->execute([$id]);
       $inUse = (int)$stmtC->fetchColumn();
-      if ($inUse > 0) throw new RuntimeException('Department is in use by employees. Deactivate instead.');
+      if ($inUse > 0) throw new RuntimeException('Team is in use by employees. Deactivate instead.');
 
-      $pdo->prepare("DELETE FROM kiosk_employee_categories WHERE id=?")->execute([$id]);
+      $pdo->prepare("DELETE FROM kiosk_employee_teams WHERE id=?")->execute([$id]);
       admin_redirect(admin_url('categories.php'));
     }
   } catch (Throwable $e) {
@@ -59,10 +59,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   }
 }
 
-$stmt = $pdo->query("SELECT * FROM kiosk_employee_categories ORDER BY sort_order ASC, name ASC");
+$stmt = $pdo->query("SELECT * FROM kiosk_employee_teams ORDER BY sort_order ASC, name ASC");
 $cats = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-admin_page_start($pdo, 'Employee Departments');
+admin_page_start($pdo, 'Employee Teams');
 ?>
 
 <div class="min-h-dvh">
@@ -75,7 +75,7 @@ admin_page_start($pdo, 'Employee Departments');
           <header class="rounded-3xl border border-white/10 bg-white/5 p-5">
             <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
               <div>
-                <h1 class="text-2xl font-semibold">Employee Departments</h1>
+                <h1 class="text-2xl font-semibold">Employee Teams</h1>
                 <p class="mt-2 text-sm text-white/70">Used for reporting and filtering (Carer, Kitchen, etc.).</p>
               </div>
               <a href="<?= h(admin_url('employees.php')) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white/5 border border-white/10 text-white/80 hover:bg-white/10">Back to Employees</a>
@@ -116,7 +116,7 @@ admin_page_start($pdo, 'Employee Departments');
           </div>
 
           <div class="mt-5 rounded-3xl border border-white/10 bg-white/5 p-5">
-            <h2 class="text-lg font-semibold">Departments</h2>
+            <h2 class="text-lg font-semibold">Teams</h2>
 
             <div class="mt-4 overflow-x-auto">
               <table class="min-w-full text-sm">

@@ -67,7 +67,12 @@ try {
     }
 
     // manager PIN (use pairing_code by default, or create a dedicated setting if you want)
-    $managerPin = (string)setting($pdo, 'pairing_code', '5850'); // you can switch to 'manager_pin' later
+    $managerPin = (string)setting($pdo, 'manager_pin', '2468');
+    $pairingCode = (string)setting($pdo, 'pairing_code', '2468');
+    if ($managerPin !== '' && $pairingCode !== '' && $managerPin === $pairingCode) {
+      log_kiosk_event($pdo, $kioskCode, null, null, $ipAddress, $userAgent, null, 'revoke', 'fail', 'config_manager_pin_same_as_pairing_code');
+      json_response(['ok' => false, 'error' => 'config_manager_pin_same_as_pairing_code'], 500);
+    }
     if ($pin === '' || !hash_equals($managerPin, $pin)) {
         $currentVersion = (int)setting($pdo, 'pairing_version', '1');
         log_kiosk_event($pdo, $kioskCode, $currentVersion, null, $ipAddress, $userAgent, null, 'revoke', 'fail', 'invalid_manager_pin');
