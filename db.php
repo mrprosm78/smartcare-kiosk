@@ -3,51 +3,75 @@
 declare(strict_types=1);
 
 /**
- * This file bootstraps the database connection.
+ * Bootstrap DB connection.
+ * Secrets live ONLY in private config outside public_html.
  *
- * Recommended: put per-environment settings (DB creds + private paths) in a PRIVATE config file
- * outside public_html, e.g.:
- *   /home/.../store_dev/config.php
- *
- * This code will attempt to load it automatically.
+ * Expected private config defines:
+ *   DB_HOST, DB_NAME, DB_USER, DB_PASS
+ * Optionally:
+ *   DB_CHARSET (default utf8mb4)
+ *   SMARTCARE_ENV ("dev" or "prod")
  */
 
-// Try to load private config (outside public web root).
+// Locate private config (outside public web root).
 $privateCandidates = [
-  // If this code is deployed to /public_html/kiosk-dev/db.php, then:
+  // If deployed as: /home/.../public_html/kiosk-dev/db.php
   // dirname(__DIR__, 2) => /home/... (parent of public_html)
-  dirname(__DIR__, 2) . '/store_dev/config.php',
-  // Fallback if store_dev is inside public_html (not recommended, but handy for local/dev)
-  dirname(__DIR__, 1) . '/store_dev/config.php',
-  // As last resort, allow env var override
-  getenv('SMARTCARE_PRIVATE_CONFIG') ?: '',
+  dirname(__DIR__, 2) . '/store_stowpark/config.php',
+
+  // Optional fallback (not recommended, but useful for local/dev if you keep store_dev inside public_html)
+  dirname(__DIR__, 1) . '/store_stowpark/config.php',
+
+  // Environment override
+  (string)(getenv('SMARTCARE_PRIVATE_CONFIG') ?: ''),
 ];
 
+$privateConfigLoaded = false;
 foreach ($privateCandidates as $cfg) {
-  if (is_string($cfg) && $cfg !== '' && file_exists($cfg)) {
+  if ($cfg !== '' && is_file($cfg)) {
     require_once $cfg;
+    $privateConfigLoaded = true;
     break;
   }
 }
 
-// Defaults (used only if private config did not define constants)
-$host = 'sdb-51.hosting.stackcp.net';
-$db   = 'kiosk-dev-35303033d91d';
-$user = 'kiosk-dev-35303033d91d';
-$pass = 'j-SwK!m<^osU'; // rotate later
-$charset = 'utf8mb4';
+if (!$privateConfigLoaded) {
+  http_response_code(500);
+  exit('Private config missing. Expected store_dev/config.php outside public_html.');
+}
 
-$dsn = "mysql:host={$host};dbname={$db};charset={$charset}";
+// Validate required DB constants exist (defined in private config).
+$required = ['DB_HOST','DB_NAME','DB_USER','DB_PASS'];
+$missing = [];
+foreach ($required as $c) {
+  if (!defined($c) || (string)constant($c) === '') {
+    $missing[] = $c;
+  }
+}
+if ($missing) {
+  http_response_code(500);
+  exit('Private config incomplete. Missing: ' . implode(', ', $missing));
+}
+
+$charset = defined('DB_CHARSET') && (string)DB_CHARSET !== '' ? (string)DB_CHARSET : 'utf8mb4';
+$dsn = 'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=' . $charset;
 
 $options = [
-    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    PDO::ATTR_EMULATE_PREPARES   => false,
+  PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+  PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+  PDO::ATTR_EMULATE_PREPARES   => false,
 ];
 
 try {
-    $pdo = new PDO($dsn, $user, $pass, $options);
+  $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
 } catch (Throwable $e) {
-    http_response_code(500);
-    exit('Database connection failed1');
+  http_response_code(500);
+
+  // DEV-only helpful message (optional)
+  $env = defined('SMARTCARE_ENV') ? (string)SMARTCARE_ENV : (string)(getenv('SMARTCARE_ENV') ?: 'prod');
+  if ($env === 'dev') {
+    exit("Database connection failed:\n" . $e->getMessage());
+  }
+
+  exit('Database connection failed');
 }

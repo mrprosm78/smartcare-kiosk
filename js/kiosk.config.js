@@ -1,7 +1,7 @@
 // kiosk.config.js
 
 // Deployment config
-const API_BASE = "https://smartkiosk.uk/kiosk-dev";
+const API_BASE = "https://smartkiosk.uk/kiosk-stowpark";
 
 const API_STATUS     = `${API_BASE}/api/kiosk/status.php`;
 const API_PAIR       = `${API_BASE}/api/kiosk/pair.php`;

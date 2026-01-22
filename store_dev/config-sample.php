@@ -14,9 +14,10 @@ define('APP_UPLOADS_PATH', APP_PRIVATE_ROOT . '/upload_photos');
 define('APP_PAYROLL_EXPORTS_PATH', APP_PRIVATE_ROOT . '/payroll_exports');
 define('APP_LOGS_PATH', APP_PRIVATE_ROOT . '/logs');
 
-// ===== Database =====
-$host = 'sdb-51.hosting.stackcp.net';
-$db   = 'kiosk-dev-35303033d91d';
-$user = 'kiosk-dev-35303033d91d';
-$pass = 'j-SwK!m<^osU'; // rotate later
-$charset = 'utf8mb4';
+
+// Database credentials (PRIVATE)
+define('DB_HOST', 'sdb-51.hosting.stackcp.net');
+define('DB_NAME', 'kiosk-dev-35303033d91d');
+define('DB_USER', 'kiosk-dev-35303033d91d');
+define('DB_PASS', 'j-SwK!m<^osU');
+define('DB_CHARSET', 'utf8mb4'); 
