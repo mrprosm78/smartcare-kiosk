@@ -86,7 +86,7 @@ try {
     // Determine uploads base path (configurable) and resolve to filesystem path.
     // For portability across duplicated installs (/yyy/), store uploads_base_path as
     // a RELATIVE path like "uploads".
-    $baseCfg = (string)setting($pdo, 'uploads_base_path', 'uploads');
+    $baseCfg = (string)setting($pdo, 'uploads_base_path', 'auto');
     $base = resolve_uploads_base_path($baseCfg);
 
     $dateFolder = gmdate('Y-m-d');

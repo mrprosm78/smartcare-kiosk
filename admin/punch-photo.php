@@ -38,7 +38,7 @@ try {
   // Base path is configurable so you can move uploads outside public folder later.
   // For portability across duplicated installs (/yyy/), store uploads_base_path as
   // a RELATIVE path like "uploads" and we resolve it from project root.
-  $baseCfg = trim(admin_setting_str($pdo, 'uploads_base_path', 'uploads'));
+  $baseCfg = trim(admin_setting_str($pdo, 'uploads_base_path', 'auto'));
   $base = resolve_uploads_base_path($baseCfg);
 
   // Backward compatibility: older installs stored "uploads/..." in photo_path.

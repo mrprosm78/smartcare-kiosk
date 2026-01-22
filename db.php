@@ -1,13 +1,43 @@
 <?php
 // db.php
+declare(strict_types=1);
 
-$host = 'localhost';
-$db   = 'timesheet';
-$user = 'root';
-$pass = ''; // rotate later
+/**
+ * This file bootstraps the database connection.
+ *
+ * Recommended: put per-environment settings (DB creds + private paths) in a PRIVATE config file
+ * outside public_html, e.g.:
+ *   /home/.../store_dev/config.php
+ *
+ * This code will attempt to load it automatically.
+ */
+
+// Try to load private config (outside public web root).
+$privateCandidates = [
+  // If this code is deployed to /public_html/kiosk-dev/db.php, then:
+  // dirname(__DIR__, 2) => /home/... (parent of public_html)
+  dirname(__DIR__, 2) . '/store_dev/config.php',
+  // Fallback if store_dev is inside public_html (not recommended, but handy for local/dev)
+  dirname(__DIR__, 1) . '/store_dev/config.php',
+  // As last resort, allow env var override
+  getenv('SMARTCARE_PRIVATE_CONFIG') ?: '',
+];
+
+foreach ($privateCandidates as $cfg) {
+  if (is_string($cfg) && $cfg !== '' && file_exists($cfg)) {
+    require_once $cfg;
+    break;
+  }
+}
+
+// Defaults (used only if private config did not define constants)
+$host = 'sdb-51.hosting.stackcp.net';
+$db   = 'kiosk-dev-35303033d91d';
+$user = 'kiosk-dev-35303033d91d';
+$pass = 'j-SwK!m<^osU'; // rotate later
 $charset = 'utf8mb4';
 
-$dsn = "mysql:host=$host;dbname=$db;charset=$charset";
+$dsn = "mysql:host={$host};dbname={$db};charset={$charset}";
 
 $options = [
     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
@@ -17,19 +47,7 @@ $options = [
 
 try {
     $pdo = new PDO($dsn, $user, $pass, $options);
-
-    // Production-grade time handling:
-    // Keep ALL timestamps in UTC at the DB session level to avoid BST/DST drift.
-    // (DATETIME has no timezone; this makes SQL time functions consistent.)
-    $pdo->exec("SET time_zone = '+00:00'");
-
-    // Optional: enforce sane SQL modes (comment out if your host restricts this)
-    // $pdo->exec("SET SESSION sql_mode = 'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'");
 } catch (Throwable $e) {
     http_response_code(500);
-    echo json_encode([
-        'ok' => false,
-        'error' => 'db_connection_failed'
-    ]);
-    exit;
+    exit('Database connection failed1');
 }

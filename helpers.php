@@ -59,9 +59,15 @@ function setting_set(PDO $pdo, string $key, string $value): void {
  *  - existing relative-to-CWD directories (some shared hosts) via realpath()
  */
 function resolve_uploads_base_path(string $configured): string {
+    // If a private uploads path constant is defined (recommended for production),
+    // allow setting value 'auto' (or blank) to resolve to that private directory.
+    $v = trim($configured);
+ if (defined('APP_UPLOADS_PATH') && ($v === '' || strtolower($v) === 'auto')) {
+    return rtrim((string) APP_UPLOADS_PATH, "/\\");
+}
+
     $projectRoot = realpath(__DIR__) ?: __DIR__;
 
-    $v = trim($configured);
     if ($v === '' || strtolower($v) === 'auto') {
         return rtrim($projectRoot, '/\\') . DIRECTORY_SEPARATOR . 'uploads';
     }
