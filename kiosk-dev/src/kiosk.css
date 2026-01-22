@@ -1,0 +1,22 @@
+/* src/kiosk.css */
+
+/* Tailwind layers */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Optional: small kiosk-specific tweaks */
+@layer base {
+  html, body {
+    height: 100%;
+  }
+}
+
+@layer utilities {
+  /* If you want a dedicated class for disabling selection (you already use no-select) */
+  .no-select {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+}

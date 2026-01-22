@@ -3,6 +3,7 @@
 // https://zapsite.co.uk/kiosk-dev/setup.php?action=reset&pin=2468
 declare(strict_types=1);
 
+
 ini_set('display_errors', '1');
 error_reporting(E_ALL);
 
@@ -377,7 +378,8 @@ function seed_settings(PDO $pdo): void {
     // ===========================
     [
       'key' => 'uploads_base_path', 'value' => 'uploads', 'group' => 'system',
-      'label' => 'Uploads Base Path', 'description' => 'Filesystem base directory for uploads. Use a relative value like "uploads" for portable installs (resolved from project root).',
+      'label' => 'Uploads Base Path', 'description' => "Filesystem base directory for uploads. Use 'auto' to use the private APP_UPLOADS_PATH constant (recommended). Or set a relative path like \"uploads\" for public storage (dev only).",
+
       'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 704, 'secret' => 0,
     ],
     [

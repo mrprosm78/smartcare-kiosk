@@ -1,0 +1,481 @@
+// kiosk.api.js
+
+function deviceToken() {
+  return localStorage.getItem("kiosk_device_token") || "";
+}
+function pairingVersion() {
+  return localStorage.getItem("kiosk_pairing_version") || "0";
+}
+
+function setPairedUI(isPaired) {
+  btnIn.disabled = !isPaired;
+  btnOut.disabled = !isPaired;
+  pairHint.classList.toggle("hidden", !!isPaired);
+}
+
+function currentUrlHasVersion(v) {
+  const u = new URL(window.location.href);
+  return (u.searchParams.get("v") || "") === String(v);
+}
+
+function getDeviceToken() {
+  try { return localStorage.getItem("kiosk_device_token") || ""; }
+  catch (e) { return ""; }
+}
+
+/**
+ * Fetch status with optional auth header.
+ * IMPORTANT: status.php will return authorised=true only if token matches hash.
+ */
+async function fetchStatus() {
+  const tok = getDeviceToken();
+  const headers = { "Accept": "application/json" };
+  if (tok) headers["X-Kiosk-Token"] = tok;
+
+  const res = await fetch(API_STATUS, {
+    method: "GET",
+    headers,
+    cache: "no-store"
+  });
+
+  return await res.json();
+}
+
+function reloadWithVersion(v) {
+  const u = new URL(window.location.href);
+  u.searchParams.set("v", String(v));
+  window.location.replace(u.toString());
+}
+
+function maybeReloadFromStatus(d) {
+  if (!d || typeof d !== "object") return;
+
+  UI_VERSION = (d.ui_version ?? "").toString();
+  UI_RELOAD_ENABLED = !!d.ui_reload_enabled;
+  const token = (d.ui_reload_token ?? "0").toString();
+
+  if (Number.isFinite(+d.ui_reload_check_ms)) {
+    UI_RELOAD_CHECK_MS = Math.max(10000, parseInt(d.ui_reload_check_ms, 10));
+  }
+
+  if (!UI_RELOAD_ENABLED) return;
+
+  // If a reload was queued earlier (e.g., during PIN entry),
+  // perform it as soon as it is safe.
+  if (window.__kioskReloadPending) {
+    const canReloadNow = (() => {
+      try {
+        if (typeof window.kioskCanReload === "function") return !!window.kioskCanReload();
+      } catch (e) {}
+      try {
+        if (typeof isSubmitting !== "undefined" && isSubmitting) return false;
+      } catch (e) {}
+      try {
+        if (typeof pinOverlay !== "undefined" && pinOverlay && !pinOverlay.classList.contains("hidden")) return false;
+      } catch (e) {}
+      return true;
+    })();
+
+    if (canReloadNow) {
+      window.__kioskReloadPending = false;
+      if (UI_VERSION) {
+        reloadWithVersion(UI_VERSION);
+      } else {
+        window.location.reload();
+      }
+      return;
+    }
+  }
+
+  const storedVer = localStorage.getItem("kiosk_ui_version") || "";
+  const storedTok = localStorage.getItem("kiosk_ui_reload_token") || "";
+
+  // First run: store and exit (no surprise reload).
+  if (!storedVer && !storedTok) {
+    if (UI_VERSION) localStorage.setItem("kiosk_ui_version", UI_VERSION);
+    localStorage.setItem("kiosk_ui_reload_token", token);
+    return;
+  }
+
+  // Determine whether a reload is needed
+  let needsReload = false;
+  let reason = "";
+
+  if (UI_VERSION && storedVer && storedVer !== UI_VERSION) {
+    localStorage.setItem("kiosk_ui_version", UI_VERSION);
+    needsReload = true;
+    reason = "version";
+  }
+
+  if (storedTok !== token) {
+    localStorage.setItem("kiosk_ui_reload_token", token);
+    needsReload = true;
+    reason = reason || "token";
+  }
+
+  // Ensure URL always contains current ui_version if enabled
+  if (UI_VERSION && storedVer === UI_VERSION && !currentUrlHasVersion(UI_VERSION)) {
+    needsReload = true;
+    reason = reason || "url";
+  }
+
+  if (!needsReload) return;
+
+  // Safety: do not reload while PIN entry / submission is active.
+  const canReload = (() => {
+    try {
+      if (typeof window.kioskCanReload === "function") return !!window.kioskCanReload();
+    } catch (e) {}
+
+    try {
+      if (typeof isSubmitting !== "undefined" && isSubmitting) return false;
+    } catch (e) {}
+
+    try {
+      if (typeof pinOverlay !== "undefined" && pinOverlay && !pinOverlay.classList.contains("hidden")) return false;
+    } catch (e) {}
+
+    return true;
+  })();
+
+  // If a reload was previously queued (e.g., user was entering a PIN),
+  // execute it as soon as it's safe.
+  if (window.__kioskReloadPending && canReload) {
+    window.__kioskReloadPending = false;
+    if (UI_VERSION) {
+      reloadWithVersion(UI_VERSION);
+    } else {
+      window.location.reload();
+    }
+    return;
+  }
+
+  if (!canReload) {
+    // Queue a reload request; kiosk.main will eventually return to idle and next status poll will reload.
+    window.__kioskReloadPending = true;
+    return;
+  }
+
+  // Perform reload; prefer versioned reload to bust caches.
+  if (UI_VERSION) {
+    reloadWithVersion(UI_VERSION);
+  } else {
+    window.location.reload();
+  }
+}
+
+async function getStatusAndApply() {
+  try {
+    const d = await fetchStatus().catch(() => ({}));
+
+    if (d && typeof d === "object") {
+      if (Number.isFinite(+d.pin_length)) {
+        PIN_LENGTH = Math.max(2, Math.min(8, parseInt(d.pin_length, 10)));
+      }
+      if (Number.isFinite(+d.ui_thank_ms)) {
+        THANK_MS = Math.max(500, Math.min(10000, parseInt(d.ui_thank_ms, 10)));
+      }
+
+      if (Number.isFinite(+d.ping_interval_ms)) {
+        PING_INTERVAL_MS = Math.max(5000, parseInt(d.ping_interval_ms, 10));
+      }
+      if (Number.isFinite(+d.sync_interval_ms)) {
+        SYNC_INTERVAL_MS = Math.max(5000, parseInt(d.sync_interval_ms, 10));
+      }
+      if (Number.isFinite(+d.sync_cooldown_ms)) {
+        SYNC_COOLDOWN_MS = Math.max(0, parseInt(d.sync_cooldown_ms, 10));
+      }
+      if (Number.isFinite(+d.sync_batch_size)) {
+        SYNC_BATCH_SIZE = Math.max(1, Math.min(100, parseInt(d.sync_batch_size, 10)));
+      }
+      if (Number.isFinite(+d.max_sync_attempts)) {
+        MAX_SYNC_ATTEMPTS = Math.max(1, Math.min(50, parseInt(d.max_sync_attempts, 10)));
+      }
+      if (Number.isFinite(+d.sync_backoff_base_ms)) {
+        SYNC_BACKOFF_BASE_MS = Math.max(250, parseInt(d.sync_backoff_base_ms, 10));
+      }
+      if (Number.isFinite(+d.sync_backoff_cap_ms)) {
+        SYNC_BACKOFF_CAP_MS = Math.max(SYNC_BACKOFF_BASE_MS, parseInt(d.sync_backoff_cap_ms, 10));
+      }
+
+      applyPinDots();
+      maybeReloadFromStatus(d);
+    }
+
+    // Return full payload but normalize key flags so other files don’t break.
+    const out = (d && typeof d === "object") ? { ...d } : {};
+
+    out.paired = !!out.paired;
+    out.authorised = !!out.authorised;
+
+    out.pairing_version = Number.isFinite(+out.pairing_version)
+      ? parseInt(out.pairing_version, 10)
+      : 1;
+
+    // Ensure these always exist
+    out.ui_show_open_shifts = !!out.ui_show_open_shifts;
+    if (!Number.isFinite(+out.ui_open_shifts_count)) out.ui_open_shifts_count = 6;
+    out.ui_open_shifts_show_time = typeof out.ui_open_shifts_show_time === "undefined"
+      ? true
+      : !!out.ui_open_shifts_show_time;
+    if (!Array.isArray(out.open_shifts)) out.open_shifts = [];
+
+    // Render open shifts immediately (don’t wait for statusLoop)
+    try { if (typeof applyOpenShiftsFromStatus === 'function') applyOpenShiftsFromStatus(out); } catch {}
+
+    return out;
+
+  } catch {
+    return {
+      paired: false,
+      authorised: false,
+      pairing_version: 1,
+      ui_show_open_shifts: false,
+      ui_open_shifts_count: 6,
+      ui_open_shifts_show_time: true,
+      open_shifts: []
+    };
+  }
+}
+
+async function pairIfNeeded() {
+  if (typeof window.kioskBootstrap === "function") {
+    return window.kioskBootstrap();
+  }
+}
+
+/**
+ * Bootstrap pairing/authorisation state.
+ * Uses SERVER truth: st.authorised (NOT just local token existence).
+ */
+async function kioskBootstrap() {
+  setPairedUI(false);
+
+  const st = await getStatusAndApply();
+
+  if (window.KIOSK_STATE) {
+    window.KIOSK_STATE.server_paired = !!st.paired;
+    window.KIOSK_STATE.pairing_version = parseInt(st.pairing_version || 0, 10) || 0;
+    window.KIOSK_STATE.ui_version = String(st.ui_version || "1");
+  }
+
+  // System not paired at all
+  if (!st.paired) {
+    if (typeof window.setKioskOverlay === "function") {
+      window.setKioskOverlay("not_paired", {
+        badge: "Not paired",
+        title: "This kiosk is not set up",
+        message: (st?.ui_text?.not_paired_message || "A manager must authorise this device before staff can clock in/out."),
+        actionText: "Enter Manager PIN",
+        action: "pair",
+      });
+    }
+    setPairedUI(false);
+    return { authorised: false, reason: "not_paired", status: st };
+  }
+
+  // System paired. Check this device state.
+  const tok = deviceToken();
+  const localVer = parseInt(pairingVersion() || "0", 10) || 0;
+  const serverVer = parseInt(st.pairing_version || "0", 10) || 0;
+
+  // Revocation check (only meaningful if token exists locally)
+  if (tok && localVer && serverVer && localVer !== serverVer) {
+    if (typeof window.setKioskOverlay === "function") {
+      window.setKioskOverlay("revoked", {
+        badge: "Revoked",
+        title: "Device revoked",
+        message: "This device was removed from the system. A manager must re-authorise it.",
+        actionText: "Re-authorise",
+        action: "pair",
+      });
+    }
+    setPairedUI(false);
+    return { authorised: false, reason: "revoked", status: st };
+  }
+
+  // Authorised only if server says so
+  if (tok && st.authorised) {
+    if (typeof window.setKioskOverlay === "function") window.setKioskOverlay("ready");
+    setPairedUI(true);
+    return { authorised: true, reason: "authorised", status: st };
+  }
+
+  // Paired but this device is not authorised (no token OR token mismatch)
+  if (typeof window.setKioskOverlay === "function") {
+    window.setKioskOverlay("not_authorised", {
+      badge: "Unauthorised",
+      title: "Device not authorised",
+      message: (st?.ui_text?.not_authorised_message || "This kiosk needs manager approval before staff can clock in/out."),
+      actionText: "Enter Manager PIN",
+      action: "pair",
+    });
+  }
+  setPairedUI(false);
+  return { authorised: false, reason: "not_authorised", status: st };
+}
+
+/**
+ * Pair this kiosk using the manager PIN (entered via modal).
+ */
+async function pairWithManagerCode(code) {
+  const pairing_code = String(code || "").trim();
+  if (!pairing_code) {
+    toast && toast("warning", "PIN required", "Please enter the manager PIN.");
+    return false;
+  }
+
+  try {
+    const res = await fetch(API_PAIR, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Kiosk-Code": KIOSK_CODE },
+      body: JSON.stringify({ pairing_code })
+    });
+
+    const out = await res.json().catch(() => ({}));
+    if (out.ok && out.device_token) {
+      localStorage.setItem("kiosk_device_token", out.device_token);
+      localStorage.setItem("kiosk_pairing_version", String(out.pairing_version || 1));
+
+      setPairedUI(true);
+      if (typeof window.setKioskOverlay === "function") window.setKioskOverlay("ready");
+
+      // kick background loops now that we're authorised
+      if (typeof window.startBackgroundLoops === "function") window.startBackgroundLoops();
+
+      toast && toast("success", "Authorised", "This device is now authorised.");
+      return true;
+    }
+
+    const err = (out && out.error) ? String(out.error) : "Pairing failed";
+    const map = {
+      pairing_mode_off: "Pairing is disabled. Ask admin to enable Pairing Mode in settings.",
+      rate_limited: "Too many pairing attempts. Please wait a few minutes and try again.",
+      kiosk_not_authorized: "Kiosk code not authorised.",
+      invalid_pairing_code: "Invalid manager PIN.",
+      server_error: "Server error. Please try again."
+    };
+    toast && toast("error", "Pairing failed", map[err] || err);
+    return false;
+
+  } catch (e) {
+    toast && toast("error", "Network error", "Could not reach server. Check connection.");
+    return false;
+  }
+}
+
+// expose for kiosk.ui.js
+window.__kioskBootstrapImpl = kioskBootstrap;
+window.kioskBootstrap = kioskBootstrap;
+window.pairWithManagerCode = pairWithManagerCode;
+
+async function pingServer() {
+  try {
+    const headers = { "Accept": "application/json" };
+    // If we have a token, send headers so server can record heartbeat
+    const tok = getDeviceToken();
+    if (tok) {
+      headers["X-Kiosk-Code"] = KIOSK_CODE;
+      headers["X-Device-Token"] = tok;
+      headers["X-Pairing-Version"] = pairingVersion();
+    }
+    const r = await fetch(ENDPOINT_PING, { cache: "no-store", headers });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+function makeUuid() {
+  if (crypto?.randomUUID) return crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+async function postPunch(payload) {
+  const r = await fetch(ENDPOINT_PUNCH, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Kiosk-Code": KIOSK_CODE,
+      "X-Device-Token": deviceToken(),
+      "X-Pairing-Version": pairingVersion()
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) return { ok: false, error: data?.error || "server_error" };
+  return data;
+}
+
+/**
+ * Periodic status polling (safe settings + optional open shifts).
+ * Uses SERVER truth: st.authorised.
+ */
+async function statusLoop() {
+  try {
+    const st = await getStatusAndApply();
+
+    // open shifts rendering (if enabled) - status.php will only send when authorised
+    if (typeof applyOpenShiftsFromStatus === "function") {
+      try { applyOpenShiftsFromStatus(st); } catch {}
+    }
+
+    if (typeof applyUiTextFromStatus === "function") {
+      try { applyUiTextFromStatus(st); } catch {}
+    }
+
+    const tok = deviceToken();
+    const localVer = parseInt(pairingVersion() || "0", 10) || 0;
+    const serverVer = parseInt(st.pairing_version || "0", 10) || 0;
+
+    if (!st.paired) {
+      setPairedUI(false);
+      if (typeof window.setKioskOverlay === "function") {
+        window.setKioskOverlay("not_paired", {
+          badge: "Not paired",
+          title: "This kiosk is not set up",
+          message: (st?.ui_text?.not_paired_message || "A manager must authorise this device before staff can clock in/out."),
+          actionText: "Enter Manager PIN",
+          action: "pair",
+        });
+      }
+    } else if (tok && localVer && serverVer && localVer !== serverVer) {
+      setPairedUI(false);
+      if (typeof window.setKioskOverlay === "function") {
+        window.setKioskOverlay("revoked", {
+          badge: "Revoked",
+          title: "Device revoked",
+          message: "This device was removed from the system. A manager must re-authorise it.",
+          actionText: "Re-authorise",
+          action: "pair",
+        });
+      }
+    } else if (!st.authorised) {
+      setPairedUI(false);
+      if (typeof window.setKioskOverlay === "function") {
+        window.setKioskOverlay("not_authorised", {
+          badge: "Unauthorised",
+          title: "Device not authorised",
+          message: (st?.ui_text?.not_authorised_message || "This kiosk needs manager approval before staff can clock in/out."),
+          actionText: "Enter Manager PIN",
+          action: "pair",
+        });
+      }
+    } else {
+      setPairedUI(true);
+      if (typeof window.setKioskOverlay === "function") window.setKioskOverlay("ready");
+    }
+
+    // schedule
+    setTimeout(statusLoop, UI_RELOAD_ENABLED ? UI_RELOAD_CHECK_MS : 60000);
+
+  } catch {
+    setTimeout(statusLoop, 60000);
+  }
+}
