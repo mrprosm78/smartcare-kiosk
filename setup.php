@@ -429,13 +429,19 @@ function seed_settings(PDO $pdo): void {
       'label' => 'Payroll Timezone', 'description' => 'Timezone used for day/week boundaries (weekend and bank holiday cutoffs).',
       'type' => 'string', 'editable_by' => 'admin', 'sort' => 715, 'secret' => 0,
     ],
-
-
-    // Default premiums & multipliers (care-home defaults). Contract overrides via employee pay profile rules_json.
-
+    [
+      'key' => 'payroll_month_boundary_mode', 'value' => 'midnight', 'group' => 'payroll',
+      'label' => 'Payroll Month Boundary',
+      'description' => 'How to assign shifts that cross the month boundary: midnight (split at local midnight) or end_of_shift (assign whole shift to the month of its start date). Only superadmin should change this and it should not be changed retroactively.',
+      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 718, 'secret' => 0,
+    ],
   ];
-  $stripKeys = [
+  // Cleanup: remove legacy/global payroll-rule settings.
+  // Payroll rules now live only in employee contracts (kiosk_employee_pay_profiles.rules_json).
+  // These keys are intentionally deleted if present to prevent drift/confusion.
+  $legacyKeysToRemove = [
     'default_break_minutes',
+    'default_break_is_paid',
     'night_shift_threshold_percent',
     'night_premium_enabled',
     'night_premium_start',
@@ -467,22 +473,11 @@ function seed_settings(PDO $pdo): void {
     'default_callout_premium_per_hour',
   ];
 
-  $defs = array_values(array_filter($defs, function(array $d) use ($stripKeys) {
-    $k = $d['key'] ?? null;
-    if ($k === null) return true;
-    return !in_array((string)$k, $stripKeys, true);
-  }));
-
-
-
-  
-
-  // Cleanup: ensure legacy care-home payroll rules are removed from kiosk_settings.
   try {
-    if (!empty($stripKeys)) {
-      $in = implode(',', array_fill(0, count($stripKeys), '?'));
+    if (!empty($legacyKeysToRemove)) {
+      $in = implode(',', array_fill(0, count($legacyKeysToRemove), '?'));
       $del = $pdo->prepare("DELETE FROM kiosk_settings WHERE `key` IN ($in)");
-      $del->execute(array_values($stripKeys));
+      $del->execute(array_values($legacyKeysToRemove));
     }
   } catch (Throwable $e) {
     // Ignore cleanup errors to avoid blocking install/upgrade.
@@ -520,9 +515,6 @@ $sql = "
     ]);
   }
 
-  // Cleanup legacy settings that are no longer used.
-
-
   // Lock setup-only settings after app initialization
   try {
     $appInit = (string)($pdo->query("SELECT value FROM kiosk_settings WHERE `key`='app_initialized' LIMIT 1")->fetchColumn() ?? '0');
@@ -530,8 +522,6 @@ $sql = "
       $pdo->prepare("UPDATE kiosk_settings SET editable_by='none' WHERE `key`='payroll_week_starts_on'")->execute();
     }
   } catch (Throwable $e) { /* ignore */ }
-
-  delete_setting_if_exists($pdo, 'default_break_is_paid');
 }
 
 function seed_admin_users(PDO $pdo): void {
@@ -1027,12 +1017,20 @@ function create_tables(PDO $pdo): void {
       applied_rule VARCHAR(50) NULL,
       rounding_minutes INT NULL,
       rounded_paid_minutes INT NULL,
+      day_breakdown_json MEDIUMTEXT NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       KEY idx_batch_emp (payroll_batch_id, employee_id),
       KEY idx_shift (shift_id),
       KEY idx_batch (payroll_batch_id)
     ) ENGINE=InnoDB;
   " );
+
+  // Add day_breakdown_json to existing installs safely.
+  try {
+    $pdo->exec("ALTER TABLE payroll_shift_snapshots ADD COLUMN day_breakdown_json MEDIUMTEXT NULL");
+  } catch (Throwable $e) {
+    // ignore (already exists)
+  }
 
   // PAYROLL RUN LOGS (audit trail of runs/reruns)
   $pdo->exec("

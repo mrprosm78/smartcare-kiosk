@@ -37,6 +37,7 @@ $basicAllow = [
     // payroll boundaries
     'payroll_week_starts_on',
     'payroll_timezone',
+    'payroll_month_boundary_mode',
   ],
 ];
 
@@ -58,6 +59,8 @@ $vals = [
   // payroll boundaries (LOCKED rules)
   'payroll_week_starts_on' => admin_setting_str($pdo, 'payroll_week_starts_on', 'MONDAY'),
   'payroll_timezone' => admin_setting_str($pdo, 'payroll_timezone', 'Europe/London'),
+  'payroll_month_boundary_mode' => admin_setting_str($pdo, 'payroll_month_boundary_mode', 'midnight'),
+  'payroll_month_boundary_mode' => admin_setting_str($pdo, 'payroll_month_boundary_mode', 'midnight'),
 
   // high-level (superadmin only)
   'admin_pairing_mode' => admin_setting_bool($pdo, 'admin_pairing_mode', false),
@@ -97,6 +100,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (in_array('payroll_timezone', $allowedBasic, true)) {
       admin_set_setting($pdo, 'payroll_timezone', trim((string)($_POST['payroll_timezone'] ?? 'Europe/London')));
     }
+
+    // Month boundary (superadmin only):
+    // - midnight: split shifts at local midnight (recommended)
+    // - end_of_shift: assign whole shift to the month of its start date
+    if ($role === 'superadmin' && in_array('payroll_month_boundary_mode', $allowedBasic, true)) {
+      $mode = strtolower(trim((string)($_POST['payroll_month_boundary_mode'] ?? 'midnight')));
+      if (!in_array($mode, ['midnight','end_of_shift'], true)) $mode = 'midnight';
+      admin_set_setting($pdo, 'payroll_month_boundary_mode', $mode);
+    }
+
+    // -------------------------
 
     // -------------------------
     // High-level: admin pairing + uploads
@@ -196,7 +210,9 @@ admin_page_start($pdo, 'Settings');
             </section>
 
             <?php
-              $canSeePayrollBoundary = in_array('payroll_week_starts_on', $allowedBasic, true) || in_array('payroll_timezone', $allowedBasic, true);
+              $canSeePayrollBoundary = in_array('payroll_week_starts_on', $allowedBasic, true)
+                || in_array('payroll_timezone', $allowedBasic, true)
+                || in_array('payroll_month_boundary_mode', $allowedBasic, true);
             ?>
             <?php if ($canSeePayrollBoundary): ?>
               <section class="rounded-3xl border border-white/10 bg-white/5 p-5">
@@ -230,6 +246,22 @@ admin_page_start($pdo, 'Settings');
                       <div class="mt-2 text-xs text-white/50">Used for midnight/day boundaries in payroll.</div>
                     </label>
                   <?php endif; ?>
+
+                  <?php if ($role === 'superadmin' && in_array('payroll_month_boundary_mode', $allowedBasic, true)): ?>
+                    <label class="rounded-2xl border border-white/10 bg-white/5 p-4 md:col-span-2">
+                      <div class="text-xs uppercase tracking-widest text-white/50">Payroll month boundary</div>
+                      <select name="payroll_month_boundary_mode"
+                        class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30">
+                        <option value="midnight" <?= ((string)$vals['payroll_month_boundary_mode']==='midnight') ? 'selected' : '' ?>>Split at local midnight (recommended)</option>
+                        <option value="end_of_shift" <?= ((string)$vals['payroll_month_boundary_mode']==='end_of_shift') ? 'selected' : '' ?>>Assign whole shift to start month (advanced)</option>
+                      </select>
+                      <div class="mt-2 text-xs text-white/50">
+                        Default is <b>midnight</b>. Changing this affects how cross-month shifts are assigned. Only change for a care home if you are sure — do not change retroactively after payroll has been run.
+                      </div>
+                    </label>
+                  <?php endif; ?>
+
+                  <?php /* month boundary selector is superadmin-only (see block above) */ ?>
                 </div>
               </section>
             <?php endif; ?>

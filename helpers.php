@@ -169,6 +169,53 @@ function sc_week_bounds_utc(PDO $pdo, string $tz): array {
   ];
 }
 
+/**
+ * Given a moment in time, return the payroll-week window that contains it.
+ *
+ * Week boundaries are defined in the payroll timezone (setting: payroll_timezone)
+ * using payroll_week_starts_on, then converted to UTC.
+ *
+ * The input can be in any timezone; it will be interpreted correctly.
+ *
+ * @return array{start_utc:DateTimeImmutable,end_utc_ex:DateTimeImmutable,start_local:DateTimeImmutable,end_local_ex:DateTimeImmutable,week_starts_on:string}
+ */
+function payroll_week_window(PDO $pdo, DateTimeImmutable $anyTime): array {
+  $tz = payroll_timezone($pdo);
+  $ws = payroll_week_starts_on($pdo);
+
+  $map = [
+    'MONDAY'    => 1,
+    'TUESDAY'   => 2,
+    'WEDNESDAY' => 3,
+    'THURSDAY'  => 4,
+    'FRIDAY'    => 5,
+    'SATURDAY'  => 6,
+    'SUNDAY'    => 7,
+  ];
+  $startDow = $map[$ws] ?? 1;
+
+  $tzObj = new DateTimeZone($tz);
+  $utcObj = new DateTimeZone('UTC');
+
+  $local = $anyTime->setTimezone($tzObj);
+  $localDay = $local->setTime(0, 0, 0);
+  $dow = (int)$localDay->format('N'); // Mon=1..Sun=7
+
+  $diff = $dow - $startDow;
+  if ($diff < 0) $diff += 7;
+
+  $weekStartLocal = $localDay->modify("-{$diff} days");
+  $weekEndLocalEx = $weekStartLocal->modify('+7 days');
+
+  return [
+    'start_local' => $weekStartLocal,
+    'end_local_ex' => $weekEndLocalEx,
+    'start_utc' => $weekStartLocal->setTimezone($utcObj),
+    'end_utc_ex' => $weekEndLocalEx->setTimezone($utcObj),
+    'week_starts_on' => $ws,
+  ];
+}
+
 /* ===== PAYROLL HELPERS (minutes-only internal) ===== */
 
 function payroll_timezone(PDO $pdo): string {

@@ -3,6 +3,9 @@ declare(strict_types=1);
 
 // expects: $user, $active (string)
 
+// Default $active so pages don't trigger warnings if they set it later.
+$active = $active ?? '';
+
 function admin_nav_item(string $href, string $label, string $active): string {
   $is = ($href === $active);
   $base = 'flex items-center justify-between rounded-2xl px-3 py-2 text-sm font-semibold transition-colors';
