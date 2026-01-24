@@ -30,21 +30,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
       $stmt = $pdo->prepare("INSERT INTO kiosk_employee_teams (name, slug, sort_order, is_active) VALUES (?,?,?,1)");
       $stmt->execute([$name, $slug, $sort]);
-      admin_redirect(admin_url('categories.php'));
+      admin_redirect(admin_url('departments.php'));
     }
 
     if ($action === 'toggle') {
       $id = (int)($_POST['id'] ?? 0);
       if ($id <= 0) throw new RuntimeException('Invalid category');
       $pdo->prepare("UPDATE kiosk_employee_teams SET is_active = IF(is_active=1,0,1) WHERE id=?")->execute([$id]);
-      admin_redirect(admin_url('categories.php'));
+      admin_redirect(admin_url('departments.php'));
     }
 
     if ($action === 'delete') {
       $id = (int)($_POST['id'] ?? 0);
       if ($id <= 0) throw new RuntimeException('Invalid category');
 
-      // prevent deleting categories in use
+      // prevent deleting department in use
       $c = (int)$pdo->prepare("SELECT COUNT(*) FROM kiosk_employees WHERE category_id=?")->execute([$id]) ?: 0;
       $stmtC = $pdo->prepare("SELECT COUNT(*) FROM kiosk_employees WHERE category_id=?");
       $stmtC->execute([$id]);
@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       if ($inUse > 0) throw new RuntimeException('Team is in use by employees. Deactivate instead.');
 
       $pdo->prepare("DELETE FROM kiosk_employee_teams WHERE id=?")->execute([$id]);
-      admin_redirect(admin_url('categories.php'));
+      admin_redirect(admin_url('departments.php'));
     }
   } catch (Throwable $e) {
     $err = $e->getMessage();
@@ -160,7 +160,7 @@ admin_page_start($pdo, 'Employee Teams');
                     </tr>
                   <?php endforeach; ?>
                   <?php if (count($cats) === 0): ?>
-                    <tr><td colspan="4" class="py-4 text-white/60">No categories yet.</td></tr>
+                    <tr><td colspan="4" class="py-4 text-white/60">No departments yet.</td></tr>
                   <?php endif; ?>
                 </tbody>
               </table>

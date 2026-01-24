@@ -8,6 +8,11 @@ $title = 'Add Shift';
 $error = '';
 $notice = '';
 
+// Ensure timezone exists (layout.php normally sets this)
+if (!isset($tz) || !($tz instanceof DateTimeZone)) {
+  $tz = new DateTimeZone('Europe/London');
+}
+
 // Load active employees for dropdown
 $emps = $pdo->query(
   "SELECT id, " . admin_sql_employee_display_name('kiosk_employees') . " AS full_name, is_agency, agency_label\n" .
@@ -16,7 +21,7 @@ $emps = $pdo->query(
   "ORDER BY first_name ASC, last_name ASC"
 )->fetchAll(PDO::FETCH_ASSOC);
 
-// Defaults
+// Defaults (stored as UTC strings in $clockIn/$clockOut)
 $employeeId = (int)($_GET['employee_id'] ?? 0);
 $clockIn = (string)($_GET['in'] ?? '');
 $clockOut = (string)($_GET['out'] ?? '');
@@ -26,19 +31,45 @@ $trainingNote = '';
 $note = '';
 $approveNow = 0;
 
+// Local input values for datetime-local fields (YYYY-MM-DDTHH:MM)
+$clockInInput = '';
+$clockOutInput = '';
+
+// If GET provided UTC timestamps, pre-fill inputs by converting to local tz
+$prefillInputsFromUtc = function (?string $utc) use ($tz): string {
+  if ($utc === null || trim($utc) === '') return '';
+  try {
+    // Accept "Y-m-d H:i:s" (or any parsable) as UTC
+    $dt = new DateTimeImmutable($utc, new DateTimeZone('UTC'));
+    return $dt->setTimezone($tz)->format('Y-m-d\TH:i');
+  } catch (Throwable $e) {
+    return '';
+  }
+};
+
+$clockInInput = $prefillInputsFromUtc($clockIn);
+$clockOutInput = $prefillInputsFromUtc($clockOut);
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   admin_verify_csrf($_POST['csrf'] ?? null);
 
   $employeeId = (int)($_POST['employee_id'] ?? 0);
+
+  // Keep what user typed (sticky form)
   $clockInLocal = trim((string)($_POST['clock_in_at'] ?? ''));
-    $clockIn = admin_input_to_utc($clockInLocal, $tz) ?? '';
-    $clockOutLocal = trim((string)($_POST['clock_out_at'] ?? ''));
-    $clockOut = admin_input_to_utc($clockOutLocal, $tz) ?? '';
-    $isCallout = (int)($_POST['is_callout'] ?? 0) === 1 ? 1 : 0;
+  $clockOutLocal = trim((string)($_POST['clock_out_at'] ?? ''));
+  $clockInInput = $clockInLocal;
+  $clockOutInput = $clockOutLocal;
+
+  // Convert local -> UTC for storage
+  $clockIn = admin_input_to_utc($clockInLocal, $tz) ?? '';
+  $clockOut = admin_input_to_utc($clockOutLocal, $tz) ?? '';
+
+  $isCallout = ((int)($_POST['is_callout'] ?? 0) === 1) ? 1 : 0;
   $trainingMinutes = trim((string)($_POST['training_minutes'] ?? ''));
   $trainingNote = trim((string)($_POST['training_note'] ?? ''));
   $note = trim((string)($_POST['note'] ?? ''));
-  $approveNow = (int)($_POST['approve_now'] ?? 0) === 1 ? 1 : 0;
+  $approveNow = ((int)($_POST['approve_now'] ?? 0) === 1) ? 1 : 0;
 
   if ($employeeId <= 0) {
     $error = 'Please choose an employee.';
@@ -48,20 +79,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   $inDt = null;
   $outDt = null;
+
   if ($error === '') {
     try {
-      $inDt = new DateTimeImmutable($clockIn);
+      $inDt = new DateTimeImmutable($clockIn, new DateTimeZone('UTC'));
     } catch (Throwable $e) {
       $error = 'Invalid clock-in datetime.';
     }
   }
+
   if ($error === '' && $clockOut !== '') {
     try {
-      $outDt = new DateTimeImmutable($clockOut);
+      $outDt = new DateTimeImmutable($clockOut, new DateTimeZone('UTC'));
     } catch (Throwable $e) {
       $error = 'Invalid clock-out datetime.';
     }
   }
+
   if ($error === '' && $outDt && $inDt && $outDt <= $inDt) {
     $error = 'Clock-out must be after clock-in.';
   }
@@ -94,11 +128,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!admin_can($user, 'approve_shifts')) {
       $error = 'You do not have permission to approve shifts.';
     } elseif (!$outDt) {
-      $error = 'You can only approve a closed shift (requires clock-out).' ;
+      $error = 'You can only approve a closed shift (requires clock-out).';
     } else {
       $approvedAt = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d H:i:s');
       $approvedBy = (string)($user['username'] ?? '');
-      $approvalNote = $note !== '' ? $note : 'Approved on creation';
+      $approvalNote = ($note !== '' ? $note : 'Approved on creation');
     }
   }
 
@@ -114,8 +148,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
       $ins->execute([
         ':eid' => $employeeId,
-        ':cin' => $inDt?->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s'),
-        ':cout' => $outDt?->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s'),
+        ':cin' => $inDt?->format('Y-m-d H:i:s'),
+        ':cout' => $outDt?->format('Y-m-d H:i:s'),
         ':tmins' => $tmins,
         ':tnote' => ($trainingNote !== '' ? $trainingNote : null),
         ':callout' => $isCallout,
@@ -129,7 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
       $shiftId = (int)$pdo->lastInsertId();
 
-      // Audit (use existing enum values)
+      // Audit
       $meta = [
         'note' => $note,
         'created_source' => 'manager_manual',
@@ -143,6 +177,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         "VALUES\n" .
         "(:sid, 'edit', :uid, :uname, :role, 'manual_create', :note, NULL, :newj)"
       );
+
       $chg->execute([
         ':sid' => $shiftId,
         ':uid' => (int)($user['user_id'] ?? 0),
@@ -159,6 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           "VALUES\n" .
           "(:sid, 'approve', :uid, :uname, :role, 'approve', :note, NULL, :newj)"
         );
+
         $chg2->execute([
           ':sid' => $shiftId,
           ':uid' => (int)($user['user_id'] ?? 0),
@@ -221,7 +257,7 @@ $active = admin_url('shifts.php');
                         $label = ($al !== '' ? $al : $label) . ' (Agency)';
                       }
                     ?>
-                    <option value="<?= (int)$e['id'] ?>" <?= $employeeId===(int)$e['id']?'selected':'' ?>><?= h($label) ?></option>
+                    <option value="<?= (int)$e['id'] ?>" <?= $employeeId === (int)$e['id'] ? 'selected' : '' ?>><?= h($label) ?></option>
                   <?php endforeach; ?>
                 </select>
               </label>
@@ -230,7 +266,7 @@ $active = admin_url('shifts.php');
                 <label>
                   <div class="text-xs uppercase tracking-widest text-white/50">Call-out</div>
                   <div class="mt-3 flex items-center gap-2">
-                    <input type="checkbox" name="is_callout" value="1" class="h-4 w-4 rounded" <?= $isCallout===1?'checked':'' ?> />
+                    <input type="checkbox" name="is_callout" value="1" class="h-4 w-4 rounded" <?= $isCallout === 1 ? 'checked' : '' ?> />
                     <span class="text-sm text-white/80">Mark as call-out</span>
                   </div>
                 </label>
@@ -238,40 +274,52 @@ $active = admin_url('shifts.php');
                 <label>
                   <div class="text-xs uppercase tracking-widest text-white/50">Approve now</div>
                   <div class="mt-3 flex items-center gap-2">
-                    <input type="checkbox" name="approve_now" value="1" class="h-4 w-4 rounded" <?= $approveNow===1?'checked':'' ?> <?= admin_can($user, 'approve_shifts') ? '' : 'disabled' ?> />
-                    <span class="text-sm text-white/80"><?= admin_can($user, 'approve_shifts') ? 'Approve immediately (closed shifts only)' : 'Requires approve permission' ?></span>
+                    <input type="checkbox" name="approve_now" value="1" class="h-4 w-4 rounded"
+                      <?= $approveNow === 1 ? 'checked' : '' ?>
+                      <?= admin_can($user, 'approve_shifts') ? '' : 'disabled' ?> />
+                    <span class="text-sm text-white/80">
+                      <?= admin_can($user, 'approve_shifts') ? 'Approve immediately (closed shifts only)' : 'Requires approve permission' ?>
+                    </span>
                   </div>
                 </label>
               </div>
 
               <label>
                 <div class="text-xs uppercase tracking-widest text-white/50">Clock in (local)</div>
-                <input name="clock_in_at" type="datetime-local" value="<?= h($clockInInput) ?>" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                <input name="clock_in_at" type="datetime-local" value="<?= h($clockInInput) ?>"
+                  class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
               </label>
 
               <label>
                 <div class="text-xs uppercase tracking-widest text-white/50">Clock out (local)</div>
-                <input name="clock_out_at" type="datetime-local" value="<?= h($clockOutInput) ?>" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                <input name="clock_out_at" type="datetime-local" value="<?= h($clockOutInput) ?>"
+                  class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
               </label>
 
               <label>
                 <div class="text-xs uppercase tracking-widest text-white/50">Training minutes (optional)</div>
-                <input name="training_minutes" type="number" min="0" step="1" value="<?= h($trainingMinutes) ?>" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                <input name="training_minutes" type="number" min="0" step="1" value="<?= h($trainingMinutes) ?>"
+                  class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
               </label>
 
               <label>
                 <div class="text-xs uppercase tracking-widest text-white/50">Training note (optional)</div>
-                <input name="training_note" value="<?= h($trainingNote) ?>" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                <input name="training_note" value="<?= h($trainingNote) ?>"
+                  class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
               </label>
 
               <label class="md:col-span-2">
                 <div class="text-xs uppercase tracking-widest text-white/50">Manager note (optional)</div>
-                <input name="note" value="<?= h($note) ?>" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" placeholder="Why was this added?" />
+                <input name="note" value="<?= h($note) ?>"
+                  class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30"
+                  placeholder="Why was this added?" />
               </label>
             </div>
 
             <div class="mt-5 flex items-center justify-end gap-2">
-              <button class="rounded-2xl bg-white text-slate-900 px-5 py-2.5 text-sm font-semibold hover:bg-white/90">Create shift</button>
+              <button class="rounded-2xl bg-white text-slate-900 px-5 py-2.5 text-sm font-semibold hover:bg-white/90">
+                Create shift
+              </button>
             </div>
           </form>
 

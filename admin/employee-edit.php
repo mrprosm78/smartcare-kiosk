@@ -12,7 +12,7 @@ $err = '';
 
 // load departments
 
-$cats = $pdo->query("SELECT id, name FROM kiosk_employee_categories WHERE is_active=1 ORDER BY sort_order ASC, name ASC")
+$cats = $pdo->query("SELECT id, name FROM kiosk_employee_departments WHERE is_active=1 ORDER BY sort_order ASC, name ASC")
   ->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 // load teams
@@ -185,7 +185,7 @@ admin_page_start($pdo, $isNew ? 'Add Employee' : 'Edit Employee');
                       <option value="<?= (int)$c['id'] ?>" <?php if ((int)($employee['category_id'] ?? 0) === (int)$c['id']) echo 'selected'; ?>><?= h((string)$c['name']) ?></option>
                     <?php endforeach; ?>
                   </select>
-                  <div class="mt-2 text-xs text-white/50"><a class="underline hover:text-white" href="<?= h(admin_url('categories.php')) ?>">Manage categories</a></div>
+                  <div class="mt-2 text-xs text-white/50"><a class="underline hover:text-white" href="<?= h(admin_url('departments.php')) ?>">Manage department</a></div>
                 </div>
               <div class="mt-4">
                 <label class="text-xs text-white/60">Team</label>

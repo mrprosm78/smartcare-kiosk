@@ -16,7 +16,7 @@ if ($employeeId <= 0) {
 $stmt = $pdo->prepare(
   "SELECT e.*, c.name AS department_name, t.name AS team_name
    FROM kiosk_employees e
-   LEFT JOIN kiosk_employee_categories c ON c.id = e.category_id
+   LEFT JOIN kiosk_employee_departments c ON c.id = e.category_id
    LEFT JOIN kiosk_employee_teams t ON t.id = e.team_id
    WHERE e.id = ?
    LIMIT 1"

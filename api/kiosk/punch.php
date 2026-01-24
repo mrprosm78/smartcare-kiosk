@@ -7,12 +7,12 @@ require __DIR__ . '/../../helpers.php';
 $input = json_decode(file_get_contents('php://input'), true) ?: [];
 
 // payload
-$eventUuid  = (string)($input['event_uuid'] ?? '');
-$action     = strtoupper((string)($input['action'] ?? ''));
-$pin        = (string)($input['pin'] ?? '');
-$deviceTime = (string)($input['device_time'] ?? '');
+$eventUuid    = (string)($input['event_uuid'] ?? '');
+$action       = strtoupper((string)($input['action'] ?? ''));
+$pin          = (string)($input['pin'] ?? '');
+$deviceTime   = (string)($input['device_time'] ?? '');
 $wasOfflineIn = (bool)($input['was_offline'] ?? false);
-$sourceIn    = (string)($input['source'] ?? '');
+$sourceIn     = (string)($input['source'] ?? '');
 
 // headers
 $kioskCode  = (string)($_SERVER['HTTP_X_KIOSK_CODE'] ?? '');
@@ -20,9 +20,9 @@ $deviceTok  = (string)($_SERVER['HTTP_X_DEVICE_TOKEN'] ?? '');
 $versionHdr = (int)($_SERVER['HTTP_X_PAIRING_VERSION'] ?? 0);
 
 // useful request meta
-$ipAddress  = (string)($_SERVER['REMOTE_ADDR'] ?? '');
-$userAgent  = (string)($_SERVER['HTTP_USER_AGENT'] ?? '');
-$tokHash    = $deviceTok !== '' ? hash('sha256', $deviceTok) : null;
+$ipAddress = (string)($_SERVER['REMOTE_ADDR'] ?? '');
+$userAgent = (string)($_SERVER['HTTP_USER_AGENT'] ?? '');
+$tokHash   = $deviceTok !== '' ? hash('sha256', $deviceTok) : null;
 
 $now = now_utc(); // server truth time (Y-m-d H:i:s)
 
@@ -159,7 +159,7 @@ function log_kiosk_event(
             $metaJson
         ]);
     } catch (Throwable $e) {
-        // fail-safe: never break punches because logging failed
+        // fail-safe
     }
 }
 
@@ -187,6 +187,105 @@ function punch_mark(PDO $pdo, string $eventUuid, string $status, ?string $errorC
         LIMIT 1
     ");
     $stmt->execute([$status, $errorCode, $shiftId, $eventUuid]);
+}
+
+/**
+ * Auto-close forgotten open shifts for this employee (if older than max_shift_minutes).
+ * - Silent (does not block punch)
+ * - Closes at clock_in_at + max_shift_minutes (not at "now") to avoid insane durations
+ */
+function autoclose_stale_open_shifts(
+    PDO $pdo,
+    int $employeeId,
+    string $effectiveTimeSql,
+    int $maxShiftMinutes,
+    ?string $kioskCode,
+    ?int $pairingVersion,
+    ?string $deviceTokenHash,
+    ?string $ip,
+    ?string $ua
+): int {
+    if ($employeeId <= 0) return 0;
+    if ($maxShiftMinutes <= 0) return 0;
+
+    $closedCount = 0;
+
+    // lock any open shifts for this employee
+    $st = $pdo->prepare("
+        SELECT id, clock_in_at
+        FROM kiosk_shifts
+        WHERE employee_id = ?
+          AND is_closed = 0
+          AND clock_out_at IS NULL
+        ORDER BY clock_in_at ASC
+        FOR UPDATE
+    ");
+    $st->execute([$employeeId]);
+    $open = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    if (!$open) return 0;
+
+    foreach ($open as $s) {
+        $shiftId = (int)$s['id'];
+        $clockIn = (string)$s['clock_in_at'];
+
+        // how long since clock-in?
+        $minsStmt = $pdo->prepare("SELECT TIMESTAMPDIFF(MINUTE, ?, ?) AS mins");
+        $minsStmt->execute([$clockIn, $effectiveTimeSql]);
+        $minsOpen = (int)$minsStmt->fetchColumn();
+
+        if ($minsOpen <= $maxShiftMinutes) continue;
+
+        // close at clock_in + maxShiftMinutes
+        $closeAtStmt = $pdo->prepare("SELECT DATE_ADD(?, INTERVAL ? MINUTE) AS close_at");
+        $closeAtStmt->execute([$clockIn, $maxShiftMinutes]);
+        $closeAt = (string)$closeAtStmt->fetchColumn();
+
+        $upd = $pdo->prepare("
+            UPDATE kiosk_shifts
+            SET clock_out_at = ?,
+                is_closed = 1,
+                duration_minutes = ?,
+                is_autoclosed = 1,
+                close_reason = 'autoclose_max',
+                updated_source = 'system'
+            WHERE id = ?
+              AND is_closed = 0
+              AND clock_out_at IS NULL
+        ");
+        $upd->execute([$closeAt, $maxShiftMinutes, $shiftId]);
+
+        if ($upd->rowCount() > 0) {
+            $closedCount++;
+
+            // best-effort event log
+            try {
+                log_kiosk_event(
+                    $pdo,
+                    $kioskCode,
+                    $pairingVersion,
+                    $deviceTokenHash,
+                    $ip,
+                    $ua,
+                    $employeeId,
+                    'shift_autoclose',
+                    'ok',
+                    'autoclose_max',
+                    'Auto-closed stale open shift',
+                    [
+                        'shift_id' => $shiftId,
+                        'clock_in_at' => $clockIn,
+                        'closed_at' => $closeAt,
+                        'max_shift_minutes' => $maxShiftMinutes,
+                        'mins_open_at_punch' => $minsOpen,
+                    ]
+                );
+            } catch (Throwable $e) {
+                // ignore
+            }
+        }
+    }
+
+    return $closedCount;
 }
 
 try {
@@ -256,14 +355,13 @@ try {
     $chk = $pdo->prepare("SELECT id FROM kiosk_punch_events WHERE event_uuid=? LIMIT 1");
     $chk->execute([$eventUuid]);
     if ($chk->fetchColumn()) {
-        // keep your existing behaviour
         json_response(['ok'=>true,'status'=>'duplicate']);
     }
 
     // ---- Rate limiting / lockout (based on failed auth logs) ----
-    $failWindowSec = s_int($pdo, 'auth_fail_window_sec', 300); // 5 min
+    $failWindowSec = s_int($pdo, 'auth_fail_window_sec', 300);
     $failMax       = s_int($pdo, 'auth_fail_max', 5);
-    $lockoutSec    = s_int($pdo, 'auth_lockout_sec', 300); // 5 min
+    $lockoutSec    = s_int($pdo, 'auth_lockout_sec', 300); // not used yet, keep
 
     if ($failWindowSec > 0 && $failMax > 0 && $tokHash) {
         $failStmt = $pdo->prepare("
@@ -285,6 +383,7 @@ try {
             json_response(['ok'=>false,'error'=>'too_many_attempts'], 429);
         }
     }
+
     // parse device time (optional)
     $serverNowDt = new DateTimeImmutable($now, new DateTimeZone('UTC'));
     $deviceDt    = parse_device_time_dt($deviceTime);
@@ -298,7 +397,6 @@ try {
 
     // Device time is optional for online punches, required for offline sync punches
     if ($wasOffline && !$deviceDt) {
-        // cannot trust / cannot process offline punches without a device_time
         json_response(['ok'=>false,'error'=>'invalid_device_time'], 400);
     }
 
@@ -325,7 +423,7 @@ try {
 
     $effectiveTimeSql = dt_sql($effectiveDt);
 
-    // employee lookup (current method; we’ll improve this later as part of your “performance fix”)
+    // employee lookup
     $allowPlain = setting_bool($pdo,'allow_plain_pin', false);
 
     $stmt = $pdo->query("SELECT id, first_name, last_name, pin_hash FROM kiosk_employees WHERE is_active=1");
@@ -349,18 +447,15 @@ try {
     }
 
     if (!$employee) {
-        // Log invalid PIN attempt (since punch_events requires employee_id NOT NULL)
         log_kiosk_event($pdo, $kioskCode, $versionHdr, $tokHash, $ipAddress, $userAgent, null, 'punch_auth', 'fail', 'invalid_pin');
         json_response(['ok'=>false,'error'=>'invalid_pin'], 401);
     }
 
-    $employeeId   = (int)$employee['id'];
-
+    $employeeId = (int)$employee['id'];
 
     // Build display names (nickname support is future-ready)
     $hasNickname  = column_exists($pdo, 'kiosk_employees', 'nickname');
     if ($hasNickname) {
-        // refetch with nickname for label
         $es = $pdo->prepare("SELECT id, first_name, last_name, nickname FROM kiosk_employees WHERE id=? LIMIT 1");
         $es->execute([$employeeId]);
         $employeeFull = $es->fetch(PDO::FETCH_ASSOC) ?: $employee;
@@ -407,7 +502,6 @@ try {
             $diff = (int)$diffStmt->fetchColumn();
 
             if ($diff >= 0 && $diff < $minSeconds) {
-                // Insert first, then mark rejected (keeps your audit trail consistent)
                 $pdo->prepare("
                     INSERT INTO kiosk_punch_events
                     (event_uuid, employee_id, action, device_time, received_at, effective_time,
@@ -418,6 +512,33 @@ try {
                 punch_mark($pdo, $eventUuid, 'rejected', 'too_soon', null);
                 json_response(['ok'=>false,'error'=>'too_soon'], 429);
             }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // ✅ SILENT HOUSEKEEPING: auto-close forgotten clock-outs (per setting)
+    // Run AFTER employee is known. IMPORTANT: only run for IN punches,
+    // otherwise an OUT punch could incorrectly become 'no_open_shift'.
+    // ------------------------------------------------------------------
+    if ($action === 'IN') {
+        $maxShiftMins = setting_int($pdo, 'max_shift_minutes', 960);
+        try {
+            $pdo->beginTransaction();
+            $closed = autoclose_stale_open_shifts(
+                $pdo,
+                $employeeId,
+                $effectiveTimeSql,
+                $maxShiftMins,
+                $kioskCode,
+                $versionHdr,
+                $tokHash,
+                $ipAddress,
+                $userAgent
+            );
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            // ignore housekeeping errors
         }
     }
 
@@ -442,7 +563,7 @@ try {
         $userAgent
     ]);
 
-    // ---- PROCESS (shift logic remains same) ----
+    // ---- PROCESS ----
     if ($action === 'IN') {
 
         $open = $pdo->prepare("SELECT id FROM kiosk_shifts WHERE employee_id=? AND is_closed=0 LIMIT 1");
@@ -466,12 +587,12 @@ try {
         $openList   = $uiShowOpen ? fetch_open_shifts($pdo, $openCount) : [];
 
         json_response([
-            'ok'            => true,
-            'status'        => 'processed',
-            'action'        => 'IN',
-            'employee_name' => $employeeName,   // backwards compatible
-            'employee_label'=> $employeeLabel,  // NEW (nickname-friendly)
-            'open_shifts'   => $openList        // NEW
+            'ok'             => true,
+            'status'         => 'processed',
+            'action'         => 'IN',
+            'employee_name'  => $employeeName,
+            'employee_label' => $employeeLabel,
+            'open_shifts'    => $openList
         ]);
     }
 
@@ -504,10 +625,6 @@ try {
         $maxMins = setting_int($pdo,'max_shift_minutes', 960);
         $tooLong = ($maxMins > 0 && $mins > $maxMins);
 
-        // Production behaviour:
-        // - Do NOT block the staff member from clocking out.
-        // - If the shift exceeds max_shift_minutes, still close it but flag via close_reason.
-        //   This keeps the kiosk flow smooth while preserving audit & manager review.
         $hasCloseReason = column_exists($pdo, 'kiosk_shifts', 'close_reason');
 
         if ($tooLong && $hasCloseReason) {
@@ -518,7 +635,6 @@ try {
             ");
             $upd->execute([$effectiveTimeSql, $mins, (int)$s['id']]);
 
-            // Mark as processed but keep a flag on the punch event row.
             punch_mark($pdo, $eventUuid, 'processed', 'shift_too_long_flagged', (int)$s['id']);
         } else {
             $upd = $pdo->prepare("
@@ -537,12 +653,12 @@ try {
         $openList   = $uiShowOpen ? fetch_open_shifts($pdo, $openCount) : [];
 
         $resp = [
-            'ok'            => true,
-            'status'        => 'processed',
-            'action'        => 'OUT',
-            'employee_name' => $employeeName,   // backwards compatible
-            'employee_label'=> $employeeLabel,  // NEW
-            'open_shifts'   => $openList        // NEW
+            'ok'             => true,
+            'status'         => 'processed',
+            'action'         => 'OUT',
+            'employee_name'  => $employeeName,
+            'employee_label' => $employeeLabel,
+            'open_shifts'    => $openList
         ];
 
         if ($tooLong) {
@@ -552,12 +668,10 @@ try {
         json_response($resp);
     }
 
-    // should never reach here
     punch_mark($pdo, $eventUuid, 'rejected', 'invalid_action', null);
     json_response(['ok'=>false,'error'=>'invalid_action'], 400);
 
 } catch (Throwable $e) {
-    // if something unexpected happens, mark it as rejected server_error
     try { punch_mark($pdo, $eventUuid, 'rejected', 'server_error', null); } catch (Throwable $ignored) {}
     json_response(['ok'=>false,'error'=>'server_error'], 500);
 }

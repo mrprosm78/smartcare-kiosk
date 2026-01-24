@@ -4,7 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/layout.php';
 admin_require_perm($user, 'manage_employees');
 
-$active = admin_url('categories.php'); // keep Employees highlighted
+$active = admin_url('departments.php'); // keep Employees highlighted
 $err = '';
 
 function sc_slugify(string $s): string {
@@ -28,38 +28,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       if ($slug === '') throw new RuntimeException('Slug is required');
       $sort = (int)($_POST['sort_order'] ?? 0);
 
-      $stmt = $pdo->prepare("INSERT INTO kiosk_employee_categories (name, slug, sort_order, is_active) VALUES (?,?,?,1)");
+      $stmt = $pdo->prepare("INSERT INTO kiosk_employee_departments (name, slug, sort_order, is_active) VALUES (?,?,?,1)");
       $stmt->execute([$name, $slug, $sort]);
-      admin_redirect(admin_url('categories.php'));
+      admin_redirect(admin_url('departments.php'));
     }
 
     if ($action === 'toggle') {
       $id = (int)($_POST['id'] ?? 0);
       if ($id <= 0) throw new RuntimeException('Invalid category');
-      $pdo->prepare("UPDATE kiosk_employee_categories SET is_active = IF(is_active=1,0,1) WHERE id=?")->execute([$id]);
-      admin_redirect(admin_url('categories.php'));
+      $pdo->prepare("UPDATE kiosk_employee_departments SET is_active = IF(is_active=1,0,1) WHERE id=?")->execute([$id]);
+      admin_redirect(admin_url('departments.php'));
     }
 
     if ($action === 'delete') {
       $id = (int)($_POST['id'] ?? 0);
       if ($id <= 0) throw new RuntimeException('Invalid category');
 
-      // prevent deleting categories in use
+      // prevent deleting departments in use
       $c = (int)$pdo->prepare("SELECT COUNT(*) FROM kiosk_employees WHERE category_id=?")->execute([$id]) ?: 0;
       $stmtC = $pdo->prepare("SELECT COUNT(*) FROM kiosk_employees WHERE category_id=?");
       $stmtC->execute([$id]);
       $inUse = (int)$stmtC->fetchColumn();
       if ($inUse > 0) throw new RuntimeException('Department is in use by employees. Deactivate instead.');
 
-      $pdo->prepare("DELETE FROM kiosk_employee_categories WHERE id=?")->execute([$id]);
-      admin_redirect(admin_url('categories.php'));
+      $pdo->prepare("DELETE FROM kiosk_employee_departments WHERE id=?")->execute([$id]);
+      admin_redirect(admin_url('departments.php'));
     }
   } catch (Throwable $e) {
     $err = $e->getMessage();
   }
 }
 
-$stmt = $pdo->query("SELECT * FROM kiosk_employee_categories ORDER BY sort_order ASC, name ASC");
+$stmt = $pdo->query("SELECT * FROM kiosk_employee_departments ORDER BY sort_order ASC, name ASC");
 $cats = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 admin_page_start($pdo, 'Employee Departments');
@@ -160,7 +160,7 @@ admin_page_start($pdo, 'Employee Departments');
                     </tr>
                   <?php endforeach; ?>
                   <?php if (count($cats) === 0): ?>
-                    <tr><td colspan="4" class="py-4 text-white/60">No categories yet.</td></tr>
+                    <tr><td colspan="4" class="py-4 text-white/60">No departments yet.</td></tr>
                   <?php endif; ?>
                 </tbody>
               </table>

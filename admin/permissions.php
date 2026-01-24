@@ -4,82 +4,93 @@ declare(strict_types=1);
 /**
  * Simple permission map for admin roles.
  *
- * Roles:
+ * Roles (flat, explicit):
  *  - manager
  *  - payroll
  *  - admin
  *  - superadmin
+ *
+ * LOCKED RULES:
+ * - Manager: shifts + employees/teams/departments (no payroll hours, no punch details, no contracts/settings)
+ * - Payroll: view punch details + shifts + payroll hours (view-only; run/export paused)
+ * - Admin: view all
+ * - Superadmin: same as admin + super-only unlocks
  */
 
 function admin_permissions_for_role(string $role): array {
   $role = strtolower(trim($role));
 
+  // Base permissions (non-super-only)
   $all = [
     // general
     'view_dashboard',
+
+    // shifts
     'view_shifts',
-    'view_punches',
     'edit_shifts',
     'approve_shifts',
+
+    // punches (audit)
+    'view_punches',
+
+    // org
     'view_employees',
     'manage_employees',
+    'view_teams',
+    'manage_teams',
+    'view_departments',
+    'manage_departments',
+
+    // contracts
     'view_contract',
     'edit_contract',
+
+    // payroll hours (hours-only view)
     'view_payroll',
-    'export_payroll',
-    'run_payroll',
+
+    // settings / admin / devices
     'manage_settings_basic',
     'manage_settings_high',
     'manage_devices',
     'manage_admin_users',
+
+    // NOTE: export/run payroll are intentionally paused (do not grant by default)
+    // 'export_payroll',
+    // 'run_payroll',
   ];
 
+  // Superadmin gets everything admin gets + super-only unlock permission
   if ($role === 'superadmin') {
+    return array_values(array_unique(array_merge($all, [
+      'unlock_payroll_locked_shifts',
+    ])));
+  }
+
+  // Admin: same as superadmin EXCEPT super-only unlock
+  if ($role === 'admin') {
     return $all;
   }
 
+  // Manager (LOCKED): shifts + org views/limited manage only
   if ($role === 'manager') {
     return [
       'view_dashboard',
       'view_shifts',
-      'view_punches',
       'edit_shifts',
       'approve_shifts',
-      'view_employees',
       'manage_employees',
-      // Manager can only see basic settings (configurable allow-list)
-      'manage_settings_basic',
+      'view_punches',
     ];
   }
 
+  // Payroll (LOCKED): view punches + shifts + payroll hours (NO contracts, NO run/export)
   if ($role === 'payroll') {
     return [
       'view_dashboard',
-      'view_shifts',
-      'view_punches',
-      'view_employees',
-      'view_contract',
-      'view_payroll',
-      'export_payroll',
-      'run_payroll',
-    ];
-  }
 
-  if ($role === 'admin') {
-    // Operational admin: everything except high-level kiosk/system settings.
-    return [
-      'view_dashboard',
       'view_shifts',
       'view_punches',
-      'edit_shifts',
-      'approve_shifts',
-      'view_employees',
-      'manage_employees',
-      'view_contract',
-      'edit_contract',
       'view_payroll',
-      'export_payroll',
-      'manage_settings_basic',
     ];
   }
 

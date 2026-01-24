@@ -95,3 +95,76 @@ function resolve_uploads_base_path(string $configured): string {
 function is_bcrypt(string $s): bool {
     return str_starts_with($s,'$2y$') || str_starts_with($s,'$2a$') || str_starts_with($s,'$2b$');
 }
+
+/**
+ * Convert admin datetime-local input (local timezone) to UTC datetime string
+ * Expected input format: YYYY-MM-DDTHH:MM
+ * Returns UTC string Y-m-d H:i:s or null on failure
+ */
+function admin_input_to_utc(string $localInput, DateTimeZone $tz): ?string {
+  $localInput = trim($localInput);
+  if ($localInput === '') {
+    return null;
+  }
+
+  try {
+    // datetime-local comes as 2026-01-21T08:30
+    $dt = DateTimeImmutable::createFromFormat(
+      'Y-m-d\TH:i',
+      $localInput,
+      $tz
+    );
+
+    if (!$dt) {
+      return null;
+    }
+
+    return $dt
+      ->setTimezone(new DateTimeZone('UTC'))
+      ->format('Y-m-d H:i:s');
+  } catch (Throwable $e) {
+    return null;
+  }
+}
+
+
+/**
+ * Week bounds in UTC using payroll_week_starts_on, but "what is this week"
+ * is defined in payroll timezone (Europe/London etc.), then converted to UTC.
+ */
+function sc_week_bounds_utc(PDO $pdo, string $tz): array {
+  $ws = strtoupper(trim((string)admin_setting_str($pdo, 'payroll_week_starts_on', 'MONDAY')));
+
+  $map = [
+    'MONDAY'    => 1,
+    'TUESDAY'   => 2,
+    'WEDNESDAY' => 3,
+    'THURSDAY'  => 4,
+    'FRIDAY'    => 5,
+    'SATURDAY'  => 6,
+    'SUNDAY'    => 7,
+  ];
+  $startDow = $map[$ws] ?? 1;
+
+  $tzObj = new DateTimeZone($tz);
+  $nowLocal = new DateTimeImmutable('now', $tzObj);
+  $todayLocal = $nowLocal->setTime(0, 0, 0);
+  $todayDow = (int)$todayLocal->format('N'); // Mon=1..Sun=7
+
+  $diff = $todayDow - $startDow;
+  if ($diff < 0) $diff += 7;
+
+  $weekStartLocal = $todayLocal->modify("-{$diff} days");
+  $weekEndLocalEx = $weekStartLocal->modify('+7 days');
+
+  $weekStartUtc = $weekStartLocal->setTimezone(new DateTimeZone('UTC'));
+  $weekEndUtcEx = $weekEndLocalEx->setTimezone(new DateTimeZone('UTC'));
+
+  return [
+    'start_utc' => $weekStartUtc,
+    'end_utc_ex' => $weekEndUtcEx,
+    'start_local' => $weekStartLocal,
+    'end_local_ex' => $weekEndLocalEx,
+    'week_starts_on' => $ws,
+  ];
+}

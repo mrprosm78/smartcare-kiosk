@@ -14,7 +14,7 @@ $status = (string)($_GET['status'] ?? 'active'); // active|inactive|all
 $cat = (int)($_GET['cat'] ?? 0);
 $agency = (string)($_GET['agency'] ?? 'all'); // all|agency|staff
 
-$cats = $pdo->query("SELECT id, name FROM kiosk_employee_categories ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+$cats = $pdo->query("SELECT id, name FROM kiosk_employee_departments ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 $where = [];
 $params = [];
@@ -43,7 +43,7 @@ if ($q !== '') {
 
 $sql = "SELECT e.*, c.name AS department_name, t.name AS team_name, p.contract_hours_per_week
         FROM kiosk_employees e
-        LEFT JOIN kiosk_employee_categories c ON c.id = e.category_id
+        LEFT JOIN kiosk_employee_departments c ON c.id = e.category_id
    LEFT JOIN kiosk_employee_teams t ON t.id = e.team_id
         LEFT JOIN kiosk_employee_pay_profiles p ON p.employee_id = e.id";
 if ($where) {
@@ -71,7 +71,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
               </div>
               <?php if (admin_can($user, 'manage_employees')): ?>
                 <div class="flex flex-wrap gap-2">
-                  <a href="<?= h(admin_url('categories.php')) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white/5 border border-white/10 text-white/80 hover:bg-white/10">Categories</a>
+                  <a href="<?= h(admin_url('departments.php')) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white/5 border border-white/10 text-white/80 hover:bg-white/10">Department</a>
                   <a href="<?= h(admin_url('employee-edit.php')) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-100 hover:bg-emerald-500/20">Add employee</a>
                   <a href="<?= h(admin_url('employee-edit.php')) ?>?agency=1" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-sky-500/15 border border-sky-500/30 text-sky-100 hover:bg-sky-500/20">Add agency</a>
                 </div>

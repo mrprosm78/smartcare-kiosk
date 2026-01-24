@@ -7,7 +7,7 @@ admin_require_perm($user, 'view_punches');
 /**
  * Punch Details (read-only)
  * - Lists raw kiosk_punch_events with optional photo thumbnail.
- * - Managers/Payroll/Admin/Superadmin can view.
+ * - Manager/Payroll/Admin/Superadmin can view (permission: view_punches).
  * - No edits.
  */
 
@@ -103,10 +103,18 @@ $params = [];
 
 // Use effective_time when available, else received_at, else device_time
 $timeExpr = "COALESCE(pe.effective_time, pe.received_at, pe.device_time)";
+
+// ✅ FIX: build range in payroll timezone, convert boundaries to UTC for DB comparison
+$fromStartLocal = new DateTimeImmutable($from . ' 00:00:00', new DateTimeZone($tz));
+$toEndLocal     = (new DateTimeImmutable($to . ' 00:00:00', new DateTimeZone($tz)))->modify('+1 day');
+
+$fromStartUtc = $fromStartLocal->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+$toEndUtc     = $toEndLocal->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+
 $where[] = "$timeExpr >= ?";
 $where[] = "$timeExpr < ?";
-$params[] = $from . ' 00:00:00';
-$params[] = (new DateTimeImmutable($to . ' 00:00:00', new DateTimeZone($tz)))->modify('+1 day')->format('Y-m-d 00:00:00');
+$params[] = $fromStartUtc;
+$params[] = $toEndUtc;
 
 if ($employeeId > 0) {
   $where[] = "pe.employee_id = ?";
@@ -159,6 +167,8 @@ try {
 admin_page_start($pdo, 'Punch Details');
 $active = admin_url('punch-details.php');
 ?>
+<!-- rest of your HTML stays the same -->
+
 
 <div class="min-h-dvh">
   <div class="px-4 sm:px-6 pt-6 pb-10">
@@ -283,7 +293,16 @@ $active = admin_url('punch-details.php');
                         <td class="py-3 pr-4"><?= $act === 'IN' ? badge('IN','ok') : ($act === 'OUT' ? badge('OUT','warn') : badge('—')) ?></td>
                         <td class="py-3 pr-4">
                           <div class="flex flex-col gap-1">
-                            <?= $status !== '' ? badge($status, $status === 'OK' ? 'ok' : 'warn') : badge('—') ?>
+                            <?php
+                              // kiosk_punch_events.result_status is typically: received | processed | rejected
+                              $kind = 'neutral';
+                              if ($status === 'processed') $kind = 'ok';
+                              if ($status === 'received')  $kind = 'neutral';
+                              if ($status === 'rejected')  $kind = 'bad';
+                              // Some processed rows carry a warning error_code (e.g. shift_too_long_flagged)
+                              if ($status === 'processed' && $errCode !== '') $kind = 'warn';
+                              echo $status !== '' ? badge($status, $kind) : badge('—');
+                            ?>
                             <?php if ($offline): ?><span class="text-[11px] text-white/50">offline</span><?php endif; ?>
                             <?php if ($errCode !== ''): ?><span class="text-[11px] text-rose-200"><?= h($errCode) ?></span><?php endif; ?>
                           </div>

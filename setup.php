@@ -64,9 +64,9 @@ if (!function_exists('delete_setting_if_exists')) {
 /**
  * PART B — Seeds
  */
-function seed_employee_categories(PDO $pdo): void {
+function seed_employee_departments(PDO $pdo): void {
   try {
-    $count = (int)$pdo->query("SELECT COUNT(*) FROM kiosk_employee_categories")->fetchColumn();
+    $count = (int)$pdo->query("SELECT COUNT(*) FROM kiosk_employee_departments")->fetchColumn();
     if ($count > 0) return;
   } catch (Throwable $e) {
     return;
@@ -83,7 +83,7 @@ function seed_employee_categories(PDO $pdo): void {
     ['Agency', 'agency', 80],
   ];
 
-  $stmt = $pdo->prepare("INSERT INTO kiosk_employee_categories (name, slug, sort_order, is_active) VALUES (?,?,?,1)");
+  $stmt = $pdo->prepare("INSERT INTO kiosk_employee_departments (name, slug, sort_order, is_active) VALUES (?,?,?,1)");
   foreach ($defaults as $d) {
     $stmt->execute([$d[0], $d[1], $d[2]]);
   }
@@ -688,9 +688,9 @@ function create_tables(PDO $pdo): void {
     ) ENGINE=InnoDB;
   ");
 
-  // EMPLOYEE CATEGORIES
+  // EMPLOYEE departments
   $pdo->exec("
-    CREATE TABLE IF NOT EXISTS kiosk_employee_categories (
+    CREATE TABLE IF NOT EXISTS kiosk_employee_departments (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
       name VARCHAR(100) NOT NULL,
       slug VARCHAR(120) NOT NULL UNIQUE,
@@ -1055,7 +1055,7 @@ function drop_all(PDO $pdo): void {
     'kiosk_shift_changes',
     'kiosk_shifts',
     'kiosk_employee_pay_profiles',
-    'kiosk_employee_categories',
+    'kiosk_employee_departments',
     'kiosk_employees',
     'kiosk_settings',
   ] as $t) {
@@ -1073,7 +1073,7 @@ try {
   if ($action === 'install') {
     create_tables($pdo);
     seed_settings($pdo);
-    seed_employee_categories($pdo);
+    seed_employee_departments($pdo);
     seed_admin_users($pdo);
     // Lock setup-only settings after first successful install/repair
     try {
@@ -1090,7 +1090,7 @@ try {
     drop_all($pdo);
     create_tables($pdo);
     seed_settings($pdo);
-    seed_employee_categories($pdo);
+    seed_employee_departments($pdo);
     seed_admin_users($pdo);
     // Lock setup-only settings after reset too
     try {

@@ -17,10 +17,10 @@ declare(strict_types=1);
 $privateCandidates = [
   // If deployed as: /home/.../public_html/kiosk-dev/db.php
   // dirname(__DIR__, 2) => /home/... (parent of public_html)
-  dirname(__DIR__, 2) . '/store_stowpark/config.php',
+  dirname(__DIR__, 2) . '/store_dev/config.php',
 
   // Optional fallback (not recommended, but useful for local/dev if you keep store_dev inside public_html)
-  dirname(__DIR__, 1) . '/store_stowpark/config.php',
+  dirname(__DIR__, 1) . '/store_dev/config.php',
 
   // Environment override
   (string)(getenv('SMARTCARE_PRIVATE_CONFIG') ?: ''),

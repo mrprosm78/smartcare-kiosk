@@ -14,6 +14,18 @@ admin_require_perm($user, 'view_shifts');
  * - Exclude voided shifts by default (close_reason='void')
  */
 
+function sc_shift_reason_badge(array $s): string {
+  $created = (string)($s['created_source'] ?? '');
+  $updated = (string)($s['updated_source'] ?? '');
+  $reason  = (string)($s['last_modified_reason'] ?? '');
+  $bits = [];
+  if ($created !== '') $bits[] = 'Created: ' . $created;
+  if ($updated !== '' && $updated !== $created) $bits[] = 'Updated: ' . $updated;
+  if ($reason !== '') $bits[] = 'Reason: ' . $reason;
+  if (!$bits) return '—';
+  return implode(' · ', $bits);
+}
+
 function badge(string $text, string $kind): string {
   $base = "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold border";
   if ($kind === 'ok')   return "<span class='$base bg-emerald-500/10 border-emerald-400/20 text-emerald-100'>$text</span>";
@@ -49,7 +61,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($ids) {
       $pdo->beginTransaction();
       try {
-        // Load shifts (for lock + completeness checks)
         $in = implode(',', array_fill(0, count($ids), '?'));
         $st = $pdo->prepare("SELECT * FROM kiosk_shifts WHERE id IN ($in) FOR UPDATE");
         $st->execute($ids);
@@ -63,11 +74,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           $hasOut = !empty($s['clock_out_at']);
           $alreadyApproved = !empty($s['approved_at']);
 
-          if ($locked || $voided || $alreadyApproved || !$hasIn || !$hasOut) {
-            continue;
-          }
+          if ($locked || $voided || $alreadyApproved || !$hasIn || !$hasOut) continue;
 
-          // Snapshot uses effective + payroll lock fields, to match other actions
           $eff = admin_shift_effective($s);
           $snapshot = [
             'effective' => $eff,
@@ -79,17 +87,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'bulk' => 1,
           ];
 
-          // Audit row (best-effort; if enum doesn't include, ignore)
+          // Best-effort audit
           try {
-            $ins = $pdo->prepare("\
-              INSERT INTO kiosk_shift_changes\
-                (shift_id, change_type, changed_by_user_id, changed_by_username, changed_by_role, reason, note, old_json, new_json)\
-              VALUES\
-                (?, 'approve', ?, ?, ?, 'approve', ?, NULL, ?)\
-            ");
+            $ins = $pdo->prepare(
+              "INSERT INTO kiosk_shift_changes
+                (shift_id, change_type, changed_by_user_id, changed_by_username, changed_by_role, reason, note, old_json, new_json)
+               VALUES
+                (?, 'approve', ?, ?, ?, 'approve', ?, NULL, ?)"
+            );
             $ins->execute([
               (int)$s['id'],
-              (int)$user['user_id'],
+              (int)($user['user_id'] ?? 0),
               (string)($user['username'] ?? ''),
               (string)($user['role'] ?? ''),
               'Bulk approved',
@@ -120,61 +128,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   // Single shift actions (approve/unapprove/unlock_payroll)
   if ($shiftId > 0) {
-    // Load shift + latest edit json for snapshot (also includes payroll lock fields)
-    $stmt = $pdo->prepare("\
-      SELECT s.*,\
-             c.new_json AS latest_edit_json\
-      FROM kiosk_shifts s\
-      LEFT JOIN (\
-        SELECT sc1.*\
-        FROM kiosk_shift_changes sc1\
-        JOIN (\
-          SELECT shift_id, MAX(id) AS max_id\
-          FROM kiosk_shift_changes\
-          WHERE change_type='edit'\
-          GROUP BY shift_id\
-        ) sc2 ON sc2.max_id = sc1.id\
-      ) c ON c.shift_id = s.id\
-      WHERE s.id = ?\
-      LIMIT 1\
-    ");
+    $stmt = $pdo->prepare(
+      "SELECT s.*,
+              c.new_json AS latest_edit_json
+       FROM kiosk_shifts s
+       LEFT JOIN (
+         SELECT sc1.*
+         FROM kiosk_shift_changes sc1
+         JOIN (
+           SELECT shift_id, MAX(id) AS max_id
+           FROM kiosk_shift_changes
+           WHERE change_type='edit'
+           GROUP BY shift_id
+         ) sc2 ON sc2.max_id = sc1.id
+       ) c ON c.shift_id = s.id
+       WHERE s.id = ?
+       LIMIT 1"
+    );
     $stmt->execute([$shiftId]);
     $shiftRow = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if ($shiftRow) {
       $isLocked = !empty($shiftRow['payroll_locked_at']);
 
-      // Unlock payroll (Super Admin only)
       if ($action === 'unlock_payroll') {
-        admin_require_perm($user, 'manage_settings_high');
+        // ✅ LOCKED RULE: only superadmin has this perm
+        admin_require_perm($user, 'unlock_payroll_locked_shifts');
 
         $pdo->beginTransaction();
         try {
-          $upd = $pdo->prepare("\
-            UPDATE kiosk_shifts\
-            SET payroll_locked_at = NULL,\
-                payroll_locked_by = NULL,\
-                payroll_batch_id  = NULL,\
-                updated_source='admin'\
-            WHERE id = ?\
-          ");
+          $upd = $pdo->prepare(
+            "UPDATE kiosk_shifts
+             SET payroll_locked_at = NULL,
+                 payroll_locked_by = NULL,
+                 payroll_batch_id  = NULL,
+                 updated_source='admin'
+             WHERE id = ?"
+          );
           $upd->execute([$shiftId]);
 
           // Best-effort audit
           try {
-            $meta = [
-              'note' => trim((string)($_POST['note'] ?? 'Unlocked by Super Admin')),
-            ];
+            $meta = ['note' => trim((string)($_POST['note'] ?? 'Unlocked by Super Admin'))];
 
-            $ins = $pdo->prepare("\
-              INSERT INTO kiosk_shift_changes\
-                (shift_id, change_type, changed_by_user_id, changed_by_username, changed_by_role, reason, note, old_json, new_json)\
-              VALUES\
-                (?, 'payroll_unlock', ?, ?, ?, 'payroll_unlock', ?, NULL, ?)\
-            ");
+            $ins = $pdo->prepare(
+              "INSERT INTO kiosk_shift_changes
+                (shift_id, change_type, changed_by_user_id, changed_by_username, changed_by_role, reason, note, old_json, new_json)
+               VALUES
+                (?, 'payroll_unlock', ?, ?, ?, 'payroll_unlock', ?, NULL, ?)"
+            );
             $ins->execute([
               $shiftId,
-              (int)$user['user_id'],
+              (int)($user['user_id'] ?? 0),
               (string)($user['username'] ?? ''),
               (string)($user['role'] ?? ''),
               $meta['note'] !== '' ? $meta['note'] : null,
@@ -192,13 +197,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         admin_redirect(admin_url('shifts.php?' . http_build_query($_GET)));
       }
 
-      // If payroll locked, block approve/unapprove
       if ($isLocked && ($action === 'approve' || $action === 'unapprove')) {
         admin_redirect(admin_url('shifts.php?' . http_build_query($_GET + ['n' => 'locked'])));
       }
 
       $eff = admin_shift_effective($shiftRow);
-
       $snapshot = [
         'effective' => $eff,
         'payroll_lock' => [
@@ -216,15 +219,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $pdo->beginTransaction();
         try {
-          $ins = $pdo->prepare("\
-            INSERT INTO kiosk_shift_changes\
-              (shift_id, change_type, changed_by_user_id, changed_by_username, changed_by_role, reason, note, old_json, new_json)\
-            VALUES\
-              (?, 'approve', ?, ?, ?, 'approve', ?, NULL, ?)\
-          ");
+          $ins = $pdo->prepare(
+            "INSERT INTO kiosk_shift_changes
+              (shift_id, change_type, changed_by_user_id, changed_by_username, changed_by_role, reason, note, old_json, new_json)
+             VALUES
+              (?, 'approve', ?, ?, ?, 'approve', ?, NULL, ?)"
+          );
           $ins->execute([
             $shiftId,
-            (int)$user['user_id'],
+            (int)($user['user_id'] ?? 0),
             (string)($user['username'] ?? ''),
             (string)($user['role'] ?? ''),
             $note !== '' ? $note : null,
@@ -250,15 +253,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $pdo->beginTransaction();
         try {
-          $ins = $pdo->prepare("\
-            INSERT INTO kiosk_shift_changes\
-              (shift_id, change_type, changed_by_user_id, changed_by_username, changed_by_role, reason, note, old_json, new_json)\
-            VALUES\
-              (?, 'unapprove', ?, ?, ?, 'unapprove', NULL, ?, NULL)\
-          ");
+          $ins = $pdo->prepare(
+            "INSERT INTO kiosk_shift_changes
+              (shift_id, change_type, changed_by_user_id, changed_by_username, changed_by_role, reason, note, old_json, new_json)
+             VALUES
+              (?, 'unapprove', ?, ?, ?, 'unapprove', NULL, ?, NULL)"
+          );
           $ins->execute([
             $shiftId,
-            (int)$user['user_id'],
+            (int)($user['user_id'] ?? 0),
             (string)($user['username'] ?? ''),
             (string)($user['role'] ?? ''),
             json_encode($snapshot),
@@ -283,66 +286,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // ----------------------
 admin_page_start($pdo, 'Shifts');
 
+// ✅ IMPORTANT FIX: generate CSRF once for the whole page.
+$csrf = admin_csrf_token();
+
 $period = (string)($_GET['period'] ?? 'this_week');
 $empId = (int)($_GET['employee_id'] ?? 0);
 $status = (string)($_GET['status'] ?? 'all');
 
-// From/To are stored as dates (YYYY-MM-DD)
 $today = new DateTimeImmutable('now', new DateTimeZone('UTC'));
 $from = (string)($_GET['from'] ?? $today->format('Y-m-d'));
 $to   = (string)($_GET['to']   ?? $today->format('Y-m-d'));
 
-try {
-  $fromDt = (new DateTimeImmutable($from, new DateTimeZone('UTC')))->setTime(0,0,0);
-} catch (Throwable $e) {
-  $fromDt = $today->setTime(0,0,0);
-}
-try {
-  $toDt = (new DateTimeImmutable($to, new DateTimeZone('UTC')))->setTime(0,0,0);
-} catch (Throwable $e) {
-  $toDt = $fromDt;
-}
-$endDt = $toDt->modify('+1 day');
+try { $fromDt = (new DateTimeImmutable($from, new DateTimeZone('UTC')))->setTime(0,0,0); }
+catch (Throwable $e) { $fromDt = $today->setTime(0,0,0); }
 
+try { $toDt = (new DateTimeImmutable($to, new DateTimeZone('UTC')))->setTime(0,0,0); }
+catch (Throwable $e) { $toDt = $fromDt; }
+
+$endDt = $toDt->modify('+1 day');
 $startSql = $fromDt->format('Y-m-d H:i:s');
 $endSql   = $endDt->format('Y-m-d H:i:s');
 
 // Load employees for filter dropdown
 $emps = $pdo->query(
-  "SELECT id, " . admin_sql_employee_display_name('kiosk_employees') . " AS full_name, is_agency, agency_label\n"
-  . "FROM kiosk_employees\n"
-  . "WHERE is_active = 1\n"
-  . "ORDER BY first_name ASC, last_name ASC"
+  "SELECT id, " . admin_sql_employee_display_name('kiosk_employees') . " AS full_name, is_agency, agency_label
+   FROM kiosk_employees
+   WHERE is_active = 1
+   ORDER BY first_name ASC, last_name ASC"
 )->fetchAll(PDO::FETCH_ASSOC);
 
-$where = ["s.clock_in_at >= ? AND s.clock_in_at < ?"];
+// ✅ FIX: allow missing clock-in shifts to appear by anchoring date filter on COALESCE(clock_in_at, created_at)
+// NOTE: if your column is not created_at, replace it with the correct created timestamp column.
+$where = ["COALESCE(s.clock_in_at, s.created_at) >= ? AND COALESCE(s.clock_in_at, s.created_at) < ?"];
 $params = [$startSql, $endSql];
 
-if ($empId > 0) {
-  $where[] = "s.employee_id = ?";
-  $params[] = $empId;
-}
+if ($empId > 0) { $where[] = "s.employee_id = ?"; $params[] = $empId; }
 
-// Exclude voided by default
-if ($status === 'voided') {
-  $where[] = "s.close_reason = 'void'";
-} else {
-  $where[] = "(s.close_reason IS NULL OR s.close_reason <> 'void')";
-}
+if ($status === 'voided') $where[] = "s.close_reason = 'void'";
+else $where[] = "(s.close_reason IS NULL OR s.close_reason <> 'void')";
 
-if ($status === 'open') {
-  $where[] = "s.clock_out_at IS NULL";
-} elseif ($status === 'closed') {
-  $where[] = "s.clock_out_at IS NOT NULL";
-} elseif ($status === 'approved') {
-  $where[] = "s.approved_at IS NOT NULL";
-} elseif ($status === 'unapproved') {
-  $where[] = "s.approved_at IS NULL";
-} elseif ($status === 'missing_out') {
-  $where[] = "s.clock_out_at IS NULL";
-} elseif ($status === 'missing_in') {
-  $where[] = "s.clock_in_at IS NULL";
-}
+// ✅ FIX: open means missing IN or missing OUT (matches your lifecycle definition)
+if ($status === 'open') $where[] = "(s.clock_in_at IS NULL OR s.clock_out_at IS NULL)";
+elseif ($status === 'closed') $where[] = "s.clock_out_at IS NOT NULL";
+elseif ($status === 'approved') $where[] = "s.approved_at IS NOT NULL";
+elseif ($status === 'unapproved') $where[] = "s.approved_at IS NULL";
+elseif ($status === 'missing_out') $where[] = "s.clock_out_at IS NULL";
+elseif ($status === 'missing_in') $where[] = "s.clock_in_at IS NULL";
 
 $sql = "
   SELECT s.*,
@@ -353,7 +342,7 @@ $sql = "
          c.new_json AS latest_edit_json
   FROM kiosk_shifts s
   LEFT JOIN kiosk_employees e ON e.id = s.employee_id
-  LEFT JOIN kiosk_employee_categories cat ON cat.id = e.category_id
+  LEFT JOIN kiosk_employee_departments cat ON cat.id = e.category_id
   LEFT JOIN (
     SELECT sc1.*
     FROM kiosk_shift_changes sc1
@@ -479,7 +468,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
             <?php if (admin_can($user, 'approve_shifts')): ?>
               <form method="post" id="bulk-approve-form" class="mb-4 flex items-center justify-between gap-3">
-                <input type="hidden" name="csrf" value="<?= h(admin_csrf_token()) ?>"/>
+                <input type="hidden" name="csrf" value="<?= h($csrf) ?>"/>
                 <input type="hidden" name="action" value="bulk_approve"/>
                 <div class="text-sm text-white/70">
                   <span class="font-semibold">Bulk approve</span> (selected only)
@@ -508,7 +497,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
               <tbody class="divide-y divide-white/10">
                 <?php if (!$rows): ?>
                   <tr>
-                    <td colspan="<?= admin_can($user,'approve_shifts') ? '7' : '6' ?>" class="py-6 text-center text-white/60">No shifts found for this filter.</td>
+                    <td colspan="<?= admin_can($user,'approve_shifts') ? '8' : '7' ?>" class="py-6 text-center text-white/60">No shifts found for this filter.</td>
                   </tr>
                 <?php endif; ?>
 
@@ -542,7 +531,6 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                       if ($locked) $statusBadge .= ' ' . badge('Payroll Locked', 'bad');
                     }
 
-                    // selectable only if can approve and shift is eligible
                     $eligibleForBulk = (!$voided && !$locked && !$approved && !empty($effIn) && !empty($effOut));
                   ?>
                   <tr>
@@ -558,6 +546,10 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                         <?= h((string)($r['department_name'] ?? '—')) ?>
                         <?php if (!empty($r['employee_number'])): ?> • #<?= h((string)$r['employee_number']) ?><?php endif; ?>
                       </div>
+                    </td>
+
+                    <td class="px-4 py-4 text-white/80">
+                      <div class="text-sm"><?= h(sc_shift_reason_badge($r)) ?></div>
                     </td>
 
                     <td class="py-4 pr-4 text-white/80">
@@ -598,7 +590,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
                         <?php if (admin_can($user, 'approve_shifts') && !$locked && !$voided): ?>
                           <form method="post" class="inline">
-                            <input type="hidden" name="csrf" value="<?= h(admin_csrf_token()) ?>"/>
+                            <input type="hidden" name="csrf" value="<?= h($csrf) ?>"/>
                             <input type="hidden" name="shift_id" value="<?= (int)$r['id'] ?>"/>
                             <?php if ($approved): ?>
                               <input type="hidden" name="action" value="unapprove"/>
@@ -618,9 +610,9 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                           <span class="rounded-2xl bg-white/5 border border-white/10 px-3 py-2 text-xs text-white/60">Locked</span>
                         <?php endif; ?>
 
-                        <?php if ($locked && admin_can($user, 'manage_settings_high')): ?>
+                        <?php if ($locked && admin_can($user, 'unlock_payroll_locked_shifts')): ?>
                           <form method="post" class="inline">
-                            <input type="hidden" name="csrf" value="<?= h(admin_csrf_token()) ?>"/>
+                            <input type="hidden" name="csrf" value="<?= h($csrf) ?>"/>
                             <input type="hidden" name="shift_id" value="<?= (int)$r['id'] ?>"/>
                             <input type="hidden" name="action" value="unlock_payroll"/>
                             <button class="rounded-2xl bg-rose-500/10 border border-rose-400/20 px-3 py-2 text-xs hover:bg-rose-500/15">Unlock</button>
@@ -717,7 +709,6 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
       applyPeriod(periodEl.value);
     });
 
-    // If user edits from/to manually, switch to custom
     fromEl.addEventListener('change', function(){ periodEl.value = 'custom'; });
     toEl.addEventListener('change', function(){ periodEl.value = 'custom'; });
   }
@@ -735,15 +726,3 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 </script>
 
 <?php admin_page_end(); ?>
-function sc_shift_reason_badge(array $s): string {
-  $created = (string)($s['created_source'] ?? '');
-  $updated = (string)($s['updated_source'] ?? '');
-  $reason  = (string)($s['last_modified_reason'] ?? '');
-  $bits = [];
-  if ($created !== '') $bits[] = 'Created: ' . $created;
-  if ($updated !== '' && $updated !== $created) $bits[] = 'Updated: ' . $updated;
-  if ($reason !== '') $bits[] = 'Reason: ' . $reason;
-  if (!$bits) return '—';
-  return implode(' · ', $bits);
-}
-
