@@ -48,15 +48,17 @@ function admin_permissions_for_role(string $role): array {
     // payroll hours (hours-only view)
     'view_payroll',
 
+      'run_payroll',
+
     // settings / admin / devices
     'manage_settings_basic',
     'manage_settings_high',
     'manage_devices',
     'manage_admin_users',
 
-    // NOTE: export/run payroll are intentionally paused (do not grant by default)
-    // 'export_payroll',
-    // 'run_payroll',
+    // Payroll (hours calculation + locking)
+    // export_payroll not implemented yet
+    'run_payroll',
   ];
 
   // Superadmin gets everything admin gets + super-only unlock permission
@@ -91,6 +93,8 @@ function admin_permissions_for_role(string $role): array {
       'view_shifts',
       'view_punches',
       'view_payroll',
+
+      'run_payroll',
     ];
   }
 

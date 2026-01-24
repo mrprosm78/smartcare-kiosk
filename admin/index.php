@@ -74,7 +74,7 @@ try {
     FROM kiosk_shifts
     WHERE clock_in_at >= ? AND clock_in_at < ?
       AND (close_reason IS NULL OR close_reason <> 'void')
-      AND is_closed = 0 AND clock_out_at IS NULL
+      AND clock_out_at IS NULL
   ");
   $st->execute([$monthStartUtc->format('Y-m-d H:i:s'), $monthEndUtcEx->format('Y-m-d H:i:s')]);
   $counts['month_open_shifts'] = (int)$st->fetchColumn();

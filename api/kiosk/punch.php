@@ -58,6 +58,32 @@ function column_exists(PDO $pdo, string $table, string $column): bool {
     }
 }
 
+function employee_break_is_paid(PDO $pdo, int $employeeId): bool {
+    try {
+        $st = $pdo->prepare("SELECT break_is_paid FROM kiosk_employee_pay_profiles WHERE employee_id=? LIMIT 1");
+        $st->execute([$employeeId]);
+        $v = $st->fetchColumn();
+        return (int)$v === 1;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+function break_minutes_for_worked(PDO $pdo, int $workedMinutes): int {
+    if ($workedMinutes <= 0) return 0;
+    try {
+        // Tiered by worked minutes: pick highest tier where min_worked_minutes <= worked.
+        $st = $pdo->prepare("SELECT break_minutes FROM kiosk_break_tiers WHERE is_enabled=1 AND min_worked_minutes <= ? ORDER BY min_worked_minutes DESC, sort_order DESC, id DESC LIMIT 1");
+        $st->execute([$workedMinutes]);
+        $bm = $st->fetchColumn();
+        if ($bm !== false && $bm !== null) return max(0, (int)$bm);
+    } catch (Throwable $e) {
+        // ignore
+    }
+    // No fallback setting: if no tier matches, break is 0.
+    return 0;
+}
+
 function employee_label(array $emp, bool $hasNickname): string {
     $first = trim((string)($emp['first_name'] ?? ''));
     $last  = trim((string)($emp['last_name'] ?? ''));
@@ -83,8 +109,7 @@ function fetch_open_shifts(PDO $pdo, int $limit): array {
                 e.nickname      AS nickname
             FROM kiosk_shifts s
             INNER JOIN kiosk_employees e ON e.id = s.employee_id
-            WHERE s.is_closed = 0
-              AND s.clock_out_at IS NULL
+            WHERE s.clock_out_at IS NULL
               AND e.is_active = 1
             ORDER BY s.clock_in_at DESC
             LIMIT {$limit}
@@ -99,8 +124,7 @@ function fetch_open_shifts(PDO $pdo, int $limit): array {
                 e.last_name     AS last_name
             FROM kiosk_shifts s
             INNER JOIN kiosk_employees e ON e.id = s.employee_id
-            WHERE s.is_closed = 0
-              AND s.clock_out_at IS NULL
+            WHERE s.clock_out_at IS NULL
               AND e.is_active = 1
             ORDER BY s.clock_in_at DESC
             LIMIT {$limit}
@@ -215,7 +239,7 @@ function autoclose_stale_open_shifts(
         SELECT id, clock_in_at
         FROM kiosk_shifts
         WHERE employee_id = ?
-          AND is_closed = 0
+
           AND clock_out_at IS NULL
         ORDER BY clock_in_at ASC
         FOR UPDATE
@@ -240,19 +264,24 @@ function autoclose_stale_open_shifts(
         $closeAtStmt->execute([$clockIn, $maxShiftMinutes]);
         $closeAt = (string)$closeAtStmt->fetchColumn();
 
+        $breakMins = break_minutes_for_worked($pdo, $maxShiftMinutes);
+        $breakPaid = employee_break_is_paid($pdo, $employeeId);
+        $paidMins  = $breakPaid ? $maxShiftMinutes : max(0, $maxShiftMinutes - $breakMins);
+
         $upd = $pdo->prepare("
             UPDATE kiosk_shifts
             SET clock_out_at = ?,
                 is_closed = 1,
                 duration_minutes = ?,
+                break_minutes = ?,
+                paid_minutes = ?,
                 is_autoclosed = 1,
                 close_reason = 'autoclose_max',
                 updated_source = 'system'
             WHERE id = ?
-              AND is_closed = 0
               AND clock_out_at IS NULL
         ");
-        $upd->execute([$closeAt, $maxShiftMinutes, $shiftId]);
+        $upd->execute([$closeAt, $maxShiftMinutes, $breakMins, $paidMins, $shiftId]);
 
         if ($upd->rowCount() > 0) {
             $closedCount++;
@@ -566,7 +595,7 @@ try {
     // ---- PROCESS ----
     if ($action === 'IN') {
 
-        $open = $pdo->prepare("SELECT id FROM kiosk_shifts WHERE employee_id=? AND is_closed=0 LIMIT 1");
+        $open = $pdo->prepare("SELECT id FROM kiosk_shifts WHERE employee_id=? AND clock_out_at IS NULL LIMIT 1");
         $open->execute([$employeeId]);
 
         if ($open->fetchColumn()) {
@@ -601,7 +630,7 @@ try {
         $shift = $pdo->prepare("
             SELECT id, clock_in_at
             FROM kiosk_shifts
-            WHERE employee_id=? AND is_closed=0
+            WHERE employee_id=? AND clock_out_at IS NULL
             ORDER BY clock_in_at DESC
             LIMIT 1
         ");
@@ -617,6 +646,10 @@ try {
         $minsStmt->execute([$s['clock_in_at'], $effectiveTimeSql]);
         $mins = (int)$minsStmt->fetchColumn();
 
+        $breakMins = break_minutes_for_worked($pdo, $mins);
+        $breakPaid = employee_break_is_paid($pdo, $employeeId);
+        $paidMins  = $breakPaid ? $mins : max(0, $mins - $breakMins);
+
         if ($mins < 0) {
             punch_mark($pdo, $eventUuid, 'rejected', 'invalid_time_order', null);
             json_response(['ok'=>false,'error'=>'invalid_time_order'], 409);
@@ -630,19 +663,19 @@ try {
         if ($tooLong && $hasCloseReason) {
             $upd = $pdo->prepare("
                 UPDATE kiosk_shifts
-                SET clock_out_at=?, is_closed=1, duration_minutes=?, close_reason='too_long'
+                SET clock_out_at=?, is_closed=1, duration_minutes=?, break_minutes=?, paid_minutes=?, close_reason='too_long'
                 WHERE id=?
             ");
-            $upd->execute([$effectiveTimeSql, $mins, (int)$s['id']]);
+            $upd->execute([$effectiveTimeSql, $mins, $breakMins, $paidMins, (int)$s['id']]);
 
             punch_mark($pdo, $eventUuid, 'processed', 'shift_too_long_flagged', (int)$s['id']);
         } else {
             $upd = $pdo->prepare("
                 UPDATE kiosk_shifts
-                SET clock_out_at=?, is_closed=1, duration_minutes=?
+                SET clock_out_at=?, is_closed=1, duration_minutes=?, break_minutes=?, paid_minutes=?
                 WHERE id=?
             ");
-            $upd->execute([$effectiveTimeSql, $mins, (int)$s['id']]);
+            $upd->execute([$effectiveTimeSql, $mins, $breakMins, $paidMins, (int)$s['id']]);
 
             punch_mark($pdo, $eventUuid, 'processed', null, (int)$s['id']);
         }

@@ -81,8 +81,7 @@ function fetch_open_shifts(PDO $pdo, int $limit): array {
                 e.nickname      AS nickname
             FROM kiosk_shifts s
             INNER JOIN kiosk_employees e ON e.id = s.employee_id
-            WHERE s.is_closed = 0
-              AND s.clock_out_at IS NULL
+            WHERE s.clock_out_at IS NULL
               AND e.is_active = 1
             ORDER BY s.clock_in_at DESC
             LIMIT {$limit}
@@ -96,8 +95,7 @@ function fetch_open_shifts(PDO $pdo, int $limit): array {
                 e.last_name     AS last_name
             FROM kiosk_shifts s
             INNER JOIN kiosk_employees e ON e.id = s.employee_id
-            WHERE s.is_closed = 0
-              AND s.clock_out_at IS NULL
+            WHERE s.clock_out_at IS NULL
               AND e.is_active = 1
             ORDER BY s.clock_in_at DESC
             LIMIT {$limit}

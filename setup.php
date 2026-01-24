@@ -89,6 +89,34 @@ function seed_employee_departments(PDO $pdo): void {
   }
 }
 
+function seed_break_tiers(PDO $pdo): void {
+  // Seed only if empty
+  try {
+    $count = (int)$pdo->query("SELECT COUNT(*) FROM kiosk_break_tiers")->fetchColumn();
+    if ($count > 0) return;
+  } catch (Throwable $e) {
+    return;
+  }
+
+  // Default tiers (can be edited in admin).
+  // Rule meaning:
+  // - pick the tier with the highest min_worked_minutes <= worked_minutes.
+  // - if no tiers match, treat break as 0.
+  $tiers = [
+    // worked >= 0:00 => break 0
+    [0, 0, 10],
+    // worked >= 3:01 => break 0:30
+    [181, 30, 20],
+    // worked >= 6:01 => break 0:45
+    [361, 45, 30],
+  ];
+
+  $st = $pdo->prepare("INSERT INTO kiosk_break_tiers (min_worked_minutes, break_minutes, sort_order, is_enabled) VALUES (?,?,?,1)");
+  foreach ($tiers as $t) {
+    $st->execute([$t[0], $t[1], $t[2]]);
+  }
+}
+
 function seed_settings(PDO $pdo): void {
   $defs = [
     // ===========================
@@ -389,7 +417,7 @@ function seed_settings(PDO $pdo): void {
     ],
 
     // ===========================
-    // Payroll (Care-home Rules)
+    // Payroll (Boundaries)
     // ===========================
     [
       'key' => 'payroll_week_starts_on', 'value' => 'MONDAY', 'group' => 'payroll',
@@ -401,95 +429,13 @@ function seed_settings(PDO $pdo): void {
       'label' => 'Payroll Timezone', 'description' => 'Timezone used for day/week boundaries (weekend and bank holiday cutoffs).',
       'type' => 'string', 'editable_by' => 'admin', 'sort' => 715, 'secret' => 0,
     ],
-    [
-      'key' => 'default_break_minutes', 'value' => '0', 'group' => 'payroll',
-      'label' => 'Default Break Minutes', 'description' => 'Fallback unpaid break minutes deducted when no shift break rule matches.',
-      'type' => 'string', 'editable_by' => 'admin', 'sort' => 716, 'secret' => 0,
-    ],
-    [
-      'key' => 'payroll_overtime_threshold_hours', 'value' => '40', 'group' => 'payroll',
-      'label' => 'Overtime Threshold (hours/week)', 'description' => 'If paid hours in the payroll week exceed this, the excess becomes overtime (contract rules can override enhancements).',
-      'type' => 'string', 'editable_by' => 'admin', 'sort' => 720, 'secret' => 0,
-    ],
-    [
-      'key' => 'payroll_stacking_mode', 'value' => 'exclusive', 'group' => 'payroll',
-      'label' => 'Stacking Mode', 'description' => 'exclusive = apply at most ONE enhancement total per minute (highest wins). stack = allow ONE multiplier + ONE premium per minute.',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 730, 'secret' => 0,
-    ],
-    [
-      'key' => 'payroll_night_start', 'value' => '20:00', 'group' => 'payroll',
-      'label' => 'Night Start', 'description' => 'Night window start time (24h HH:MM).',
-      'type' => 'string', 'editable_by' => 'admin', 'sort' => 740, 'secret' => 0,
-    ],
-    [
-      'key' => 'payroll_night_end', 'value' => '07:00', 'group' => 'payroll',
-      'label' => 'Night End', 'description' => 'Night window end time (24h HH:MM).',
-      'type' => 'string', 'editable_by' => 'admin', 'sort' => 741, 'secret' => 0,
-    ],
-    [
-      'key' => 'payroll_bank_holiday_cap_hours', 'value' => '12', 'group' => 'payroll',
-      'label' => 'Bank Holiday Cap (hours)', 'description' => 'Max bank holiday enhanced hours per shift (e.g., 12 hours).',
-      'type' => 'string', 'editable_by' => 'admin', 'sort' => 750, 'secret' => 0,
-    ],
-    [
-      'key' => 'payroll_callout_min_paid_hours', 'value' => '4', 'group' => 'payroll',
-      'label' => 'Call-out Minimum Paid Hours', 'description' => 'If a shift is marked call-out and paid hours are below this, uplift paid hours to this minimum BEFORE overtime is calculated.',
-      'type' => 'string', 'editable_by' => 'admin', 'sort' => 760, 'secret' => 0,
-    ],
+
 
     // Default premiums & multipliers (care-home defaults). Contract overrides via employee pay profile rules_json.
-    [
-      'key' => 'default_night_multiplier', 'value' => '1.00', 'group' => 'payroll',
-      'label' => 'Default Night Multiplier', 'description' => 'Default night multiplier (1.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 800, 'secret' => 0,
-    ],
-    [
-      'key' => 'default_night_premium_per_hour', 'value' => '0.00', 'group' => 'payroll',
-      'label' => 'Default Night Premium (£/hour)', 'description' => 'Default night premium per hour (0.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 801, 'secret' => 0,
-    ],
-    [
-      'key' => 'default_weekend_multiplier', 'value' => '1.00', 'group' => 'payroll',
-      'label' => 'Default Weekend Multiplier', 'description' => 'Default weekend multiplier (1.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 810, 'secret' => 0,
-    ],
-    [
-      'key' => 'default_weekend_premium_per_hour', 'value' => '0.00', 'group' => 'payroll',
-      'label' => 'Default Weekend Premium (£/hour)', 'description' => 'Default weekend premium per hour (0.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 811, 'secret' => 0,
-    ],
-    [
-      'key' => 'default_bank_holiday_multiplier', 'value' => '1.50', 'group' => 'payroll',
-      'label' => 'Default Bank Holiday Multiplier', 'description' => 'Default bank holiday multiplier (1.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 820, 'secret' => 0,
-    ],
-    [
-      'key' => 'default_bank_holiday_premium_per_hour', 'value' => '0.00', 'group' => 'payroll',
-      'label' => 'Default Bank Holiday Premium (£/hour)', 'description' => 'Default bank holiday premium per hour (0.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 821, 'secret' => 0,
-    ],
-    [
-      'key' => 'default_overtime_multiplier', 'value' => '1.00', 'group' => 'payroll',
-      'label' => 'Default Overtime Multiplier', 'description' => 'Default overtime multiplier (1.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 830, 'secret' => 0,
-    ],
-    [
-      'key' => 'default_overtime_premium_per_hour', 'value' => '0.00', 'group' => 'payroll',
-      'label' => 'Default Overtime Premium (£/hour)', 'description' => 'Default overtime premium per hour (0.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 831, 'secret' => 0,
-    ],
-    [
-      'key' => 'default_callout_multiplier', 'value' => '1.00', 'group' => 'payroll',
-      'label' => 'Default Call-out Multiplier', 'description' => 'Default call-out multiplier (1.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 840, 'secret' => 0,
-    ],
-    [
-      'key' => 'default_callout_premium_per_hour', 'value' => '0.00', 'group' => 'payroll',
-      'label' => 'Default Call-out Premium (£/hour)', 'description' => 'Default call-out premium per hour (0.00 = none).',
-      'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 841, 'secret' => 0,
-    ],
+
   ];
   $stripKeys = [
+    'default_break_minutes',
     'night_shift_threshold_percent',
     'night_premium_enabled',
     'night_premium_start',
@@ -548,7 +494,7 @@ $sql = "
     VALUES
       (:k, :v, :g, :l, :d, :t, :e, :s, :sec)
     ON DUPLICATE KEY UPDATE
-      `value`       = VALUES(`value`),
+      `value`       = `value`,
       `group_name`  = VALUES(`group_name`),
       `label`       = VALUES(`label`),
       `description` = VALUES(`description`),
@@ -575,6 +521,16 @@ $sql = "
   }
 
   // Cleanup legacy settings that are no longer used.
+
+
+  // Lock setup-only settings after app initialization
+  try {
+    $appInit = (string)($pdo->query("SELECT value FROM kiosk_settings WHERE `key`='app_initialized' LIMIT 1")->fetchColumn() ?? '0');
+    if ($appInit === '1') {
+      $pdo->prepare("UPDATE kiosk_settings SET editable_by='none' WHERE `key`='payroll_week_starts_on'")->execute();
+    }
+  } catch (Throwable $e) { /* ignore */ }
+
   delete_setting_if_exists($pdo, 'default_break_is_paid');
 }
 
@@ -786,6 +742,8 @@ function create_tables(PDO $pdo): void {
       training_note VARCHAR(255) NULL,
       is_callout TINYINT(1) NOT NULL DEFAULT 0,
       duration_minutes INT NULL,
+      break_minutes INT NULL,
+      paid_minutes INT NULL,
       is_closed TINYINT(1) DEFAULT 0,
       close_reason VARCHAR(50) NULL,
       is_autoclosed TINYINT(1) NOT NULL DEFAULT 0,
@@ -811,10 +769,12 @@ function create_tables(PDO $pdo): void {
   add_column_if_missing($pdo, 'kiosk_shifts', 'payroll_locked_by', 'VARCHAR(100) NULL');
   add_column_if_missing($pdo, 'kiosk_shifts', 'payroll_batch_id', 'VARCHAR(64) NULL');
   add_column_if_missing($pdo, 'kiosk_shifts', 'is_callout', "TINYINT(1) NOT NULL DEFAULT 0");
+  add_column_if_missing($pdo, 'kiosk_shifts', 'break_minutes', 'INT NULL');
+  add_column_if_missing($pdo, 'kiosk_shifts', 'paid_minutes', 'INT NULL');
   // Pay profile cleanup (break minutes are now shift-rule based)
-  drop_column_if_exists($pdo, 'kiosk_employee_pay_profiles', 'break_minutes_default');
-  drop_column_if_exists($pdo, 'kiosk_employee_pay_profiles', 'break_minutes_night');
-  drop_column_if_exists($pdo, 'kiosk_employee_pay_profiles', 'min_hours_for_break');
+  // NOTE: not dropping legacy pay profile columns during install/repair (safer upgrades)
+  // NOTE: not dropping legacy pay profile columns during install/repair (safer upgrades)
+  // NOTE: not dropping legacy pay profile columns during install/repair (safer upgrades)
   add_column_if_missing($pdo, 'kiosk_employee_pay_profiles', 'hourly_rate', 'DECIMAL(8,2) NULL');
   add_column_if_missing($pdo, 'kiosk_employee_pay_profiles', 'inherit_from_carehome', 'TINYINT(1) NOT NULL DEFAULT 1');
   add_column_if_missing($pdo, 'kiosk_employee_pay_profiles', 'overtime_threshold_hours', 'DECIMAL(6,2) NULL');
@@ -899,6 +859,21 @@ function create_tables(PDO $pdo): void {
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       KEY idx_enabled_priority (is_enabled, priority)
+    ) ENGINE=InnoDB;
+  ");
+
+  // BREAK TIERS (LOCKED payroll rule: tiered by worked minutes)
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS kiosk_break_tiers (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      min_worked_minutes INT NOT NULL,
+      break_minutes INT NOT NULL,
+      sort_order INT NOT NULL DEFAULT 0,
+      is_enabled TINYINT(1) NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      KEY idx_enabled_sort (is_enabled, sort_order),
+      KEY idx_min_worked (min_worked_minutes)
     ) ENGINE=InnoDB;
   ");
 
@@ -1035,6 +1010,46 @@ function create_tables(PDO $pdo): void {
     ) ENGINE=InnoDB;
   ");
 
+  // PAYROLL SHIFT SNAPSHOTS (frozen results per payroll run)
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS payroll_shift_snapshots (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      payroll_batch_id BIGINT UNSIGNED NOT NULL,
+      shift_id BIGINT UNSIGNED NOT NULL,
+      employee_id INT UNSIGNED NOT NULL,
+      worked_minutes INT NOT NULL DEFAULT 0,
+      break_minutes INT NOT NULL DEFAULT 0,
+      paid_minutes INT NOT NULL DEFAULT 0,
+      normal_minutes INT NOT NULL DEFAULT 0,
+      weekend_minutes INT NOT NULL DEFAULT 0,
+      bank_holiday_minutes INT NOT NULL DEFAULT 0,
+      overtime_minutes INT NOT NULL DEFAULT 0,
+      applied_rule VARCHAR(50) NULL,
+      rounding_minutes INT NULL,
+      rounded_paid_minutes INT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_batch_emp (payroll_batch_id, employee_id),
+      KEY idx_shift (shift_id),
+      KEY idx_batch (payroll_batch_id)
+    ) ENGINE=InnoDB;
+  " );
+
+  // PAYROLL RUN LOGS (audit trail of runs/reruns)
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS payroll_run_logs (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      payroll_batch_id BIGINT UNSIGNED NOT NULL,
+      action VARCHAR(30) NOT NULL, -- run|rerun|finalize|void
+      performed_by BIGINT UNSIGNED NULL,
+      performed_by_username VARCHAR(100) NULL,
+      performed_by_role VARCHAR(30) NULL,
+      reason VARCHAR(255) NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_batch_time (payroll_batch_id, created_at),
+      KEY idx_action_time (action, created_at)
+    ) ENGINE=InnoDB;
+  " );
+
 }
 
 /**
@@ -1044,6 +1059,8 @@ function drop_all(PDO $pdo): void {
   $pdo->exec("SET FOREIGN_KEY_CHECKS=0");
   foreach ([
     'payroll_batches',
+    'payroll_shift_snapshots',
+    'payroll_run_logs',
     'payroll_bank_holidays',
     'admin_sessions',
     'admin_devices',
@@ -1054,8 +1071,11 @@ function drop_all(PDO $pdo): void {
     'kiosk_punch_events',
     'kiosk_shift_changes',
     'kiosk_shifts',
+    'kiosk_break_tiers',
+    'kiosk_break_rules',
     'kiosk_employee_pay_profiles',
     'kiosk_employee_departments',
+    'kiosk_employee_teams',
     'kiosk_employees',
     'kiosk_settings',
   ] as $t) {
@@ -1074,6 +1094,7 @@ try {
     create_tables($pdo);
     seed_settings($pdo);
     seed_employee_departments($pdo);
+    seed_break_tiers($pdo);
     seed_admin_users($pdo);
     // Lock setup-only settings after first successful install/repair
     try {
@@ -1091,6 +1112,7 @@ try {
     create_tables($pdo);
     seed_settings($pdo);
     seed_employee_departments($pdo);
+    seed_break_tiers($pdo);
     seed_admin_users($pdo);
     // Lock setup-only settings after reset too
     try {

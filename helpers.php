@@ -133,7 +133,7 @@ function admin_input_to_utc(string $localInput, DateTimeZone $tz): ?string {
  * is defined in payroll timezone (Europe/London etc.), then converted to UTC.
  */
 function sc_week_bounds_utc(PDO $pdo, string $tz): array {
-  $ws = strtoupper(trim((string)admin_setting_str($pdo, 'payroll_week_starts_on', 'MONDAY')));
+  $ws = strtoupper(trim((string)setting($pdo, 'payroll_week_starts_on', 'MONDAY')));
 
   $map = [
     'MONDAY'    => 1,
@@ -168,3 +168,161 @@ function sc_week_bounds_utc(PDO $pdo, string $tz): array {
     'week_starts_on' => $ws,
   ];
 }
+
+/* ===== PAYROLL HELPERS (minutes-only internal) ===== */
+
+function payroll_timezone(PDO $pdo): string {
+  $tz = (string)setting($pdo, 'payroll_timezone', 'Europe/London');
+  $tz = trim($tz);
+  return $tz !== '' ? $tz : 'Europe/London';
+}
+
+function payroll_week_starts_on(PDO $pdo): string {
+  return strtoupper(trim((string)setting($pdo, 'payroll_week_starts_on', 'MONDAY')));
+}
+
+/** Parse employee contract pay profile. */
+function payroll_employee_profile(PDO $pdo, int $employeeId): array {
+  $out = [
+    'contract_hours_per_week' => 0.0,
+    'break_is_paid' => false,
+    'rules' => [
+      'bank_holiday' => ['multiplier' => null, 'premium_per_hour' => null],
+      'weekend'      => ['multiplier' => null, 'premium_per_hour' => null],
+      'night'        => ['multiplier' => null, 'premium_per_hour' => null],
+      'overtime'     => ['multiplier' => null, 'premium_per_hour' => null],
+      'callout'      => ['multiplier' => null, 'premium_per_hour' => null],
+    ],
+  ];
+
+  try {
+    $st = $pdo->prepare('SELECT contract_hours_per_week, break_is_paid, rules_json FROM kiosk_employee_pay_profiles WHERE employee_id=? LIMIT 1');
+    $st->execute([$employeeId]);
+    $row = $st->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return $out;
+
+    $out['contract_hours_per_week'] = (float)($row['contract_hours_per_week'] ?? 0);
+    $out['break_is_paid'] = ((int)($row['break_is_paid'] ?? 0) === 1);
+
+    $decoded = null;
+    if (!empty($row['rules_json'])) {
+      $decoded = json_decode((string)$row['rules_json'], true);
+    }
+    if (is_array($decoded)) {
+      foreach (array_keys($out['rules']) as $k) {
+        $mk = $k.'_multiplier';
+        $pk = $k.'_premium_per_hour';
+        if (array_key_exists($mk, $decoded)) {
+          $v = $decoded[$mk];
+          $out['rules'][$k]['multiplier'] = (is_numeric($v) ? (float)$v : null);
+        }
+        if (array_key_exists($pk, $decoded)) {
+          $v = $decoded[$pk];
+          $out['rules'][$k]['premium_per_hour'] = (is_numeric($v) ? (float)$v : null);
+        }
+      }
+    }
+  } catch (Throwable $e) {
+    // ignore
+  }
+
+  return $out;
+}
+
+/**
+ * Break minutes by tiered worked-minutes rules.
+ * Select highest tier where min_worked_minutes <= worked.
+ */
+function payroll_break_minutes_for_worked(PDO $pdo, int $workedMinutes): int {
+  if ($workedMinutes <= 0) return 0;
+  try {
+    $st = $pdo->prepare('SELECT break_minutes FROM kiosk_break_tiers WHERE is_enabled=1 AND min_worked_minutes <= ? ORDER BY min_worked_minutes DESC, sort_order DESC, id DESC LIMIT 1');
+    $st->execute([$workedMinutes]);
+    $bm = $st->fetchColumn();
+    if ($bm !== false && $bm !== null) return max(0, (int)$bm);
+  } catch (Throwable $e) {
+    // ignore
+  }
+  // No fallback setting: if no tier matches, break is 0.
+  return 0;
+}
+
+/** Load bank holidays between two local dates (inclusive). Returns set of 'Y-m-d' => name */
+function payroll_bank_holidays(PDO $pdo, string $startYmd, string $endYmd): array {
+  $out = [];
+  try {
+    $st = $pdo->prepare('SELECT holiday_date, name FROM payroll_bank_holidays WHERE holiday_date BETWEEN ? AND ?');
+    $st->execute([$startYmd, $endYmd]);
+    while ($r = $st->fetch(PDO::FETCH_ASSOC)) {
+      $d = (string)$r['holiday_date'];
+      $out[$d] = (string)($r['name'] ?? '');
+    }
+  } catch (Throwable $e) {
+    // ignore
+  }
+  return $out;
+}
+
+function payroll_is_weekend_local(DateTimeImmutable $local): bool {
+  $dow = (int)$local->format('N'); // 6=Sat 7=Sun
+  return $dow === 6 || $dow === 7;
+}
+
+/** Convert minutes to HH:MM */
+function payroll_fmt_hhmm(int $minutes): string {
+  if ($minutes < 0) $minutes = 0;
+  $h = intdiv($minutes, 60);
+  $m = $minutes % 60;
+  return sprintf('%02d:%02d', $h, $m);
+}
+
+/** Round minutes using settings (increment + grace). Returns minutes (may be unchanged). */
+function payroll_round_minutes(PDO $pdo, int $minutes): int {
+  if ($minutes <= 0) return 0;
+  if (!setting_bool($pdo, 'rounding_enabled', true)) return $minutes;
+  $inc = max(1, setting_int($pdo, 'round_increment_minutes', 15));
+  $grace = max(0, setting_int($pdo, 'round_grace_minutes', 5));
+
+  // Round to nearest increment if within grace of boundary.
+  $rem = $minutes % $inc;
+  $down = $minutes - $rem;
+  $up = $down + $inc;
+  $distDown = $rem;
+  $distUp = $inc - $rem;
+
+  if ($distDown <= $grace && $distDown <= $distUp) return $down;
+  if ($distUp <= $grace && $distUp < $distDown) return $up;
+  return $minutes;
+}
+
+/**
+ * Split a UTC interval into chunks by local midnight boundaries.
+ * Returns list of segments: [start_utc, end_utc, minutes, local_date_ymd, local_start]
+ */
+function payroll_split_by_local_day(DateTimeImmutable $startUtc, DateTimeImmutable $endUtc, DateTimeZone $tz): array {
+  if ($endUtc <= $startUtc) return [];
+  $segments = [];
+
+  $curUtc = $startUtc;
+  while ($curUtc < $endUtc) {
+    $curLocal = $curUtc->setTimezone($tz);
+    $nextMidLocal = $curLocal->setTime(0,0,0)->modify('+1 day');
+    $nextMidUtc = $nextMidLocal->setTimezone(new DateTimeZone('UTC'));
+    $segEndUtc = ($nextMidUtc < $endUtc) ? $nextMidUtc : $endUtc;
+
+    $mins = (int)round(($segEndUtc->getTimestamp() - $curUtc->getTimestamp()) / 60);
+    if ($mins < 0) $mins = 0;
+
+    $segments[] = [
+      'start_utc' => $curUtc,
+      'end_utc' => $segEndUtc,
+      'minutes' => $mins,
+      'local_date' => $curLocal->format('Y-m-d'),
+      'local_start' => $curLocal,
+    ];
+
+    $curUtc = $segEndUtc;
+  }
+  return $segments;
+}
+
