@@ -24,6 +24,8 @@ $items[] = ['href' => admin_url('employees.php'), 'label' => 'Employees', 'perm'
 $items[] = ['href' => admin_url('departments.php'), 'label' => 'Departments', 'perm' => 'manage_employees'];
 $items[] = ['href' => admin_url('teams.php'), 'label' => 'Teams', 'perm' => 'manage_employees'];
 $items[] = ['href' => admin_url('payroll-runs.php'), 'label' => 'Payroll Runs', 'perm' => 'view_payroll'];
+$items[] = ['href' => admin_url('payroll-calendar-employee.php'), 'label' => 'Payroll Calendar (Employee)', 'perm' => 'view_payroll'];
+$items[] = ['href' => admin_url('payroll-calendar-all.php'), 'label' => 'Payroll Calendar (All)', 'perm' => 'view_payroll'];
 $items[] = ['href' => admin_url('break-tiers.php'), 'label' => 'Break Tiers', 'perm' => 'manage_settings_basic'];
 $items[] = ['href' => admin_url('settings.php'), 'label' => 'Settings', 'perm' => 'manage_settings_basic'];
 
