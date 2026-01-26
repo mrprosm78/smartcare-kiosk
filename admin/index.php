@@ -307,10 +307,10 @@ $active = admin_url('index.php');
 
 function badge(string $text, string $kind = 'neutral'): string {
   $base = "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold border";
-  if ($kind === 'ok')   return "<span class='$base bg-emerald-500/10 border-emerald-400/20 text-emerald-100'>$text</span>";
-  if ($kind === 'warn') return "<span class='$base bg-amber-500/10 border-amber-400/20 text-amber-100'>$text</span>";
-  if ($kind === 'bad')  return "<span class='$base bg-rose-500/10 border-rose-400/20 text-rose-100'>$text</span>";
-  return "<span class='$base bg-white/5 border border-white/10 text-white/80'>$text</span>";
+  if ($kind === 'ok')   return "<span class='$base bg-emerald-500/10 border-emerald-400/20 text-black-100'>$text</span>";
+  if ($kind === 'warn') return "<span class='$base bg-amber-500/10 border-amber-400/20 text-black-100'>$text</span>";
+  if ($kind === 'bad')  return "<span class='$base bg-rose-500/10 border-rose-400/20 text-black-100'>$text</span>";
+  return "<span class='$base bg-white border border-slate-200 text-slate-700'>$text</span>";
 }
 ?>
 
@@ -321,67 +321,67 @@ function badge(string $text, string $kind = 'neutral'): string {
         <?php require __DIR__ . '/partials/sidebar.php'; ?>
 
         <main class="flex-1">
-          <header class="rounded-3xl border border-white/10 bg-white/5 p-5">
+          <header class="rounded-3xl border border-slate-200 bg-white p-5">
             <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
               <div>
                 <h1 class="text-2xl font-semibold">Dashboard</h1>
-                <p class="mt-2 text-sm text-white/70">
-                  Welcome back, <span class="font-semibold text-white/90"><?= h((string)($user['display_name'] ?: $user['username'])) ?></span>.
-                  <span class="text-white/40">(UTC: <?= h($todayUtcYmd) ?> • Payroll TZ: <?= h($tz) ?> • Week starts: <?= h($weekStartsOn) ?>)</span>
+                <p class="mt-2 text-sm text-slate-600">
+                  Welcome back, <span class="font-semibold text-slate-900"><?= h((string)($user['display_name'] ?: $user['username'])) ?></span>.
+                  <span class="text-slate-400">(UTC: <?= h($todayUtcYmd) ?> • Payroll TZ: <?= h($tz) ?> • Week starts: <?= h($weekStartsOn) ?>)</span>
                 </p>
               </div>
 
               <div class="flex flex-wrap items-center gap-2">
                 <?php if (admin_can($user, 'manage_settings_basic')): ?>
-                  <a href="<?= h(admin_url('settings.php')) ?>" class="rounded-2xl px-3 py-2 text-sm font-semibold bg-white/5 border border-white/10 text-white/80 hover:bg-white/10">Settings</a>
+                  <a href="<?= h(admin_url('settings.php')) ?>" class="rounded-2xl px-3 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Settings</a>
                 <?php endif; ?>
               </div>
             </div>
           </header>
 
           <?php if ($counts['month_unapproved'] > 0): ?>
-            <div class="mt-5 rounded-3xl border border-amber-400/20 bg-amber-500/10 p-5 text-sm text-amber-100">
+            <div class="mt-5 rounded-3xl border border-amber-400/20 bg-amber-500/10 p-5 text-sm text-black-100">
               <b><?= (int)$counts['month_unapproved'] ?></b> shifts are unapproved this month.
               <a class="underline ml-2" href="<?= h(admin_url('shifts.php?period=this_month&status=unapproved')) ?>">Review now</a>
             </div>
           <?php endif; ?>
 
           <section class="mt-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            <div class="rounded-3xl border border-white/10 bg-white/5 p-5">
-              <div class="text-sm text-white/60">Shifts this month</div>
+            <div class="rounded-3xl border border-slate-200 bg-white p-5">
+              <div class="text-sm text-slate-500">Shifts this month</div>
               <div class="mt-2 text-3xl font-semibold"><?= (int)$counts['month_shifts'] ?></div>
-              <div class="mt-2 text-xs text-white/40"><?= h($monthStartUtc->format('01 M Y')) ?> → <?= h($monthEndUtcEx->modify('-1 day')->format('d M Y')) ?> (UTC)</div>
+              <div class="mt-2 text-xs text-slate-400"><?= h($monthStartUtc->format('01 M Y')) ?> → <?= h($monthEndUtcEx->modify('-1 day')->format('d M Y')) ?> (UTC)</div>
             </div>
 
-            <div class="rounded-3xl border border-white/10 bg-white/5 p-5">
-              <div class="text-sm text-white/60">Open shifts this month</div>
+            <div class="rounded-3xl border border-slate-200 bg-white p-5">
+              <div class="text-sm text-slate-500">Open shifts this month</div>
               <div class="mt-2 text-3xl font-semibold"><?= (int)$counts['month_open_shifts'] ?></div>
-              <div class="mt-2 text-xs text-white/40">Missing IN or OUT</div>
+              <div class="mt-2 text-xs text-slate-400">Missing IN or OUT</div>
             </div>
 
-            <div class="rounded-3xl border border-white/10 bg-white/5 p-5">
-              <div class="text-sm text-white/60">Unapproved this month</div>
+            <div class="rounded-3xl border border-slate-200 bg-white p-5">
+              <div class="text-sm text-slate-500">Unapproved this month</div>
               <div class="mt-2 text-3xl font-semibold"><?= (int)$counts['month_unapproved'] ?></div>
-              <div class="mt-2 text-xs text-white/40">Awaiting approval</div>
+              <div class="mt-2 text-xs text-slate-400">Awaiting approval</div>
             </div>
 
-            <div class="rounded-3xl border border-white/10 bg-white/5 p-5">
-              <div class="text-sm text-white/60">Active employees</div>
+            <div class="rounded-3xl border border-slate-200 bg-white p-5">
+              <div class="text-sm text-slate-500">Active employees</div>
               <div class="mt-2 text-3xl font-semibold"><?= (int)$counts['employees'] ?></div>
-              <div class="mt-2 text-xs text-white/40">Excludes inactive/archived</div>
+              <div class="mt-2 text-xs text-slate-400">Excludes inactive/archived</div>
             </div>
           </section>
 
           <section class="mt-5 grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <div class="rounded-3xl border border-white/10 bg-white/5 p-5">
+            <div class="rounded-3xl border border-slate-200 bg-white p-5">
               <h2 class="text-lg font-semibold">Current week overview</h2>
-              <p class="mt-1 text-sm text-white/70">
+              <p class="mt-1 text-sm text-slate-600">
                 <?= h($weekStartLocal->format('D, d M Y')) ?> → <?= h($weekEndLocal->format('D, d M Y')) ?> (<?= h($tz) ?>)
               </p>
 
               <div class="mt-4 overflow-x-auto">
                 <table class="min-w-full text-sm">
-                  <thead class="text-xs uppercase tracking-widest text-white/50">
+                  <thead class="text-xs uppercase tracking-widest text-slate-500">
                     <tr>
                       <th class="text-left py-2 pr-4">Day</th>
                       <th class="text-right py-2 pr-4">Shifts</th>
@@ -404,36 +404,36 @@ function badge(string $text, string $kind = 'neutral'): string {
 
               <div class="mt-4 flex flex-wrap gap-2">
                 <a href="<?= h(admin_url('shifts.php?period=this_week&status=open')) ?>" class="rounded-2xl px-3 py-2 text-sm font-semibold bg-white text-slate-900">Open shifts</a>
-                <a href="<?= h(admin_url('shifts.php?period=this_week&status=unapproved')) ?>" class="rounded-2xl px-3 py-2 text-sm font-semibold bg-white/5 border border-white/10 text-white/80 hover:bg-white/10">Unapproved</a>
+                <a href="<?= h(admin_url('shifts.php?period=this_week&status=unapproved')) ?>" class="rounded-2xl px-3 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Unapproved</a>
               </div>
             </div>
 
-            <div class="rounded-3xl border border-white/10 bg-white/5 p-5">
+            <div class="rounded-3xl border border-slate-200 bg-white p-5">
               <h2 class="text-lg font-semibold">Last month total hours</h2>
-              <p class="mt-1 text-sm text-white/70">
+              <p class="mt-1 text-sm text-slate-600">
                 <?= h($lastMonthStartUtc->format('01 M Y')) ?> → <?= h($lastMonthEndUtcEx->modify('-1 day')->format('d M Y')) ?> (closed shifts only)
               </p>
 
               <div class="mt-4 flex items-baseline gap-6">
                 <div>
-                  <div class="text-sm text-white/60">Total</div>
+                  <div class="text-sm text-slate-500">Total</div>
                   <div class="mt-1 text-3xl font-semibold"><?= h(fmt_hhmm_from_minutes($lastMonthMinutes)) ?></div>
                 </div>
                 <div>
-                  <div class="text-sm text-white/60">Approved</div>
+                  <div class="text-sm text-slate-500">Approved</div>
                   <div class="mt-1 text-2xl font-semibold"><?= h(fmt_hhmm_from_minutes($lastMonthApprovedMinutes)) ?></div>
                 </div>
               </div>
 
-              <p class="mt-4 text-xs text-white/40">
+              <p class="mt-4 text-xs text-slate-400">
                 Hours shown are raw shift duration (clock_in_at → clock_out_at). Enhancements and pay are intentionally not calculated here.
               </p>
             </div>
           </section>
 
-          <section class="mt-5 rounded-3xl border border-white/10 bg-white/5 p-5 overflow-x-auto">
+          <section class="mt-5 rounded-3xl border border-slate-200 bg-white p-5 overflow-x-auto">
             <h2 class="text-lg font-semibold">Last 4 weeks — hours by department</h2>
-            <p class="mt-1 text-sm text-white/70">Closed shifts only • Excludes voided</p>
+            <p class="mt-1 text-sm text-slate-600">Closed shifts only • Excludes voided</p>
 
             <?php
               // header labels for the 4 weeks (local start date)
@@ -446,7 +446,7 @@ function badge(string $text, string $kind = 'neutral'): string {
 
             <div class="mt-4 overflow-x-auto">
               <table class="min-w-full text-sm">
-                <thead class="text-xs uppercase tracking-widest text-white/50">
+                <thead class="text-xs uppercase tracking-widest text-slate-500">
                   <tr>
                     <th class="text-left py-2 pr-4">Department</th>
                     <?php foreach ($weekLabels as $wl): ?>
@@ -456,7 +456,7 @@ function badge(string $text, string $kind = 'neutral'): string {
                 </thead>
                 <tbody class="divide-y divide-white/10">
                   <?php if (!$deptWeeks): ?>
-                    <tr><td colspan="5" class="py-6 text-white/60">No department hours found for last 4 weeks.</td></tr>
+                    <tr><td colspan="5" class="py-6 text-slate-500">No department hours found for last 4 weeks.</td></tr>
                   <?php else: ?>
                     <?php foreach ($deptWeeks as $dept => $minsArr): ?>
                       <tr>
@@ -471,17 +471,17 @@ function badge(string $text, string $kind = 'neutral'): string {
               </table>
             </div>
 
-            <p class="mt-3 text-xs text-white/40">
+            <p class="mt-3 text-xs text-slate-400">
               Note: this uses raw shift duration. If you later want “paid hours” (after break rules), we can switch the calculation to your payroll engine.
             </p>
           </section>
 
           <?php if (admin_can($user, 'view_punches')): ?>
-            <section class="mt-5 rounded-3xl border border-white/10 bg-white/5 p-5 overflow-x-auto">
+            <section class="mt-5 rounded-3xl border border-slate-200 bg-white p-5 overflow-x-auto">
               <div class="flex items-start justify-between gap-4">
                 <div>
                   <h2 class="text-lg font-semibold">Punch issues detected</h2>
-                  <p class="mt-1 text-sm text-white/70">Current payroll week • rejected punches and processed warnings</p>
+                  <p class="mt-1 text-sm text-slate-600">Current payroll week • rejected punches and processed warnings</p>
                 </div>
                 <div class="text-sm">
                   <?= $punchErrCount > 0 ? badge($punchErrCount . ' issues', 'warn') : badge('No issues', 'ok') ?>
@@ -489,11 +489,11 @@ function badge(string $text, string $kind = 'neutral'): string {
               </div>
 
               <?php if (!$punchErrRows): ?>
-                <div class="mt-4 text-sm text-white/60">No punch issues found.</div>
+                <div class="mt-4 text-sm text-slate-500">No punch issues found.</div>
               <?php else: ?>
                 <div class="mt-4 overflow-x-auto">
                   <table class="min-w-full text-sm">
-                    <thead class="text-xs uppercase tracking-widest text-white/50">
+                    <thead class="text-xs uppercase tracking-widest text-slate-500">
                       <tr>
                         <th class="text-left py-2 pr-4">Time</th>
                         <th class="text-left py-2 pr-4">Employee</th>
@@ -534,7 +534,7 @@ function badge(string $text, string $kind = 'neutral'): string {
                           </td>
                           <td class="py-2 pr-4"><?= h($ec !== '' ? $ec : '—') ?></td>
                           <td class="py-2 text-right">
-                            <a class="underline text-white/80"
+                            <a class="underline text-slate-700"
                                href="<?= h(admin_url('punch-details.php?mode=this_week&employee_id=' . $empId)) ?>">
                               Open
                             </a>

@@ -243,11 +243,11 @@ $active = admin_url('payroll-calendar-all.php');
 
 function badge_html(string $status): string {
   $map = [
-    'approved' => 'bg-emerald-500/15 text-emerald-100 border-emerald-500/30',
-    'awaiting' => 'bg-amber-500/15 text-amber-100 border-amber-500/30',
-    'open' => 'bg-rose-500/15 text-rose-100 border-rose-500/30',
+    'approved' => 'bg-emerald-500/15 text-black-100 border-emerald-500/30',
+    'awaiting' => 'bg-amber-500/15 text-black-100 border-amber-500/30',
+    'open' => 'bg-rose-500/15 text-black-100 border-rose-500/30',
   ];
-  $cls = $map[$status] ?? 'bg-white/10 text-white/80 border-white/20';
+  $cls = $map[$status] ?? 'bg-slate-50 text-slate-700 border-slate-200';
   return '<span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold '.$cls.'">'.h(ucfirst($status)).'</span>';
 }
 
@@ -256,30 +256,30 @@ function badge_html(string $status): string {
   <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
     <div>
       <h1 class="text-2xl font-bold">Payroll Calendar (All Employees)</h1>
-      <div class="mt-1 text-sm text-white/60">
-        Month boundary: <span class="font-semibold text-white/80"><?= h($monthBoundaryMode) ?></span> ·
-        Week starts: <span class="font-semibold text-white/80"><?= h($weekStartsOn) ?></span> ·
-        TZ: <span class="font-semibold text-white/80"><?= h($tzName) ?></span>
+      <div class="mt-1 text-sm text-slate-500">
+        Month boundary: <span class="font-semibold text-slate-700"><?= h($monthBoundaryMode) ?></span> ·
+        Week starts: <span class="font-semibold text-slate-700"><?= h($weekStartsOn) ?></span> ·
+        TZ: <span class="font-semibold text-slate-700"><?= h($tzName) ?></span>
       </div>
       <div class="mt-3">
-        <a href="<?= h(admin_url('index.php')) ?>" class="inline-flex items-center gap-2 rounded-xl bg-white/10 border border-white/10 px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/15">
+        <a href="<?= h(admin_url('index.php')) ?>" class="inline-flex items-center gap-2 rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100">
           ← Back to Admin
         </a>
       </div>
     </div>
     <form method="get" class="flex flex-wrap gap-2 items-end">
-      <label class="text-xs text-white/60">Month
-        <input name="month" value="<?= h($ym) ?>" class="mt-1 w-32 rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm" placeholder="YYYY-MM" />
+      <label class="text-xs text-slate-500">Month
+        <input name="month" value="<?= h($ym) ?>" class="mt-1 w-32 rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm" placeholder="YYYY-MM" />
       </label>
-      <label class="text-xs text-white/60">Status
-        <select name="status" class="mt-1 w-40 rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm">
+      <label class="text-xs text-slate-500">Status
+        <select name="status" class="mt-1 w-40 rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm">
           <?php foreach (['all'=>'All','approved'=>'Approved','awaiting'=>'Awaiting','open'=>'Open'] as $k=>$lab): ?>
             <option value="<?= h($k) ?>" <?= $status===$k?'selected':'' ?>><?= h($lab) ?></option>
           <?php endforeach; ?>
         </select>
       </label>
-      <label class="text-xs text-white/60">Search
-        <input name="q" value="<?= h($q) ?>" class="mt-1 w-56 rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm" placeholder="Name or code" />
+      <label class="text-xs text-slate-500">Search
+        <input name="q" value="<?= h($q) ?>" class="mt-1 w-56 rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm" placeholder="Name or code" />
       </label>
       <button class="rounded-2xl bg-white text-slate-900 px-4 py-2 text-sm font-semibold">Apply</button>
     </form>
@@ -301,13 +301,13 @@ function badge_html(string $status): string {
         $wkOT += (int)$days[$dk]['ot'];
       }
   ?>
-    <div class="rounded-3xl border border-white/10 bg-white/5 p-4">
+    <div class="rounded-3xl border border-slate-200 bg-white p-4">
       <div class="flex items-center justify-between gap-3">
         <div class="font-semibold">
           Week <?= h($week->format('d M Y')) ?> → <?= h($weekEnd->modify('-1 day')->format('d M Y')) ?>
         </div>
-        <div class="text-xs text-white/60">
-          <?= ($week < $monthStartLocal || $weekEnd > $monthEndLocalEx) ? '<span class="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-100 font-semibold">Partial month week</span>' : '<span class="rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-white/80 font-semibold">Full week</span>' ?>
+        <div class="text-xs text-slate-500">
+          <?= ($week < $monthStartLocal || $weekEnd > $monthEndLocalEx) ? '<span class="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-black-100 font-semibold">Partial month week</span>' : '<span class="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-700 font-semibold">Full week</span>' ?>
         </div>
       </div>
 
@@ -325,7 +325,7 @@ function badge_html(string $status): string {
           $more = count($entries) - count($top);
           $modalId++;
         ?>
-          <div class="rounded-2xl border border-white/10 bg-slate-950/40 p-3 <?= $dim ?>">
+          <div class="rounded-2xl border border-slate-200 bg-white p-3 <?= $dim ?>">
             <div class="flex items-start justify-between gap-2">
               <div class="text-sm font-semibold">
                 <?= h($d->format('D d M')) ?>
@@ -333,36 +333,36 @@ function badge_html(string $status): string {
                   <span class="ml-1 rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[11px] font-semibold text-sky-100">BH</span>
                 <?php endif; ?>
               </div>
-              <div class="text-xs text-white/60">
-                Hours <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm((int)$cell['total_paid'])) ?></span>
+              <div class="text-xs text-slate-500">
+                Hours <span class="font-semibold text-slate-700"><?= h(payroll_fmt_hhmm((int)$cell['total_paid'])) ?></span>
               </div>
             </div>
 
-            <div class="mt-2 text-[12px] text-white/60">
-              BH <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm((int)$cell['bh'])) ?></span>
-              · Weekend <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm((int)$cell['weekend'])) ?></span>
-              · OT <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm((int)$cell['ot'])) ?></span>
+            <div class="mt-2 text-[12px] text-slate-500">
+              BH <span class="font-semibold text-slate-700"><?= h(payroll_fmt_hhmm((int)$cell['bh'])) ?></span>
+              · Weekend <span class="font-semibold text-slate-700"><?= h(payroll_fmt_hhmm((int)$cell['weekend'])) ?></span>
+              · OT <span class="font-semibold text-slate-700"><?= h(payroll_fmt_hhmm((int)$cell['ot'])) ?></span>
             </div>
 
             <div class="mt-3 space-y-2">
               <?php if (empty($entries)): ?>
-                <div class="text-xs text-white/35">—</div>
+                <div class="text-xs text-slate-900/35">—</div>
               <?php else: ?>
                 <?php foreach ($top as $it): ?>
-                  <div class="rounded-xl border border-white/10 bg-white/5 p-2">
+                  <div class="rounded-xl border border-slate-200 bg-white p-2">
                     <div class="flex items-center justify-between gap-2">
                       <div class="text-xs font-semibold">
-                        <?= h($it['employee']) ?> <span class="text-white/50 font-normal">(<?= h($it['code']) ?>)</span>
+                        <?= h($it['employee']) ?> <span class="text-slate-500 font-normal">(<?= h($it['code']) ?>)</span>
                       </div>
                       <?= badge_html((string)$it['status']) ?>
                     </div>
-                    <div class="mt-1 text-[11px] text-white/60">
+                    <div class="mt-1 text-[11px] text-slate-500">
                       <?= h($it['start']->format('H:i')) ?>–<?= h($it['end']->format('H:i')) ?>
-                      · Hours <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm((int)$it['paid'])) ?></span>
+                      · Hours <span class="font-semibold text-slate-700"><?= h(payroll_fmt_hhmm((int)$it['paid'])) ?></span>
                       · BH <?= h(payroll_fmt_hhmm((int)($it['bh'] ?? 0))) ?>
                       · Weekend <?= h(payroll_fmt_hhmm((int)($it['weekend'] ?? 0))) ?>
                       · OT <?= h(payroll_fmt_hhmm((int)($it['ot'] ?? 0))) ?>
-                      <?php if ($it['autoclosed']): ?> · <span class="text-rose-200 font-semibold">Auto-closed</span><?php endif; ?>
+                      <?php if ($it['autoclosed']): ?> · <span class="text-black-200 font-semibold">Auto-closed</span><?php endif; ?>
                     </div>
                     <div class="mt-2">
                       <a class="rounded-xl bg-white text-slate-900 px-2.5 py-1 text-[11px] font-semibold" href="<?= h(admin_url('shift-edit.php?id='.(int)$it['shift_id'])) ?>">Fix</a>
@@ -371,31 +371,31 @@ function badge_html(string $status): string {
                 <?php endforeach; ?>
 
                 <?php if ($more > 0): ?>
-                  <button type="button" class="w-full rounded-xl bg-white/10 border border-white/10 px-2.5 py-2 text-xs font-semibold text-white/80 hover:bg-white/15" onclick="document.getElementById('modal-<?= $modalId ?>').classList.remove('hidden')">
+                  <button type="button" class="w-full rounded-xl bg-slate-50 border border-slate-200 px-2.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100" onclick="document.getElementById('modal-<?= $modalId ?>').classList.remove('hidden')">
                     + <?= (int)$more ?> more…
                   </button>
 
                   <div id="modal-<?= $modalId ?>" class="hidden fixed inset-0 z-50">
                     <div class="absolute inset-0 bg-black/70" onclick="document.getElementById('modal-<?= $modalId ?>').classList.add('hidden')"></div>
-                    <div class="absolute left-1/2 top-1/2 w-[95vw] max-w-3xl -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-white/10 bg-slate-950 p-4">
+                    <div class="absolute left-1/2 top-1/2 w-[95vw] max-w-3xl -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-slate-200 bg-slate-950 p-4">
                       <div class="flex items-center justify-between gap-3">
                         <div class="font-semibold"><?= h($d->format('D d M Y')) ?> — all shifts</div>
-                        <button class="rounded-xl bg-white/10 border border-white/10 px-3 py-2 text-xs font-semibold text-white/80" onclick="document.getElementById('modal-<?= $modalId ?>').classList.add('hidden')">Close</button>
+                        <button class="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700" onclick="document.getElementById('modal-<?= $modalId ?>').classList.add('hidden')">Close</button>
                       </div>
                       <div class="mt-3 space-y-2 max-h-[70vh] overflow-auto">
                         <?php foreach ($entries as $it): ?>
-                          <div class="rounded-2xl border border-white/10 bg-white/5 p-3">
+                          <div class="rounded-2xl border border-slate-200 bg-white p-3">
                             <div class="flex items-center justify-between gap-2">
-                              <div class="text-sm font-semibold"><?= h($it['employee']) ?> <span class="text-white/50 font-normal">(<?= h($it['code']) ?>)</span></div>
+                              <div class="text-sm font-semibold"><?= h($it['employee']) ?> <span class="text-slate-500 font-normal">(<?= h($it['code']) ?>)</span></div>
                               <?= badge_html((string)$it['status']) ?>
                             </div>
-                            <div class="mt-1 text-xs text-white/60">
+                            <div class="mt-1 text-xs text-slate-500">
                               <?= h($it['start']->format('H:i')) ?>–<?= h($it['end']->format('H:i')) ?>
-                              · Hours <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm((int)$it['paid'])) ?></span>
+                              · Hours <span class="font-semibold text-slate-700"><?= h(payroll_fmt_hhmm((int)$it['paid'])) ?></span>
                               · BH <?= h(payroll_fmt_hhmm((int)($it['bh'] ?? 0))) ?>
                               · Weekend <?= h(payroll_fmt_hhmm((int)($it['weekend'] ?? 0))) ?>
                               · OT <?= h(payroll_fmt_hhmm((int)($it['ot'] ?? 0))) ?>
-                              <?php if ($it['autoclosed']): ?> · <span class="text-rose-200 font-semibold">Auto-closed</span><?php endif; ?>
+                              <?php if ($it['autoclosed']): ?> · <span class="text-black-200 font-semibold">Auto-closed</span><?php endif; ?>
                             </div>
                             <div class="mt-2">
                               <a class="rounded-xl bg-white text-slate-900 px-3 py-2 text-xs font-semibold" href="<?= h(admin_url('shift-edit.php?id='.(int)$it['shift_id'])) ?>">Fix</a>
@@ -413,13 +413,13 @@ function badge_html(string $status): string {
         <?php endfor; ?>
       </div>
 
-      <div class="mt-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+      <div class="mt-3 rounded-2xl border border-slate-200 bg-white p-3">
         <div class="flex flex-wrap items-center gap-3 text-sm">
           <div class="font-semibold">Week totals</div>
-          <div class="text-white/60">Hours <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm($wkPaid)) ?></span></div>
-          <div class="text-white/60">BH <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm($wkBH)) ?></span></div>
-          <div class="text-white/60">Weekend <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm($wkWE)) ?></span></div>
-          <div class="text-white/60">OT <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm($wkOT)) ?></span></div>
+          <div class="text-slate-500">Hours <span class="font-semibold text-slate-700"><?= h(payroll_fmt_hhmm($wkPaid)) ?></span></div>
+          <div class="text-slate-500">BH <span class="font-semibold text-slate-700"><?= h(payroll_fmt_hhmm($wkBH)) ?></span></div>
+          <div class="text-slate-500">Weekend <span class="font-semibold text-slate-700"><?= h(payroll_fmt_hhmm($wkWE)) ?></span></div>
+          <div class="text-slate-500">OT <span class="font-semibold text-slate-700"><?= h(payroll_fmt_hhmm($wkOT)) ?></span></div>
         </div>
       </div>
     </div>

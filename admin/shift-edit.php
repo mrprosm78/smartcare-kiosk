@@ -166,110 +166,110 @@ if ((int)($shift['is_agency'] ?? 0) === 1) {
         <?php require __DIR__ . '/partials/sidebar.php'; ?>
 
         <main class="flex-1">
-          <header class="rounded-3xl border border-white/10 bg-white/5 p-5">
+          <header class="rounded-3xl border border-slate-200 bg-white p-5">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <h1 class="text-2xl font-semibold">Edit shift</h1>
-                <p class="mt-2 text-sm text-white/70"><?= h($who) ?> • Shift #<?= (int)$shiftId ?></p>
+                <p class="mt-2 text-sm text-slate-600"><?= h($who) ?> • Shift #<?= (int)$shiftId ?></p>
               </div>
-              <a href="<?= h(admin_url('shifts.php')) ?>" class="rounded-2xl bg-white/10 border border-white/10 px-4 py-2 text-sm hover:bg-white/15">Back</a>
+              <a href="<?= h(admin_url('shifts.php')) ?>" class="rounded-2xl bg-slate-50 border border-slate-200 px-4 py-2 text-sm hover:bg-slate-100">Back</a>
             </div>
           </header>
 
           <?php if ($isLocked): ?>
-            <div class="mt-4 rounded-2xl border border-rose-400/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+            <div class="mt-4 rounded-2xl border border-rose-400/20 bg-rose-500/10 p-4 text-sm text-black-100">
               <div class="font-semibold">Payroll Locked</div>
-              <div class="mt-1 text-rose-100/80">
+              <div class="mt-1 text-black-100/80">
                 Locked at: <?= h(admin_fmt_dt((string)$shift['payroll_locked_at'])) ?>
                 <?php if (!empty($shift['payroll_locked_by'])): ?> • By: <?= h((string)$shift['payroll_locked_by']) ?><?php endif; ?>
                 <?php if (!empty($shift['payroll_batch_id'])): ?> • Batch: <?= h((string)$shift['payroll_batch_id']) ?><?php endif; ?>
               </div>
-              <div class="mt-2 text-rose-100/70 text-xs">
+              <div class="mt-2 text-black-100/70 text-xs">
                 This shift cannot be edited until a Super Admin unlocks it from the Shifts page.
               </div>
             </div>
           <?php endif; ?>
 
           <?php if ($error): ?>
-            <div class="mt-4 rounded-2xl border border-rose-400/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+            <div class="mt-4 rounded-2xl border border-rose-400/20 bg-rose-500/10 p-4 text-sm text-black-100">
               <?= h($error) ?>
             </div>
           <?php endif; ?>
 
           <?php if ($success): ?>
-            <div class="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
+            <div class="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm text-black-100">
               <?= h($success) ?>
             </div>
           <?php endif; ?>
 
           <div class="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-5">
-            <section class="lg:col-span-2 rounded-3xl border border-white/10 bg-white/5 p-5">
+            <section class="lg:col-span-2 rounded-3xl border border-slate-200 bg-white p-5">
               <h2 class="text-lg font-semibold">Adjustment (does not change original punch)</h2>
-              <p class="mt-1 text-sm text-white/70">Payroll + approvals will use the adjusted values. Original clock times remain unchanged.</p>
+              <p class="mt-1 text-sm text-slate-600">Payroll + approvals will use the adjusted values. Original clock times remain unchanged.</p>
 
               <form method="post" class="mt-4 space-y-4">
                 <input type="hidden" name="csrf" value="<?= h(admin_csrf_token()) ?>"/>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <label class="block">
-                    <div class="text-xs uppercase tracking-widest text-white/50">Clock in (effective)</div>
+                    <div class="text-xs uppercase tracking-widest text-slate-500">Clock in (effective)</div>
                     <input type="datetime-local" id="clock_in_at" name="clock_in_at" value="<?= h($inVal) ?>"
-                      class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30"
+                      class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30"
                       required <?= $isLocked ? 'disabled' : '' ?> />
-                    <div class="mt-2 text-xs text-white/50">Original: <?= h(admin_fmt_dt((string)$shift['clock_in_at'])) ?></div>
+                    <div class="mt-2 text-xs text-slate-500">Original: <?= h(admin_fmt_dt((string)$shift['clock_in_at'])) ?></div>
                   </label>
 
                   <label class="block">
-                    <div class="text-xs uppercase tracking-widest text-white/50">Clock out (effective)</div>
+                    <div class="text-xs uppercase tracking-widest text-slate-500">Clock out (effective)</div>
                     <input type="datetime-local" id="clock_out_at" name="clock_out_at" value="<?= h($outVal) ?>"
-                      class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30"
+                      class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30"
                       <?= $isLocked ? 'disabled' : '' ?> />
-                    <div class="mt-2 text-xs text-white/50">Original: <?= h(admin_fmt_dt((string)$shift['clock_out_at'])) ?></div>
+                    <div class="mt-2 text-xs text-slate-500">Original: <?= h(admin_fmt_dt((string)$shift['clock_out_at'])) ?></div>
                   </label>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <label class="block">
-                    <div class="text-xs uppercase tracking-widest text-white/50">Unpaid break (minutes)</div>
+                    <div class="text-xs uppercase tracking-widest text-slate-500">Unpaid break (minutes)</div>
                     <input type="number" min="0" step="1" name="break_minutes" value="<?= h($breakVal) ?>"
-                      class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30"
+                      class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30"
                       <?= $isLocked ? 'disabled' : '' ?> />
                   </label>
 
                   <label class="block">
-                    <div class="text-xs uppercase tracking-widest text-white/50">Training (minutes)</div>
+                    <div class="text-xs uppercase tracking-widest text-slate-500">Training (minutes)</div>
                     <input type="number" min="0" step="1" name="training_minutes" value="<?= h($trainingVal) ?>"
-                      class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30"
+                      class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30"
                       <?= $isLocked ? 'disabled' : '' ?> />
-                    <div class="mt-2 text-xs text-white/50">Adds paid training time to payroll (separate from punches).</div>
+                    <div class="mt-2 text-xs text-slate-500">Adds paid training time to payroll (separate from punches).</div>
                   </label>
 
                   <label class="block md:col-span-2">
-                    <div class="text-xs uppercase tracking-widest text-white/50">Reason</div>
+                    <div class="text-xs uppercase tracking-widest text-slate-500">Reason</div>
                     <input name="reason" value="<?= h((string)($_POST['reason'] ?? '')) ?>" placeholder="e.g. Forgot to clock out"
-                      class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30"
+                      class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30"
                       <?= $isLocked ? 'disabled' : '' ?> />
                   </label>
                 </div>
 
                 <label class="block">
-                  <div class="text-xs uppercase tracking-widest text-white/50">Training note (optional)</div>
+                  <div class="text-xs uppercase tracking-widest text-slate-500">Training note (optional)</div>
                   <input name="training_note" value="<?= h($trainingNoteVal) ?>" placeholder="e.g. Manual handling training"
-                    class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30"
+                    class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30"
                     <?= $isLocked ? 'disabled' : '' ?> />
                 </label>
 
                 <label class="block">
-                  <div class="text-xs uppercase tracking-widest text-white/50">Note (optional)</div>
+                  <div class="text-xs uppercase tracking-widest text-slate-500">Note (optional)</div>
                   <textarea name="note" rows="3"
-                    class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30"
+                    class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30"
                     <?= $isLocked ? 'disabled' : '' ?>><?= h((string)($_POST['note'] ?? '')) ?></textarea>
                 </label>
 
                 <label class="block">
-                  <div class="text-xs uppercase tracking-widest text-white/50">Training note (optional)</div>
+                  <div class="text-xs uppercase tracking-widest text-slate-500">Training note (optional)</div>
                   <textarea name="training_note" rows="2"
-                    class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30"
+                    class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30"
                     <?= $isLocked ? 'disabled' : '' ?>><?= h((string)($_POST['training_note'] ?? $trainingNoteVal)) ?></textarea>
                 </label>
 
@@ -277,33 +277,33 @@ if ((int)($shift['is_agency'] ?? 0) === 1) {
                   <?php if (!$isLocked): ?>
                     <button class="rounded-2xl bg-white text-slate-900 px-5 py-2.5 text-sm font-semibold hover:bg-white/90">Save adjustment</button>
                   <?php else: ?>
-                    <span class="text-xs text-white/60">Locked — cannot save.</span>
+                    <span class="text-xs text-slate-500">Locked — cannot save.</span>
                   <?php endif; ?>
                 </div>
               </form>
             </section>
 
-            <aside class="rounded-3xl border border-white/10 bg-white/5 p-5">
+            <aside class="rounded-3xl border border-slate-200 bg-white p-5">
               <h2 class="text-lg font-semibold">Rounding preview</h2>
               <div class="mt-3 space-y-3 text-sm">
                 <div class="flex items-center justify-between gap-3">
-                  <div class="text-white/60">Rounded in</div>
+                  <div class="text-slate-500">Rounded in</div>
                   <div class="font-semibold"><?= h(admin_fmt_dt($roundedIn)) ?></div>
                 </div>
                 <div class="flex items-center justify-between gap-3">
-                  <div class="text-white/60">Rounded out</div>
+                  <div class="text-slate-500">Rounded out</div>
                   <div class="font-semibold"><?= h(admin_fmt_dt($roundedOut)) ?></div>
                 </div>
-                <div class="pt-3 border-t border-white/10 text-xs text-white/50">
+                <div class="pt-3 border-t border-slate-200 text-xs text-slate-500">
                   Uses settings: enabled <?= $roundingEnabled ? 'Yes' : 'No' ?> • increment <?= (int)$inc ?> • grace <?= (int)$grace ?>
                 </div>
               </div>
             </aside>
           </div>
 
-          <section class="mt-5 rounded-3xl border border-white/10 bg-white/5 p-5">
+          <section class="mt-5 rounded-3xl border border-slate-200 bg-white p-5">
             <h2 class="text-lg font-semibold">Audit trail</h2>
-            <p class="mt-1 text-sm text-white/70">Every edit/approval is recorded here. Originals are preserved.</p>
+            <p class="mt-1 text-sm text-slate-600">Every edit/approval is recorded here. Originals are preserved.</p>
 
             <?php
               $hist = $pdo->prepare("SELECT * FROM kiosk_shift_changes WHERE shift_id=? ORDER BY id DESC LIMIT 50");
@@ -313,19 +313,19 @@ if ((int)($shift['is_agency'] ?? 0) === 1) {
 
             <div class="mt-4 space-y-3">
               <?php if (!$rows): ?>
-                <div class="text-sm text-white/60">No changes yet.</div>
+                <div class="text-sm text-slate-500">No changes yet.</div>
               <?php else: ?>
                 <?php foreach ($rows as $r): ?>
-                  <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div class="rounded-2xl border border-slate-200 bg-white p-4">
                     <div class="flex items-center justify-between gap-3">
                       <div class="text-sm font-semibold">
                         <?= h(strtoupper((string)$r['change_type'])) ?>
-                        <span class="text-white/50 font-normal">• <?= h((string)($r['changed_by_username'] ?? 'system')) ?> (<?= h((string)($r['changed_by_role'] ?? '')) ?>)</span>
+                        <span class="text-slate-500 font-normal">• <?= h((string)($r['changed_by_username'] ?? 'system')) ?> (<?= h((string)($r['changed_by_role'] ?? '')) ?>)</span>
                       </div>
-                      <div class="text-xs text-white/50"><?= h(admin_fmt_dt((string)$r['created_at'])) ?></div>
+                      <div class="text-xs text-slate-500"><?= h(admin_fmt_dt((string)$r['created_at'])) ?></div>
                     </div>
                     <?php if (!empty($r['reason']) || !empty($r['note'])): ?>
-                      <div class="mt-2 text-xs text-white/60">
+                      <div class="mt-2 text-xs text-slate-500">
                         <?= $r['reason'] ? ('Reason: ' . h((string)$r['reason'])) : '' ?>
                         <?= ($r['reason'] && $r['note']) ? ' • ' : '' ?>
                         <?= $r['note'] ? ('Note: ' . h((string)$r['note'])) : '' ?>

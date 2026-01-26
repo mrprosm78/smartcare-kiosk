@@ -28,10 +28,10 @@ function sc_shift_reason_badge(array $s): string {
 
 function badge(string $text, string $kind): string {
   $base = "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold border";
-  if ($kind === 'ok')   return "<span class='$base bg-emerald-500/10 border-emerald-400/20 text-emerald-100'>$text</span>";
-  if ($kind === 'warn') return "<span class='$base bg-amber-500/10 border-amber-400/20 text-amber-100'>$text</span>";
-  if ($kind === 'bad')  return "<span class='$base bg-rose-500/10 border-rose-400/20 text-rose-100'>$text</span>";
-  return "<span class='$base bg-white/5 border border-white/10 text-white/80'>$text</span>";
+  if ($kind === 'ok')   return "<span class='$base bg-emerald-500/10 border-emerald-400/20 text-black-100'>$text</span>";
+  if ($kind === 'warn') return "<span class='$base bg-amber-500/10 border-amber-400/20 text-black-100'>$text</span>";
+  if ($kind === 'bad')  return "<span class='$base bg-rose-500/10 border-rose-400/20 text-black-100'>$text</span>";
+  return "<span class='$base bg-white border border-slate-200 text-slate-700'>$text</span>";
 }
 
 function fmt_hhmm(?int $minutes): string {
@@ -371,11 +371,11 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         <?php require __DIR__ . '/partials/sidebar.php'; ?>
 
         <main class="flex-1">
-          <header class="rounded-3xl border border-white/10 bg-white/5 p-5">
+          <header class="rounded-3xl border border-slate-200 bg-white p-5">
             <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
               <div>
                 <h1 class="text-2xl font-semibold">Shifts</h1>
-                <p class="mt-2 text-sm text-white/70">Filter, edit, approve, and quickly spot missing clock-in/clock-out.</p>
+                <p class="mt-2 text-sm text-slate-600">Filter, edit, approve, and quickly spot missing clock-in/clock-out.</p>
               </div>
               <div class="flex items-center gap-2">
                 <?php if (admin_can($user, 'edit_shifts')): ?>
@@ -386,17 +386,17 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
           </header>
 
           <?php if ((string)($_GET['n'] ?? '') === 'locked'): ?>
-            <div class="mt-5 rounded-3xl border border-rose-400/20 bg-rose-500/10 p-5 text-sm text-rose-100">
+            <div class="mt-5 rounded-3xl border border-rose-400/20 bg-rose-500/10 p-5 text-sm text-black-100">
               This shift is <b>Payroll Locked</b> and cannot be edited or (un)approved. Super Admin can unlock if needed.
             </div>
           <?php endif; ?>
 
-          <form method="get" id="shift-filters" class="mt-5 rounded-3xl border border-white/10 bg-white/5 p-5">
+          <form method="get" id="shift-filters" class="mt-5 rounded-3xl border border-slate-200 bg-white p-5">
             <div class="grid grid-cols-1 md:grid-cols-6 gap-4">
 
               <label class="md:col-span-2">
-                <div class="text-xs uppercase tracking-widest text-white/50">Period</div>
-                <select name="period" id="period" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30">
+                <div class="text-xs uppercase tracking-widest text-slate-500">Period</div>
+                <select name="period" id="period" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30">
                   <?php foreach ([
                     'today' => 'Today',
                     'yesterday' => 'Yesterday',
@@ -412,18 +412,18 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
               </label>
 
               <label class="md:col-span-1">
-                <div class="text-xs uppercase tracking-widest text-white/50">From</div>
-                <input type="date" name="from" id="from" value="<?= h($fromDt->format('Y-m-d')) ?>" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30"/>
+                <div class="text-xs uppercase tracking-widest text-slate-500">From</div>
+                <input type="date" name="from" id="from" value="<?= h($fromDt->format('Y-m-d')) ?>" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30"/>
               </label>
 
               <label class="md:col-span-1">
-                <div class="text-xs uppercase tracking-widest text-white/50">To</div>
-                <input type="date" name="to" id="to" value="<?= h($toDt->format('Y-m-d')) ?>" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30"/>
+                <div class="text-xs uppercase tracking-widest text-slate-500">To</div>
+                <input type="date" name="to" id="to" value="<?= h($toDt->format('Y-m-d')) ?>" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30"/>
               </label>
 
               <label class="md:col-span-1">
-                <div class="text-xs uppercase tracking-widest text-white/50">Employee</div>
-                <select name="employee_id" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30">
+                <div class="text-xs uppercase tracking-widest text-slate-500">Employee</div>
+                <select name="employee_id" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30">
                   <option value="0">All</option>
                   <?php foreach ($emps as $e): ?>
                     <?php
@@ -439,8 +439,8 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
               </label>
 
               <label class="md:col-span-1">
-                <div class="text-xs uppercase tracking-widest text-white/50">Status</div>
-                <select name="status" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30">
+                <div class="text-xs uppercase tracking-widest text-slate-500">Status</div>
+                <select name="status" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30">
                   <?php foreach ([
                     'all'=>'All',
                     'open'=>'Open',
@@ -459,18 +459,18 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
             </div>
 
             <div class="mt-4 flex items-center justify-between">
-              <div class="text-xs text-white/50">Showing up to 500 shifts • Week runs Monday → Sunday</div>
+              <div class="text-xs text-slate-500">Showing up to 500 shifts • Week runs Monday → Sunday</div>
               <button class="rounded-2xl bg-white text-slate-900 px-5 py-2.5 text-sm font-semibold hover:bg-white/90">Apply filters</button>
             </div>
           </form>
 
-          <section class="mt-5 rounded-3xl border border-white/10 bg-white/5 p-5 overflow-x-auto">
+          <section class="mt-5 rounded-3xl border border-slate-200 bg-white p-5 overflow-x-auto">
 
             <?php if (admin_can($user, 'approve_shifts')): ?>
               <form method="post" id="bulk-approve-form" class="mb-4 flex items-center justify-between gap-3">
                 <input type="hidden" name="csrf" value="<?= h($csrf) ?>"/>
                 <input type="hidden" name="action" value="bulk_approve"/>
-                <div class="text-sm text-white/70">
+                <div class="text-sm text-slate-600">
                   <span class="font-semibold">Bulk approve</span> (selected only)
                 </div>
                 <button type="submit" class="rounded-2xl bg-white text-slate-900 px-4 py-2 text-sm font-semibold hover:bg-white/90" onclick="return confirm('Approve selected shifts? Only closed, unapproved, unlocked shifts will be approved.');">
@@ -480,13 +480,13 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
             <?php endif; ?>
 
             <table class="min-w-full text-sm">
-              <thead class="text-xs uppercase tracking-widest text-white/50">
+              <thead class="text-xs uppercase tracking-widest text-slate-500">
                 <tr>
                   <?php if (admin_can($user, 'approve_shifts')): ?>
                     <th class="text-left py-3 pr-4"><input type="checkbox" id="select-all" class="h-4 w-4 rounded" /></th>
                   <?php endif; ?>
                   <th class="text-left py-3 pr-4">Employee</th>
-                  <th class="px-4 py-3 text-left text-xs font-semibold text-white/60">Reason</th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500">Reason</th>
                   <th class="text-left py-3 pr-4">Clock In</th>
                   <th class="text-left py-3 pr-4">Clock Out</th>
                   <th class="text-left py-3 pr-4">Duration</th>
@@ -497,7 +497,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
               <tbody class="divide-y divide-white/10">
                 <?php if (!$rows): ?>
                   <tr>
-                    <td colspan="<?= admin_can($user,'approve_shifts') ? '8' : '7' ?>" class="py-6 text-center text-white/60">No shifts found for this filter.</td>
+                    <td colspan="<?= admin_can($user,'approve_shifts') ? '8' : '7' ?>" class="py-6 text-center text-slate-500">No shifts found for this filter.</td>
                   </tr>
                 <?php endif; ?>
 
@@ -542,17 +542,17 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
                     <td class="py-4 pr-4">
                       <div class="font-semibold"><?= h($name) ?></div>
-                      <div class="text-xs text-white/50">
+                      <div class="text-xs text-slate-500">
                         <?= h((string)($r['department_name'] ?? '—')) ?>
                         <?php if (!empty($r['employee_number'])): ?> • #<?= h((string)$r['employee_number']) ?><?php endif; ?>
                       </div>
                     </td>
 
-                    <td class="px-4 py-4 text-white/80">
+                    <td class="px-4 py-4 text-slate-700">
                       <div class="text-sm"><?= h(sc_shift_reason_badge($r)) ?></div>
                     </td>
 
-                    <td class="py-4 pr-4 text-white/80">
+                    <td class="py-4 pr-4 text-slate-700">
                       <?php if (!empty($effIn)): ?>
                         <?= h(admin_fmt_dt($effIn)) ?>
                       <?php else: ?>
@@ -560,7 +560,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                       <?php endif; ?>
                     </td>
 
-                    <td class="py-4 pr-4 text-white/80">
+                    <td class="py-4 pr-4 text-slate-700">
                       <?php if (!empty($effOut)): ?>
                         <?= h(admin_fmt_dt($effOut)) ?>
                       <?php else: ?>
@@ -571,7 +571,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                     <td class="py-4 pr-4">
                       <div class="font-semibold"><?= h(fmt_hhmm($mins)) ?></div>
                       <?php if ($eff['break_minutes'] !== null): ?>
-                        <div class="text-xs text-white/50 mt-1">Break: <?= (int)$eff['break_minutes'] ?>m</div>
+                        <div class="text-xs text-slate-500 mt-1">Break: <?= (int)$eff['break_minutes'] ?>m</div>
                       <?php endif; ?>
                     </td>
 
@@ -585,7 +585,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                             <?php $focus = empty($effIn) ? 'in' : 'out'; ?>
                             <a href="<?= h(admin_url('shift-edit.php?id=' . (int)$r['id'] . '&focus=' . $focus)) ?>" class="rounded-2xl bg-amber-500/10 border border-amber-400/20 px-3 py-2 text-xs hover:bg-amber-500/15">Fix</a>
                           <?php endif; ?>
-                          <a href="<?= h(admin_url('shift-edit.php?id=' . (int)$r['id'])) ?>" class="rounded-2xl bg-white/10 border border-white/10 px-3 py-2 text-xs hover:bg-white/15">Edit</a>
+                          <a href="<?= h(admin_url('shift-edit.php?id=' . (int)$r['id'])) ?>" class="rounded-2xl bg-slate-50 border border-slate-200 px-3 py-2 text-xs hover:bg-slate-100">Edit</a>
                         <?php endif; ?>
 
                         <?php if (admin_can($user, 'approve_shifts') && !$locked && !$voided): ?>
@@ -594,10 +594,10 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                             <input type="hidden" name="shift_id" value="<?= (int)$r['id'] ?>"/>
                             <?php if ($approved): ?>
                               <input type="hidden" name="action" value="unapprove"/>
-                              <button class="rounded-2xl bg-white/5 border border-white/10 px-3 py-2 text-xs hover:bg-white/10">Unapprove</button>
+                              <button class="rounded-2xl bg-white border border-slate-200 px-3 py-2 text-xs hover:bg-slate-50">Unapprove</button>
                             <?php else: ?>
                               <input type="hidden" name="action" value="approve"/>
-                              <label class="inline-flex items-center gap-2 mr-2 text-xs text-white/70">
+                              <label class="inline-flex items-center gap-2 mr-2 text-xs text-slate-600">
                                 <input type="checkbox" name="is_callout" value="1" class="h-4 w-4 rounded" <?= ((int)($r['is_callout'] ?? 0)===1) ? 'checked' : '' ?> />
                                 Call-out
                               </label>
@@ -607,7 +607,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                         <?php endif; ?>
 
                         <?php if ($locked): ?>
-                          <span class="rounded-2xl bg-white/5 border border-white/10 px-3 py-2 text-xs text-white/60">Locked</span>
+                          <span class="rounded-2xl bg-white border border-slate-200 px-3 py-2 text-xs text-slate-500">Locked</span>
                         <?php endif; ?>
 
                         <?php if ($locked && admin_can($user, 'unlock_payroll_locked_shifts')): ?>
@@ -628,8 +628,8 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
             </table>
           </section>
 
-          <div class="mt-4 text-xs text-white/50">
-            Tip: edits are stored in <code class="px-2 py-1 rounded-xl bg-white/10">kiosk_shift_changes</code> and never overwrite originals.
+          <div class="mt-4 text-xs text-slate-500">
+            Tip: edits are stored in <code class="px-2 py-1 rounded-xl bg-slate-50">kiosk_shift_changes</code> and never overwrite originals.
           </div>
 
         </main>

@@ -16,9 +16,9 @@ function toast(type, title, message, opts = {}) {
 
   const tone = (t) => {
     switch ((t || "").toLowerCase()) {
-      case "success": return "border-emerald-500/30 bg-emerald-500/10 text-emerald-50";
-      case "warning": return "border-amber-500/30 bg-amber-500/10 text-amber-50";
-      default: return "border-rose-500/30 bg-rose-500/10 text-rose-50";
+      case "success": return "border-emerald-500/30 bg-emerald-500/10 text-black-50";
+      case "warning": return "border-amber-500/30 bg-amber-500/10 text-black-50";
+      default: return "border-rose-500/30 bg-rose-500/10 text-black-50";
     }
   };
 

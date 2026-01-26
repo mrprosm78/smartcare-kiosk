@@ -225,29 +225,29 @@ $active = admin_url('shifts.php');
         <?php require __DIR__ . '/partials/sidebar.php'; ?>
 
         <main class="flex-1">
-          <header class="rounded-3xl border border-white/10 bg-white/5 p-5">
+          <header class="rounded-3xl border border-slate-200 bg-white p-5">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <h1 class="text-2xl font-semibold">Add shift</h1>
-                <p class="mt-2 text-sm text-white/70">Use this when an employee forgot to clock in/out. This does not modify punches.</p>
+                <p class="mt-2 text-sm text-slate-600">Use this when an employee forgot to clock in/out. This does not modify punches.</p>
               </div>
-              <a href="<?= h(admin_url('shifts.php')) ?>" class="rounded-2xl bg-white/5 border border-white/10 px-4 py-2 text-sm hover:bg-white/10">Back</a>
+              <a href="<?= h(admin_url('shifts.php')) ?>" class="rounded-2xl bg-white border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50">Back</a>
             </div>
           </header>
 
           <?php if ($error): ?>
-            <div class="mt-5 rounded-3xl border border-rose-400/20 bg-rose-500/10 p-5 text-sm text-rose-100">
+            <div class="mt-5 rounded-3xl border border-rose-400/20 bg-rose-500/10 p-5 text-sm text-black-100">
               <b>Error:</b> <?= h($error) ?>
             </div>
           <?php endif; ?>
 
-          <form method="post" class="mt-5 rounded-3xl border border-white/10 bg-white/5 p-5">
+          <form method="post" class="mt-5 rounded-3xl border border-slate-200 bg-white p-5">
             <input type="hidden" name="csrf" value="<?= h(admin_csrf_token()) ?>"/>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label>
-                <div class="text-xs uppercase tracking-widest text-white/50">Employee</div>
-                <select name="employee_id" class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30">
+                <div class="text-xs uppercase tracking-widest text-slate-500">Employee</div>
+                <select name="employee_id" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30">
                   <option value="0">Select…</option>
                   <?php foreach ($emps as $e): ?>
                     <?php
@@ -264,20 +264,20 @@ $active = admin_url('shifts.php');
 
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <label>
-                  <div class="text-xs uppercase tracking-widest text-white/50">Call-out</div>
+                  <div class="text-xs uppercase tracking-widest text-slate-500">Call-out</div>
                   <div class="mt-3 flex items-center gap-2">
                     <input type="checkbox" name="is_callout" value="1" class="h-4 w-4 rounded" <?= $isCallout === 1 ? 'checked' : '' ?> />
-                    <span class="text-sm text-white/80">Mark as call-out</span>
+                    <span class="text-sm text-slate-700">Mark as call-out</span>
                   </div>
                 </label>
 
                 <label>
-                  <div class="text-xs uppercase tracking-widest text-white/50">Approve now</div>
+                  <div class="text-xs uppercase tracking-widest text-slate-500">Approve now</div>
                   <div class="mt-3 flex items-center gap-2">
                     <input type="checkbox" name="approve_now" value="1" class="h-4 w-4 rounded"
                       <?= $approveNow === 1 ? 'checked' : '' ?>
                       <?= admin_can($user, 'approve_shifts') ? '' : 'disabled' ?> />
-                    <span class="text-sm text-white/80">
+                    <span class="text-sm text-slate-700">
                       <?= admin_can($user, 'approve_shifts') ? 'Approve immediately (closed shifts only)' : 'Requires approve permission' ?>
                     </span>
                   </div>
@@ -285,33 +285,33 @@ $active = admin_url('shifts.php');
               </div>
 
               <label>
-                <div class="text-xs uppercase tracking-widest text-white/50">Clock in (local)</div>
+                <div class="text-xs uppercase tracking-widest text-slate-500">Clock in (local)</div>
                 <input name="clock_in_at" type="datetime-local" value="<?= h($clockInInput) ?>"
-                  class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                  class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
               </label>
 
               <label>
-                <div class="text-xs uppercase tracking-widest text-white/50">Clock out (local)</div>
+                <div class="text-xs uppercase tracking-widest text-slate-500">Clock out (local)</div>
                 <input name="clock_out_at" type="datetime-local" value="<?= h($clockOutInput) ?>"
-                  class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                  class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
               </label>
 
               <label>
-                <div class="text-xs uppercase tracking-widest text-white/50">Training minutes (optional)</div>
+                <div class="text-xs uppercase tracking-widest text-slate-500">Training minutes (optional)</div>
                 <input name="training_minutes" type="number" min="0" step="1" value="<?= h($trainingMinutes) ?>"
-                  class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                  class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
               </label>
 
               <label>
-                <div class="text-xs uppercase tracking-widest text-white/50">Training note (optional)</div>
+                <div class="text-xs uppercase tracking-widest text-slate-500">Training note (optional)</div>
                 <input name="training_note" value="<?= h($trainingNote) ?>"
-                  class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                  class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
               </label>
 
               <label class="md:col-span-2">
-                <div class="text-xs uppercase tracking-widest text-white/50">Manager note (optional)</div>
+                <div class="text-xs uppercase tracking-widest text-slate-500">Manager note (optional)</div>
                 <input name="note" value="<?= h($note) ?>"
-                  class="mt-2 w-full rounded-2xl bg-slate-950/40 border border-white/10 px-4 py-2.5 text-sm outline-none focus:border-white/30"
+                  class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30"
                   placeholder="Why was this added?" />
               </label>
             </div>

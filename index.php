@@ -182,9 +182,9 @@ $v = h($ui_version);
 
     <!-- Offline banner -->
     <div id="offlineBanner" class="hidden mx-auto max-w-5xl px-6">
-      <div class="mt-4 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-50">
+      <div class="mt-4 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-black-50">
         <span class="font-semibold">Offline mode</span> — punches will sync automatically.
-        <span id="offlineBannerQueue" class="ml-2 text-amber-100/80"></span>
+        <span id="offlineBannerQueue" class="ml-2 text-black-100/80"></span>
       </div>
     </div>
 
@@ -199,7 +199,7 @@ $v = h($ui_version);
               <p id="uiEmployeeNotice" class="text-base md:text-lg text-white/60 mt-2">
                 Enter your <span class="font-semibold text-white/80">4-digit PIN</span> on the next screen.
               </p>
-              <p id="pairHint" class="hidden mt-3 text-base text-amber-200/90">
+              <p id="pairHint" class="hidden mt-3 text-base text-black-200/90">
                 This kiosk is not paired yet. Manager pairing is required.
               </p>
             </div>
@@ -219,7 +219,7 @@ $v = h($ui_version);
               <div class="flex items-center justify-between gap-4">
                 <div>
                   <div class="text-xl md:text-2xl font-bold">Clock In</div>
-                  <div class="text-base text-emerald-50/90 mt-2">Start your shift</div>
+                  <div class="text-base text-black-50/90 mt-2">Start your shift</div>
                 </div>
                 <div class="h-16 w-16 rounded-2xl bg-white/15 flex items-center justify-center">
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" class="text-white">
@@ -258,7 +258,7 @@ $v = h($ui_version);
                 <div class="text-base md:text-lg font-semibold text-white/85">Currently on shift</div>
                 <div class="text-sm text-white/50 mt-1">Staff who are clocked in right now</div>
               </div>
-              <div class="shrink-0 rounded-full bg-emerald-500/15 text-emerald-200 px-3 py-1 text-xs font-semibold">LIVE</div>
+              <div class="shrink-0 rounded-full bg-emerald-500/15 text-black-200 px-3 py-1 text-xs font-semibold">LIVE</div>
             </div>
 
             <div id="openShiftsEmpty" class="mt-4 text-sm text-white/50">No one is currently clocked in.</div>
@@ -378,7 +378,7 @@ $v = h($ui_version);
             <div class="pinDot h-3.5 w-3.5 rounded-full bg-white/15"></div>
           </div>
 
-          <div id="pinError" class="hidden mt-5 rounded-2xl bg-rose-500/10 border border-rose-500/20 px-5 py-4 text-rose-100">
+          <div id="pinError" class="hidden mt-5 rounded-2xl bg-rose-500/10 border border-rose-500/20 px-5 py-4 text-black-100">
             Invalid PIN. Please try again.
           </div>
 

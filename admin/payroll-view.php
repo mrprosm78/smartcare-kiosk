@@ -166,18 +166,18 @@ admin_page_start($pdo, $title);
           <div class="flex items-start justify-between gap-4 flex-wrap">
             <div>
               <h1 class="text-2xl font-semibold">Payroll Batch #<?= (int)$batchId ?></h1>
-              <div class="mt-1 text-sm text-white/70">Period: <b><?= h((string)$batch['period_start']) ?></b> to <b><?= h((string)$batch['period_end']) ?></b> · Status: <b><?= h((string)$batch['status']) ?></b></div>
+              <div class="mt-1 text-sm text-slate-600">Period: <b><?= h((string)$batch['period_start']) ?></b> to <b><?= h((string)$batch['period_end']) ?></b> · Status: <b><?= h((string)$batch['status']) ?></b></div>
             </div>
             <div class="flex gap-2">
-              <a href="<?= h(admin_url('payroll-runs.php')) ?>" class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15">Back</a>
-              <a href="<?= h(admin_url('shifts.php')) ?>" class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15">Review shifts</a>
+              <a href="<?= h(admin_url('payroll-runs.php')) ?>" class="px-4 py-2 rounded-xl bg-slate-50 hover:bg-slate-100">Back</a>
+              <a href="<?= h(admin_url('shifts.php')) ?>" class="px-4 py-2 rounded-xl bg-slate-50 hover:bg-slate-100">Review shifts</a>
               <a href="<?= h(admin_url('payroll-export.php?batch_id='.(int)$batchId)) ?>" class="px-4 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30">Export CSV (Raw + Rounded)</a>
             </div>
           </div>
 
-          <div class="mt-6 overflow-hidden rounded-3xl border border-white/10">
+          <div class="mt-6 overflow-hidden rounded-3xl border border-slate-200">
             <table class="w-full text-sm">
-              <thead class="bg-white/5 text-white/70">
+              <thead class="bg-white text-slate-600">
                 <tr>
                   <th class="text-left px-4 py-3">Employee</th>
                   <th class="text-left px-4 py-3">Shifts</th>
@@ -190,14 +190,14 @@ admin_page_start($pdo, $title);
               </thead>
               <tbody>
                 <?php if (!$totals): ?>
-                  <tr><td colspan="7" class="px-4 py-4 text-white/60">No snapshots in this batch.</td></tr>
+                  <tr><td colspan="7" class="px-4 py-4 text-slate-500">No snapshots in this batch.</td></tr>
                 <?php endif; ?>
 
                 <?php foreach ($totals as $t): ?>
-                  <tr class="border-t border-white/10">
+                  <tr class="border-t border-slate-200">
                     <td class="px-4 py-3">
                       <div class="font-semibold"><?= h((string)$t['employee_code']) ?></div>
-                      <div class="text-xs text-white/60"><?= h((string)$t['name']) ?></div>
+                      <div class="text-xs text-slate-500"><?= h((string)$t['name']) ?></div>
                     </td>
                     <td class="px-4 py-3"><?= (int)$t['shifts'] ?></td>
                     <td class="px-4 py-3 font-semibold"><?= hhmm((int)$t['paid']) ?></td>
@@ -216,42 +216,42 @@ admin_page_start($pdo, $title);
               <h2 class="text-lg font-semibold">Employee breakdown (weeks → days)</h2>
               <form method="get" class="flex items-center gap-2">
                 <input type="hidden" name="batch_id" value="<?= (int)$batchId ?>" />
-                <label class="text-sm text-white/70">Employee</label>
-                <select name="employee_id" class="px-3 py-2 rounded-xl bg-white/10 border border-white/10">
+                <label class="text-sm text-slate-600">Employee</label>
+                <select name="employee_id" class="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200">
                   <?php foreach ($totals as $eid => $t): ?>
                     <option value="<?= (int)$eid ?>" <?= ((int)$eid === (int)$selectedEmployeeId) ? 'selected' : '' ?>><?= h((string)$t['employee_code'].' — '.(string)$t['name']) ?></option>
                   <?php endforeach; ?>
                 </select>
-                <button class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15">View</button>
+                <button class="px-4 py-2 rounded-xl bg-slate-50 hover:bg-slate-100">View</button>
               </form>
             </div>
 
             <?php if ($selectedEmployeeId <= 0): ?>
-              <div class="mt-3 text-white/60 text-sm">Select an employee to view the week/day calculation.</div>
+              <div class="mt-3 text-slate-500 text-sm">Select an employee to view the week/day calculation.</div>
             <?php else: ?>
               <?php $tSel = $totals[$selectedEmployeeId] ?? null; ?>
               <?php if ($tSel): ?>
                 <div class="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <div class="rounded-3xl border border-white/10 p-4">
-                    <div class="text-sm text-white/70">Calculation summary (month)</div>
+                  <div class="rounded-3xl border border-slate-200 p-4">
+                    <div class="text-sm text-slate-600">Calculation summary (month)</div>
                     <div class="mt-3 space-y-1 text-sm">
                       <div class="flex justify-between"><span>Worked (raw)</span><b><?= hhmm((int)$tSel['worked']) ?></b></div>
                       <div class="flex justify-between"><span>Break deducted</span><b>-<?= hhmm((int)$tSel['break']) ?></b></div>
                       <?php $breakPaid = (bool)($profile['break_is_paid'] ?? false); ?>
                       <div class="flex justify-between"><span>Paid break added back</span><b><?= $breakPaid ? '+'.hhmm((int)$tSel['break']) : '+00:00' ?></b></div>
-                      <div class="pt-2 border-t border-white/10 flex justify-between"><span>Paid (after breaks)</span><b><?= hhmm((int)$tSel['paid']) ?></b></div>
+                      <div class="pt-2 border-t border-slate-200 flex justify-between"><span>Paid (after breaks)</span><b><?= hhmm((int)$tSel['paid']) ?></b></div>
                       <div class="flex justify-between"><span>Base</span><b><?= hhmm((int)$tSel['normal']) ?></b></div>
                       <div class="flex justify-between"><span>Weekend</span><b><?= hhmm((int)$tSel['weekend']) ?></b></div>
                       <div class="flex justify-between"><span>Bank Holiday</span><b><?= hhmm((int)$tSel['bh']) ?></b></div>
                       <div class="flex justify-between"><span>Overtime</span><b><?= hhmm((int)$tSel['ot']) ?></b></div>
-                      <div class="pt-2 text-xs text-white/60">
+                      <div class="pt-2 text-xs text-slate-500">
                         No stacking: overtime replaces BH/weekend when contract weekly hours are exceeded.
                       </div>
                     </div>
                   </div>
 
-                  <div class="rounded-3xl border border-white/10 p-4">
-                    <div class="text-sm text-white/70">Contract (for overtime)</div>
+                  <div class="rounded-3xl border border-slate-200 p-4">
+                    <div class="text-sm text-slate-600">Contract (for overtime)</div>
                     <div class="mt-3 text-sm space-y-1">
                       <div class="flex justify-between"><span>Contract hours / week</span><b><?= h((string)($profile['contract_hours_per_week'] ?? 0)) ?></b></div>
                       <div class="flex justify-between"><span>Breaks</span><b><?= $breakPaid ? 'Paid' : 'Unpaid' ?></b></div>
@@ -263,7 +263,7 @@ admin_page_start($pdo, $title);
 
                 <div class="mt-4 space-y-3">
                   <?php if (!$weeks): ?>
-                    <div class="text-white/60 text-sm">No day breakdown data found for this employee in this batch. (Tip: rerun payroll for this month to populate day breakdown.)</div>
+                    <div class="text-slate-500 text-sm">No day breakdown data found for this employee in this batch. (Tip: rerun payroll for this month to populate day breakdown.)</div>
                   <?php endif; ?>
 
                   <?php foreach ($weeks as $wk => $w): ?>
@@ -291,18 +291,18 @@ admin_page_start($pdo, $title);
                         $incomplete = ($endLEx > $periodEndLocal);
                       }
                     ?>
-                    <details class="rounded-3xl border border-white/10 overflow-hidden" open>
-                      <summary class="cursor-pointer select-none px-4 py-3 bg-white/5 flex items-center justify-between gap-4">
+                    <details class="rounded-3xl border border-slate-200 overflow-hidden" open>
+                      <summary class="cursor-pointer select-none px-4 py-3 bg-white flex items-center justify-between gap-4">
                         <div class="font-semibold text-sm">Week <?= h($startL->format('d M Y')) ?> → <?= h($endL->format('d M Y')) ?></div>
-                        <div class="flex items-center gap-4 text-xs text-white/70">
+                        <div class="flex items-center gap-4 text-xs text-slate-600">
                           <?php if ($incomplete): ?><span class="px-2 py-1 rounded-lg bg-yellow-500/20 text-yellow-200">Incomplete week · OT deferred</span><?php endif; ?>
-                          <span>Paid <b class="text-white"><?= hhmm($weekPaid) ?></b></span>
-                          <span>OT <b class="text-white"><?= hhmm($weekOT) ?></b></span>
+                          <span>Paid <b class="text-slate-900"><?= hhmm($weekPaid) ?></b></span>
+                          <span>OT <b class="text-slate-900"><?= hhmm($weekOT) ?></b></span>
                         </div>
                       </summary>
                       <div class="overflow-x-auto">
                         <table class="w-full text-sm">
-                          <thead class="bg-white/5 text-white/70">
+                          <thead class="bg-white text-slate-600">
                             <tr>
                               <th class="text-left px-4 py-3">Date</th>
                               <th class="text-left px-4 py-3">Shifts</th>
@@ -324,14 +324,14 @@ admin_page_start($pdo, $title);
                                 $v = $w['days'][$d];
                                 $shiftList = $dayShiftRows[$d] ?? [];
                             ?>
-                              <tr class="border-t border-white/10">
+                              <tr class="border-t border-slate-200">
                                 <td class="px-4 py-3 font-semibold"><?=
                                   h((new DateTimeImmutable($d.' 00:00:00', new DateTimeZone(payroll_timezone($pdo))))->format('D, d M'))
                                 ?></td>
                                 <td class="px-4 py-3">
                                   <details>
                                     <summary class="cursor-pointer underline"><?= (int)($v['shift_count'] ?? 0) ?> shift(s)</summary>
-                                    <div class="mt-2 text-xs text-white/70 space-y-1">
+                                    <div class="mt-2 text-xs text-slate-600 space-y-1">
                                       <?php foreach ($shiftList as $sr): ?>
                                         <div class="flex items-center justify-between gap-3">
                                           <a class="underline" href="<?= h(admin_url('shift-view.php?id='.(int)$sr['shift_id'])) ?>">#<?= (int)$sr['shift_id'] ?></a>
@@ -363,9 +363,9 @@ admin_page_start($pdo, $title);
 
           <div class="mt-6">
             <h2 class="text-lg font-semibold">Shift snapshots</h2>
-            <div class="mt-3 overflow-hidden rounded-3xl border border-white/10">
+            <div class="mt-3 overflow-hidden rounded-3xl border border-slate-200">
               <table class="w-full text-sm">
-                <thead class="bg-white/5 text-white/70">
+                <thead class="bg-white text-slate-600">
                   <tr>
                     <th class="text-left px-4 py-3">Shift</th>
                     <th class="text-left px-4 py-3">Employee</th>
@@ -379,7 +379,7 @@ admin_page_start($pdo, $title);
                 </thead>
                 <tbody>
                   <?php foreach ($rows as $r): ?>
-                    <tr class="border-t border-white/10">
+                    <tr class="border-t border-slate-200">
                       <td class="px-4 py-3 font-semibold">#<?= (int)$r['shift_id'] ?></td>
                       <td class="px-4 py-3"><?= h((string)$r['employee_code']) ?></td>
                       <td class="px-4 py-3"><?= hhmm((int)$r['paid_minutes']) ?></td>

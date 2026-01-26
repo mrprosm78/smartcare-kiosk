@@ -62,35 +62,35 @@ admin_page_start($pdo, 'Cleanup legacy settings');
         <?php require __DIR__ . '/partials/sidebar.php'; ?>
 
         <main class="flex-1">
-          <header class="rounded-3xl border border-white/10 bg-white/5 p-5">
+          <header class="rounded-3xl border border-slate-200 bg-white p-5">
             <h1 class="text-2xl font-semibold">Cleanup legacy payroll settings</h1>
-            <p class="mt-2 text-sm text-white/70">
-              Removes old care-home payroll rule keys from <code class="px-2 py-1 rounded-xl bg-white/10">kiosk_settings</code>.
+            <p class="mt-2 text-sm text-slate-600">
+              Removes old care-home payroll rule keys from <code class="px-2 py-1 rounded-xl bg-slate-50">kiosk_settings</code>.
               Safe to run multiple times.
             </p>
           </header>
 
           <?php if ($deleted > 0): ?>
-            <div class="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
+            <div class="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm text-black-100">
               Deleted <?= (int)$deleted ?> rows.
             </div>
           <?php elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $err === ''): ?>
-            <div class="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
+            <div class="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
               Nothing to delete (already clean).
             </div>
           <?php endif; ?>
 
           <?php if ($err): ?>
-            <div class="mt-4 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-100"><?= h($err) ?></div>
+            <div class="mt-4 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-black-100"><?= h($err) ?></div>
           <?php endif; ?>
 
           <form method="post" class="mt-5">
             <input type="hidden" name="csrf" value="<?= h(admin_csrf_token()) ?>"/>
-            <div class="rounded-3xl border border-white/10 bg-white/5 p-5">
+            <div class="rounded-3xl border border-slate-200 bg-white p-5">
               <h2 class="text-lg font-semibold">Keys to delete</h2>
-              <ul class="mt-3 space-y-1 text-sm text-white/70">
+              <ul class="mt-3 space-y-1 text-sm text-slate-600">
                 <?php foreach ($keys as $k): ?>
-                  <li><code class="px-2 py-1 rounded-xl bg-white/10"><?= h($k) ?></code></li>
+                  <li><code class="px-2 py-1 rounded-xl bg-slate-50"><?= h($k) ?></code></li>
                 <?php endforeach; ?>
               </ul>
 

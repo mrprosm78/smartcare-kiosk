@@ -63,16 +63,16 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         <?php require __DIR__ . '/partials/sidebar.php'; ?>
 
         <main class="flex-1">
-          <header class="rounded-3xl border border-white/10 bg-white/5 p-5">
+          <header class="rounded-3xl border border-slate-200 bg-white p-5">
             <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
               <div>
                 <h1 class="text-2xl font-semibold">Employees</h1>
-                <p class="mt-2 text-sm text-white/70">Manage staff + agency profiles. Payroll rules are stored per employee.</p>
+                <p class="mt-2 text-sm text-slate-600">Manage staff + agency profiles. Payroll rules are stored per employee.</p>
               </div>
               <?php if (admin_can($user, 'manage_employees')): ?>
                 <div class="flex flex-wrap gap-2">
-                  <a href="<?= h(admin_url('departments.php')) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white/5 border border-white/10 text-white/80 hover:bg-white/10">Department</a>
-                  <a href="<?= h(admin_url('employee-edit.php')) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-100 hover:bg-emerald-500/20">Add employee</a>
+                  <a href="<?= h(admin_url('departments.php')) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Department</a>
+                  <a href="<?= h(admin_url('employee-edit.php')) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-emerald-500/15 border border-emerald-500/30 text-black-100 hover:bg-emerald-500/20">Add employee</a>
                   <a href="<?= h(admin_url('employee-edit.php')) ?>?agency=1" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-sky-500/15 border border-sky-500/30 text-sky-100 hover:bg-sky-500/20">Add agency</a>
                 </div>
               <?php endif; ?>
@@ -80,13 +80,13 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
             <form method="get" class="mt-4 grid grid-cols-1 md:grid-cols-12 gap-3">
               <div class="md:col-span-4">
-                <label class="block text-xs font-semibold text-white/70">Search</label>
-                <input name="q" value="<?= h($q) ?>" class="mt-1 w-full rounded-2xl bg-slate-950/50 border border-white/10 px-3 py-2 text-sm" placeholder="Name, code, nickname, agency">
+                <label class="block text-xs font-semibold text-slate-600">Search</label>
+                <input name="q" value="<?= h($q) ?>" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm" placeholder="Name, code, nickname, agency">
               </div>
 
               <div class="md:col-span-3">
-                <label class="block text-xs font-semibold text-white/70">Department</label>
-                <select name="cat" class="mt-1 w-full rounded-2xl bg-slate-950/50 border border-white/10 px-3 py-2 text-sm">
+                <label class="block text-xs font-semibold text-slate-600">Department</label>
+                <select name="cat" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
                   <option value="0">All</option>
                   <?php foreach ($cats as $c): ?>
                     <option value="<?= (int)$c['id'] ?>" <?= ((int)$c['id'] === $cat) ? 'selected' : '' ?>><?= h((string)$c['name']) ?></option>
@@ -95,8 +95,8 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
               </div>
 
               <div class="md:col-span-2">
-                <label class="block text-xs font-semibold text-white/70">Status</label>
-                <select name="status" class="mt-1 w-full rounded-2xl bg-slate-950/50 border border-white/10 px-3 py-2 text-sm">
+                <label class="block text-xs font-semibold text-slate-600">Status</label>
+                <select name="status" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
                   <option value="active" <?= $status==='active'?'selected':'' ?>>Active</option>
                   <option value="inactive" <?= $status==='inactive'?'selected':'' ?>>Inactive</option>
                   <option value="all" <?= $status==='all'?'selected':'' ?>>All</option>
@@ -104,8 +104,8 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
               </div>
 
               <div class="md:col-span-2">
-                <label class="block text-xs font-semibold text-white/70">Type</label>
-                <select name="agency" class="mt-1 w-full rounded-2xl bg-slate-950/50 border border-white/10 px-3 py-2 text-sm">
+                <label class="block text-xs font-semibold text-slate-600">Type</label>
+                <select name="agency" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
                   <option value="all" <?= $agency==='all'?'selected':'' ?>>All</option>
                   <option value="staff" <?= $agency==='staff'?'selected':'' ?>>Staff</option>
                   <option value="agency" <?= $agency==='agency'?'selected':'' ?>>Agency</option>
@@ -113,19 +113,19 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
               </div>
 
               <div class="md:col-span-1 flex items-end">
-                <button class="w-full rounded-2xl px-4 py-2 text-sm font-semibold bg-white/5 border border-white/10 text-white/80 hover:bg-white/10">Filter</button>
+                <button class="w-full rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Filter</button>
               </div>
             </form>
           </header>
 
-          <div class="mt-5 rounded-3xl border border-white/10 bg-white/5 overflow-hidden">
+          <div class="mt-5 rounded-3xl border border-slate-200 bg-white overflow-hidden">
             <div class="p-4 flex items-center justify-between">
-              <div class="text-sm text-white/70"><span class="font-semibold text-white"><?= count($rows) ?></span> results</div>
+              <div class="text-sm text-slate-600"><span class="font-semibold text-slate-900"><?= count($rows) ?></span> results</div>
             </div>
 
             <div class="overflow-x-auto">
               <table class="min-w-full text-sm">
-                <thead class="bg-white/5 text-white/70">
+                <thead class="bg-white text-slate-600">
                   <tr>
                     <th class="text-left font-semibold px-4 py-3">Name</th>
                     <th class="text-left font-semibold px-4 py-3">Type</th>
@@ -150,31 +150,31 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                   ?>
                     <tr>
                       <td class="px-4 py-3">
-                        <div class="font-semibold text-white"><?= h($name) ?></div>
-                        <div class="text-xs text-white/50">ID: <?= (int)$r['id'] ?> <?= $r['employee_code'] ? '• ' . h((string)$r['employee_code']) : '' ?></div>
+                        <div class="font-semibold text-slate-900"><?= h($name) ?></div>
+                        <div class="text-xs text-slate-500">ID: <?= (int)$r['id'] ?> <?= $r['employee_code'] ? '• ' . h((string)$r['employee_code']) : '' ?></div>
                       </td>
-                      <td class="px-4 py-3"><span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold <?= ((int)$r['is_agency']===1) ? 'bg-sky-500/15 border border-sky-500/30 text-sky-100' : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-100' ?>"><?= h($type) ?></span></td>
-                      <td class="px-4 py-3 text-white/80"><?= h((string)($r['department_name'] ?? '—')) ?></td>
+                      <td class="px-4 py-3"><span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold <?= ((int)$r['is_agency']===1) ? 'bg-sky-500/15 border border-sky-500/30 text-sky-100' : 'bg-emerald-500/10 border border-emerald-500/30 text-black-100' ?>"><?= h($type) ?></span></td>
+                      <td class="px-4 py-3 text-slate-700"><?= h((string)($r['department_name'] ?? '—')) ?></td>
                       <?php if ($showContract): ?>
-                        <td class="px-4 py-3 text-white/80"><?= h($contract) ?></td>
+                        <td class="px-4 py-3 text-slate-700"><?= h($contract) ?></td>
                       <?php endif; ?>
                       <td class="px-4 py-3">
                         <?php if ((int)$r['is_active']===1): ?>
-                          <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold bg-white/5 border border-white/10 text-white/70">Active</span>
+                          <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold bg-white border border-slate-200 text-slate-600">Active</span>
                         <?php else: ?>
-                          <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold bg-rose-500/10 border border-rose-500/30 text-rose-100">Inactive</span>
+                          <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold bg-rose-500/10 border border-rose-500/30 text-black-100">Inactive</span>
                         <?php endif; ?>
                       </td>
                       <td class="px-4 py-3 text-right">
                         <div class="inline-flex items-center gap-2">
                           <?php if (admin_can($user, 'manage_employees')): ?>
-                            <a href="<?= h(admin_url('employee-edit.php')) ?>?id=<?= (int)$r['id'] ?>" class="rounded-2xl px-3 py-2 text-xs font-semibold bg-white/5 border border-white/10 text-white/80 hover:bg-white/10">Edit</a>
+                            <a href="<?= h(admin_url('employee-edit.php')) ?>?id=<?= (int)$r['id'] ?>" class="rounded-2xl px-3 py-2 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Edit</a>
                           <?php endif; ?>
                           <?php if (admin_can($user, 'view_contract')): ?>
                             <a href="<?= h(admin_url('employee-contract.php')) ?>?id=<?= (int)$r['id'] ?>" class="rounded-2xl px-3 py-2 text-xs font-semibold bg-sky-500/10 border border-sky-500/30 text-sky-100 hover:bg-sky-500/20">Contract</a>
                           <?php endif; ?>
                           <?php if (!admin_can($user, 'manage_employees') && !admin_can($user, 'view_contract')): ?>
-                            <span class="text-xs text-white/40">—</span>
+                            <span class="text-xs text-slate-400">—</span>
                           <?php endif; ?>
                         </div>
                       </td>
@@ -183,7 +183,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
                   <?php if (!$rows): ?>
                     <tr>
-                      <td colspan="<?= $showContract ? 6 : 5 ?>" class="px-4 py-8 text-center text-white/60">No employees found.</td>
+                      <td colspan="<?= $showContract ? 6 : 5 ?>" class="px-4 py-8 text-center text-slate-500">No employees found.</td>
                     </tr>
                   <?php endif; ?>
                 </tbody>

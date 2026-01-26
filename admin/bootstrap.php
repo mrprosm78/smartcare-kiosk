@@ -327,7 +327,7 @@ function admin_employee_display_name(array $employeeRow): string {
 function admin_layout_start(PDO $pdo, string $title): void {
   $css = admin_asset_css($pdo);
   $brand = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
-  echo "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\"/>\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\"/>\n<meta name=\"theme-color\" content=\"#0f172a\"/>\n<title>{$brand}</title>\n<link rel=\"stylesheet\" href=\"{$css}\"/>\n<style>html,body{height:100%} .min-h-dvh{min-height:100dvh}</style>\n</head>\n<body class=\"bg-slate-950 text-white min-h-dvh\">\n";
+  echo "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\"/>\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\"/>\n<meta name=\"theme-color\" content=\"#f3f4f6\"/>\n<title>{$brand}</title>\n<link rel=\"stylesheet\" href=\"{$css}\"/>\n<style>html,body{height:100%} .min-h-dvh{min-height:100dvh}</style>\n</head>\n<body class=\"bg-slate-100 text-slate-900 min-h-dvh\">\n";
 }
 
 function admin_layout_end(): void {

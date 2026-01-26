@@ -16,8 +16,8 @@ define('APP_LOGS_PATH', APP_PRIVATE_ROOT . '/logs');
 
 
 // Database credentials (PRIVATE)
-define('DB_HOST', 'sdb-67.hosting.stackcp.net');
-define('DB_NAME', 'kiosk01-35303437df66');
-define('DB_USER', 'kiosk01-35303437df66');
-define('DB_PASS', 'r2mspgngzy');
+define('DB_HOST', 'sdb-a.hosting.stackcp.net');
+define('DB_NAME', 'kiosk-tymawr-313637c122');
+define('DB_USER', 'kiosk-tymawr-313637c122');
+define('DB_PASS', '5nfuorvfoa');
 define('DB_CHARSET', 'utf8mb4'); 

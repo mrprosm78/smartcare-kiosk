@@ -160,16 +160,16 @@ admin_page_start($pdo, $title);
           <div class="flex items-start justify-between gap-4 flex-wrap">
             <div>
               <h1 class="text-2xl font-semibold">Employee Contract</h1>
-              <div class="mt-1 text-sm text-white/70">
-                <span class="font-semibold text-white"><?= h(admin_employee_display_name($employee)) ?></span>
-                · Code: <span class="font-semibold text-white"><?= h((string)($employee['employee_code'] ?? '')) ?></span>
+              <div class="mt-1 text-sm text-slate-600">
+                <span class="font-semibold text-slate-900"><?= h(admin_employee_display_name($employee)) ?></span>
+                · Code: <span class="font-semibold text-slate-900"><?= h((string)($employee['employee_code'] ?? '')) ?></span>
                 <?php if (!empty($employee['department_name'])): ?>
-                  · Department: <span class="font-semibold text-white"><?= h((string)$employee['department_name']) ?></span>
+                  · Department: <span class="font-semibold text-slate-900"><?= h((string)$employee['department_name']) ?></span>
                 <?php endif; ?>
               </div>
             </div>
             <div class="flex gap-2">
-              <a href="<?= h($active) ?>" class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15">Back</a>
+              <a href="<?= h($active) ?>" class="px-4 py-2 rounded-xl bg-slate-50 hover:bg-slate-100">Back</a>
             </div>
           </div>
 
@@ -177,36 +177,36 @@ admin_page_start($pdo, $title);
             <div class="mt-4 p-3 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-100"><?= h($err) ?></div>
           <?php endif; ?>
           <?php if ($success): ?>
-            <div class="mt-4 p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-100"><?= h($success) ?></div>
+            <div class="mt-4 p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-black-100"><?= h($success) ?></div>
           <?php endif; ?>
 
-          <form method="post" class="mt-4 bg-white/5 border border-white/10 rounded-3xl p-4 space-y-6">
+          <form method="post" class="mt-4 bg-white border border-slate-200 rounded-3xl p-4 space-y-6">
             <input type="hidden" name="csrf" value="<?= h(admin_csrf_token()) ?>">
 
             <div>
               <h2 class="text-lg font-semibold">Basics</h2>
               <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
                 <label class="block">
-                  <div class="text-sm text-white/70">Contract hours per week</div>
-                  <input name="contract_hours_per_week" value="<?= h((string)($prow['contract_hours_per_week'] ?? '')) ?>" class="mt-1 w-full rounded-xl bg-white/10 border border-white/10 px-3 py-2">
+                  <div class="text-sm text-slate-600">Contract hours per week</div>
+                  <input name="contract_hours_per_week" value="<?= h((string)($prow['contract_hours_per_week'] ?? '')) ?>" class="mt-1 w-full rounded-xl bg-slate-50 border border-slate-200 px-3 py-2">
                 </label>
               </div>
             </div>
 
             <div>
 	              <h2 class="text-lg font-semibold">Breaks</h2>
-	              <div class="mt-1 text-sm text-white/60">Break minutes are configured in <b>Shift Rules</b> (care-home). This contract only controls whether those break minutes are treated as paid or unpaid for this employee.</div>
+	              <div class="mt-1 text-sm text-slate-500">Break minutes are configured in <b>Shift Rules</b> (care-home). This contract only controls whether those break minutes are treated as paid or unpaid for this employee.</div>
 	              <div class="mt-3">
                 <label class="inline-flex items-center gap-2">
                   <input type="checkbox" name="break_is_paid" value="1" <?= ((int)($prow['break_is_paid'] ?? 0)===1) ? 'checked' : '' ?> class="rounded">
-                  <span class="text-sm text-white/80">Break is paid</span>
+                  <span class="text-sm text-slate-700">Break is paid</span>
                 </label>
               </div>
             </div>
 
             <div>
               <h2 class="text-lg font-semibold">Payroll Rule Overrides (Contract wins)</h2>
-              <div class="mt-1 text-sm text-white/60">Leave blank to inherit care-home defaults. One multiplier and one premium can apply per minute (per locked stacking rules).</div>
+              <div class="mt-1 text-sm text-slate-500">Leave blank to inherit care-home defaults. One multiplier and one premium can apply per minute (per locked stacking rules).</div>
 
               <?php
                 $currentRules = [];
@@ -219,8 +219,8 @@ admin_page_start($pdo, $title);
 
               <div class="mt-3">
                 <label class="block">
-                  <div class="text-sm text-white/70">Stacking override</div>
-                  <select name="stacking_override" class="mt-1 w-full md:w-72 rounded-xl bg-white/10 border border-white/10 px-3 py-2">
+                  <div class="text-sm text-slate-600">Stacking override</div>
+                  <select name="stacking_override" class="mt-1 w-full md:w-72 rounded-xl bg-slate-50 border border-slate-200 px-3 py-2">
                     <?php foreach (['inherit'=>'Inherit care-home setting','exclusive'=>'Exclusive','stack'=>'Stack (1 multiplier + 1 premium)'] as $v=>$lbl): ?>
                       <option value="<?= h($v) ?>" <?= ($stackVal===$v) ? 'selected' : '' ?>><?= h($lbl) ?></option>
                     <?php endforeach; ?>
@@ -236,16 +236,16 @@ admin_page_start($pdo, $title);
                   $pv = $currentRules[$pk] ?? '';
                   $label = ucwords(str_replace('_',' ', $k));
                 ?>
-                  <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <div class="font-semibold text-white"><?= h($label) ?></div>
+                  <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div class="font-semibold text-slate-900"><?= h($label) ?></div>
                     <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                       <label class="block">
-                        <div class="text-sm text-white/70">Multiplier (e.g. 1.5)</div>
-                        <input name="<?= h($mk) ?>" value="<?= h((string)$mv) ?>" class="mt-1 w-full rounded-xl bg-white/10 border border-white/10 px-3 py-2">
+                        <div class="text-sm text-slate-600">Multiplier (e.g. 1.5)</div>
+                        <input name="<?= h($mk) ?>" value="<?= h((string)$mv) ?>" class="mt-1 w-full rounded-xl bg-slate-50 border border-slate-200 px-3 py-2">
                       </label>
                       <label class="block">
-                        <div class="text-sm text-white/70">Premium £/hour (e.g. 0.20)</div>
-                        <input name="<?= h($pk) ?>" value="<?= h((string)$pv) ?>" class="mt-1 w-full rounded-xl bg-white/10 border border-white/10 px-3 py-2">
+                        <div class="text-sm text-slate-600">Premium £/hour (e.g. 0.20)</div>
+                        <input name="<?= h($pk) ?>" value="<?= h((string)$pv) ?>" class="mt-1 w-full rounded-xl bg-slate-50 border border-slate-200 px-3 py-2">
                       </label>
                     </div>
                   </div>

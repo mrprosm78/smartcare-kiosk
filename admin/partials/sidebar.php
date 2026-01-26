@@ -12,7 +12,7 @@ function admin_nav_item(string $href, string $label, string $active): string {
   if ($is) {
     return '<a href="' . h($href) . '" class="' . $base . ' bg-white text-slate-900">' . h($label) . '</a>';
   }
-  return '<a href="' . h($href) . '" class="' . $base . ' bg-white/5 border border-white/10 text-white/80 hover:bg-white/10">' . h($label) . '</a>';
+  return '<a href="' . h($href) . '" class="' . $base . ' bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">' . h($label) . '</a>';
 }
 
 $items = [];
@@ -32,15 +32,15 @@ $items[] = ['href' => admin_url('settings.php'), 'label' => 'Settings', 'perm' =
 ?>
 
 <aside class="w-full lg:w-72 shrink-0 lg:sticky lg:top-6 self-start">
-  <div class="rounded-3xl border border-white/10 bg-white/5 p-4">
+  <div class="rounded-3xl border border-slate-200 bg-white p-4">
     <div class="flex items-start justify-between gap-3">
       <div>
-        <div class="text-xs uppercase tracking-widest text-white/50">SmartCare</div>
+        <div class="text-xs uppercase tracking-widest text-slate-500">SmartCare</div>
         <div class="mt-1 text-lg font-semibold">Admin</div>
-        <div class="mt-1 text-xs text-white/60">Signed in as <span class="font-semibold text-white/90"><?= h((string)($user['username'] ?? '')) ?></span></div>
-        <div class="mt-1 text-xs text-white/40">Role: <?= h((string)($user['role'] ?? '')) ?></div>
+        <div class="mt-1 text-xs text-slate-500">Signed in as <span class="font-semibold text-slate-900"><?= h((string)($user['username'] ?? '')) ?></span></div>
+        <div class="mt-1 text-xs text-slate-400">Role: <?= h((string)($user['role'] ?? '')) ?></div>
       </div>
-      <a href="<?= h(admin_url('logout.php')) ?>" class="rounded-2xl px-3 py-2 text-xs font-semibold bg-rose-500/10 border border-rose-500/30 text-rose-100 hover:bg-rose-500/20">Logout</a>
+      <a href="<?= h(admin_url('logout.php')) ?>" class="rounded-2xl px-3 py-2 text-xs font-semibold bg-rose-500/10 border border-rose-500/30 text-black-100 hover:bg-rose-500/20">Logout</a>
     </div>
 
     <div class="mt-4 grid gap-2">
@@ -51,8 +51,8 @@ $items[] = ['href' => admin_url('settings.php'), 'label' => 'Settings', 'perm' =
       <?php endforeach; ?>
     </div>
 
-    <div class="mt-4 border-t border-white/10 pt-4 flex items-center justify-between">
-      <span class="text-[11px] text-white/40">UTC</span>
+    <div class="mt-4 border-t border-slate-200 pt-4 flex items-center justify-between">
+      <span class="text-[11px] text-slate-400">UTC</span>
     </div>
   </div>
 </aside>

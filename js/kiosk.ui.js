@@ -207,7 +207,7 @@ function renderOpenShifts(list) {
     left.appendChild(meta);
 
     const badge = document.createElement('div');
-    badge.className = "shrink-0 rounded-full bg-emerald-500/15 text-emerald-200 px-3 py-1 text-xs font-semibold";
+    badge.className = "shrink-0 rounded-full bg-emerald-500/15 text-black-200 px-3 py-1 text-xs font-semibold";
     badge.textContent = "ON SHIFT";
 
     row.appendChild(left);

@@ -123,7 +123,7 @@ function seed_settings(PDO $pdo): void {
     // Identity + Pairing
     // ===========================
     [
-      'key' => 'kiosk_code', 'value' => 'KIOSK-1', 'group' => 'identity',
+      'key' => 'kiosk_code', 'value' => 'KIOSK-STOWPARK', 'group' => 'identity',
       'label' => 'Kiosk Code', 'description' => 'Short identifier for this kiosk (used in logs and API headers).',
       'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 10, 'secret' => 0,
     ],

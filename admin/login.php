@@ -73,48 +73,48 @@ $css = admin_asset_css($pdo);
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#0f172a" />
+  <meta name="theme-color" content="#f3f4f6" />
   <title>Admin Login</title>
   <link rel="stylesheet" href="<?= h($css) ?>" />
 </head>
-<body class="bg-slate-950 text-white min-h-dvh">
+<body class="bg-slate-100 text-slate-900 min-h-dvh">
   <div class="min-h-dvh flex flex-col">
     <header class="px-4 sm:px-6 pt-6 pb-4">
       <div class="max-w-xl mx-auto">
         <div class="flex items-center justify-between">
           <div>
-            <div class="text-xs uppercase tracking-widest text-white/50">SmartCare</div>
+            <div class="text-xs uppercase tracking-widest text-slate-500">SmartCare</div>
             <h1 class="text-2xl font-semibold">Admin login</h1>
           </div>
-          <a href="<?= h(app_url('index.php')) ?>" class="text-sm text-white/70 hover:text-white">Kiosk</a>
+          <a href="<?= h(app_url('index.php')) ?>" class="text-sm text-slate-600 hover:text-slate-900">Kiosk</a>
         </div>
-        <p class="mt-2 text-sm text-white/70">Sign in to continue.</p>
+        <p class="mt-2 text-sm text-slate-600">Sign in to continue.</p>
       </div>
     </header>
 
     <main class="flex-1 px-4 sm:px-6 pb-10">
       <div class="max-w-xl mx-auto">
         <?php if ($error !== ''): ?>
-          <div class="mb-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+          <div class="mb-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-black-100">
             <?= h($error) ?>
           </div>
         <?php endif; ?>
 
-        <div class="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-sm">
+        <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <form method="post" class="space-y-4">
             <div>
-              <label class="block text-sm font-medium text-white/80">Username</label>
-              <input name="username" value="<?= h($username) ?>" autocomplete="username" class="mt-2 w-full rounded-2xl bg-slate-950/60 border border-white/10 px-4 py-3 text-base outline-none focus:border-white/20" placeholder="Enter username" />
+              <label class="block text-sm font-medium text-slate-700">Username</label>
+              <input name="username" value="<?= h($username) ?>" autocomplete="username" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-3 text-base outline-none focus:border-slate-200" placeholder="Enter username" />
             </div>
 
             <div>
-              <label class="block text-sm font-medium text-white/80">Password</label>
-              <input type="password" name="password" autocomplete="current-password" class="mt-2 w-full rounded-2xl bg-slate-950/60 border border-white/10 px-4 py-3 text-base outline-none focus:border-white/20" placeholder="Enter password" />
+              <label class="block text-sm font-medium text-slate-700">Password</label>
+              <input type="password" name="password" autocomplete="current-password" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-3 text-base outline-none focus:border-slate-200" placeholder="Enter password" />
             </div>
 
             <button type="submit" class="w-full rounded-2xl bg-white text-slate-900 font-semibold py-3 hover:bg-white/90">Sign in</button>
 
-            <div class="text-xs text-white/50">No registration is available. Ask Superadmin to create users.</div>
+            <div class="text-xs text-slate-500">No registration is available. Ask Superadmin to create users.</div>
           </form>
         </div>
       </div>
