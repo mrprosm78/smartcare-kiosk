@@ -55,15 +55,10 @@ foreach ($bhRows as $d) { $bankHolidays[(string)$d] = true; }
 
 // Fetch employee profile for paid breaks flag
 $breakIsPaid = false;
-$contractHoursPerWeek = 0;
 if ($employeeId > 0) {
-  $st = $pdo->prepare("SELECT break_is_paid, contract_hours_per_week FROM kiosk_employee_pay_profiles WHERE employee_id=? LIMIT 1");
+  $st = $pdo->prepare("SELECT break_is_paid FROM kiosk_employee_pay_profiles WHERE employee_id=? LIMIT 1");
   $st->execute([$employeeId]);
-  $row = $st->fetch(PDO::FETCH_ASSOC) ?: null;
-  if ($row) {
-    $breakIsPaid = ((int)($row['break_is_paid'] ?? 0)) === 1;
-    $contractHoursPerWeek = (int)($row['contract_hours_per_week'] ?? 0);
-  }
+  $breakIsPaid = ((int)$st->fetchColumn()) === 1;
 }
 
 // Fetch shifts
@@ -119,20 +114,14 @@ if ($employeeId > 0) {
 $days = [];
 for ($d = $gridStartLocal; $d < $gridEndLocalEx; $d = $d->modify('+1 day')) {
   $key = $d->format('Y-m-d');
-  $isWeekend = ((int)$d->format('N') >= 6);
   $days[$key] = [
     'date' => $d,
     'in_month' => ($d >= $monthStartLocal && $d < $monthEndLocalEx),
     'is_bh' => isset($bankHolidays[$key]),
-    'is_weekend' => $isWeekend,
     'total_worked' => 0,
     'break_minus' => 0,
     'break_plus' => 0,
     'total_paid' => 0,
-    'base' => 0,
-    'bh' => 0,
-    'weekend' => 0,
-    'ot' => 0,
     'shift_slices' => [], // each: [shift_id, start_local, end_local, worked, break_minus, break_plus, paid, status...]
   ];
 }
@@ -202,85 +191,12 @@ foreach ($shifts as $s) {
         'break_minus' => $sliceBreakMinus,
         'break_plus' => $sliceBreakPlus,
         'paid' => $slicePaid,
-        // classification will be filled after OT allocation
-        'base' => 0,
-        'bh' => 0,
-        'weekend' => 0,
-        'ot' => 0,
-        'week_start_key' => week_start_for($cursor, $weekStartsOn)->format('Y-m-d'),
         'status' => $statusBadge,
         'flags' => $flags,
       ];
     }
 
     $cursor = $sliceEnd;
-  }
-}
-
-// Allocate buckets with non-stacking priority: OT > BH > Weekend > Base
-// OT is weekly and allocated from end-of-week backwards.
-$thresholdMinutes = max(0, $contractHoursPerWeek) * 60;
-
-// Gather slices per week
-$slicesByWeek = []; // weekStartYmd => list of [&slice, dayKey]
-foreach ($days as $dayKey => &$cell) {
-  foreach ($cell['shift_slices'] as $idx => &$sl) {
-    $wk = (string)$sl['week_start_key'];
-    if (!isset($slicesByWeek[$wk])) $slicesByWeek[$wk] = [];
-    $slicesByWeek[$wk][] = [&$cell['shift_slices'][$idx], $dayKey];
-  }
-}
-unset($cell, $sl);
-
-foreach ($slicesByWeek as $wk => $arr) {
-  // total paid for the week
-  $weekPaid = 0;
-  foreach ($arr as $pair) { $weekPaid += (int)$pair[0]['paid']; }
-  $otRemain = ($thresholdMinutes > 0) ? max(0, $weekPaid - $thresholdMinutes) : 0;
-
-  // Sort slices by start time ascending, then allocate OT from the end.
-  usort($arr, function($a, $b) {
-    /** @var DateTimeImmutable $as */
-    $as = $a[0]['start'];
-    $bs = $b[0]['start'];
-    return $as <=> $bs;
-  });
-
-  for ($i = count($arr)-1; $i >= 0; $i--) {
-    $sl =& $arr[$i][0];
-    $dayKey = $arr[$i][1];
-    $paid = (int)$sl['paid'];
-    if ($paid <= 0) continue;
-
-    $ot = 0;
-    if ($otRemain > 0) {
-      $ot = min($paid, $otRemain);
-      $otRemain -= $ot;
-    }
-    $nonOt = $paid - $ot;
-
-    // Assign remaining to BH/weekend/base (BH wins over weekend)
-    $bh = 0; $we = 0; $base = 0;
-    if ($nonOt > 0) {
-      if (!empty($days[$dayKey]['is_bh'])) {
-        $bh = $nonOt;
-      } elseif (!empty($days[$dayKey]['is_weekend'])) {
-        $we = $nonOt;
-      } else {
-        $base = $nonOt;
-      }
-    }
-
-    $sl['ot'] = $ot;
-    $sl['bh'] = $bh;
-    $sl['weekend'] = $we;
-    $sl['base'] = $base;
-
-    // Roll up into day totals
-    $days[$dayKey]['ot'] += $ot;
-    $days[$dayKey]['bh'] += $bh;
-    $days[$dayKey]['weekend'] += $we;
-    $days[$dayKey]['base'] += $base;
   }
 }
 
@@ -306,11 +222,6 @@ function badge_html(string $status): string {
         Month boundary: <span class="font-semibold text-white/80"><?= h($monthBoundaryMode) ?></span> ·
         Week starts: <span class="font-semibold text-white/80"><?= h($weekStartsOn) ?></span> ·
         TZ: <span class="font-semibold text-white/80"><?= h($tzName) ?></span>
-      </div>
-      <div class="mt-3">
-        <a href="<?= h(admin_url('index.php')) ?>" class="inline-flex items-center gap-2 rounded-xl bg-white/10 border border-white/10 px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/15">
-          ← Back to Admin
-        </a>
       </div>
     </div>
     <form method="get" class="flex flex-wrap gap-2 items-end">
@@ -342,16 +253,6 @@ function badge_html(string $status): string {
     $week = $gridStartLocal;
     while ($week < $gridEndLocalEx):
       $weekEnd = $week->modify('+7 days');
-      // Week totals (from day rollups)
-      $wkPaid = 0; $wkBH = 0; $wkWE = 0; $wkOT = 0;
-      for ($i=0; $i<7; $i++) {
-        $dk = $week->modify("+{$i} days")->format('Y-m-d');
-        if (!isset($days[$dk])) continue;
-        $wkPaid += (int)$days[$dk]['total_paid'];
-        $wkBH += (int)$days[$dk]['bh'];
-        $wkWE += (int)$days[$dk]['weekend'];
-        $wkOT += (int)$days[$dk]['ot'];
-      }
   ?>
     <div class="rounded-3xl border border-white/10 bg-white/5 p-4">
       <div class="flex items-center justify-between gap-3">
@@ -380,14 +281,14 @@ function badge_html(string $status): string {
                 <?php endif; ?>
               </div>
               <div class="text-xs text-white/60">
-                Hours <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm($cell['total_paid'])) ?></span>
+                Paid <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm($cell['total_paid'])) ?></span>
               </div>
             </div>
 
             <div class="mt-2 text-[12px] text-white/60">
-              BH <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm((int)$cell['bh'])) ?></span>
-              · Weekend <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm((int)$cell['weekend'])) ?></span>
-              · OT <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm((int)$cell['ot'])) ?></span>
+              Worked <?= h(payroll_fmt_hhmm($cell['total_worked'])) ?>
+              · Break − <?= h(payroll_fmt_hhmm($cell['break_minus'])) ?>
+              · Break + <?= h(payroll_fmt_hhmm($cell['break_plus'])) ?>
             </div>
 
             <div class="mt-3 space-y-2">
@@ -403,10 +304,8 @@ function badge_html(string $status): string {
                       <?= badge_html((string)$sl['status']) ?>
                     </div>
                     <div class="mt-1 text-[11px] text-white/60">
-                      Hours <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm((int)$sl['paid'])) ?></span>
-                      · BH <?= h(payroll_fmt_hhmm((int)$sl['bh'])) ?>
-                      · Weekend <?= h(payroll_fmt_hhmm((int)$sl['weekend'])) ?>
-                      · OT <?= h(payroll_fmt_hhmm((int)$sl['ot'])) ?>
+                      Paid <?= h(payroll_fmt_hhmm((int)$sl['paid'])) ?> · Break − <?= h(payroll_fmt_hhmm((int)$sl['break_minus'])) ?>
+                      <?php if ((int)$sl['break_plus'] > 0): ?> · Break + <?= h(payroll_fmt_hhmm((int)$sl['break_plus'])) ?><?php endif; ?>
                     </div>
                     <div class="mt-2 flex gap-2">
                       <a class="rounded-xl bg-white text-slate-900 px-2.5 py-1 text-[11px] font-semibold" href="<?= h(admin_url('shift-edit.php?id='.(int)$sl['shift_id'])) ?>">Fix</a>
@@ -418,16 +317,6 @@ function badge_html(string $status): string {
             </div>
           </div>
         <?php endfor; ?>
-      </div>
-
-      <div class="mt-3 rounded-2xl border border-white/10 bg-white/5 p-3">
-        <div class="flex flex-wrap items-center gap-3 text-sm">
-          <div class="font-semibold">Week totals</div>
-          <div class="text-white/60">Hours <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm($wkPaid)) ?></span></div>
-          <div class="text-white/60">BH <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm($wkBH)) ?></span></div>
-          <div class="text-white/60">Weekend <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm($wkWE)) ?></span></div>
-          <div class="text-white/60">OT <span class="font-semibold text-white/80"><?= h(payroll_fmt_hhmm($wkOT)) ?></span></div>
-        </div>
       </div>
     </div>
   <?php
