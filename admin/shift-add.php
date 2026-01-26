@@ -236,7 +236,7 @@ $active = admin_url('shifts.php');
           </header>
 
           <?php if ($error): ?>
-            <div class="mt-5 rounded-3xl border border-rose-400/20 bg-rose-500/10 p-5 text-sm text-black-100">
+            <div class="mt-5 rounded-3xl border border-rose-400/20 bg-rose-500/10 p-5 text-sm text-slate-900">
               <b>Error:</b> <?= h($error) ?>
             </div>
           <?php endif; ?>
@@ -247,7 +247,7 @@ $active = admin_url('shifts.php');
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label>
                 <div class="text-xs uppercase tracking-widest text-slate-500">Employee</div>
-                <select name="employee_id" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30">
+                <select name="employee_id" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
                   <option value="0">Select…</option>
                   <?php foreach ($emps as $e): ?>
                     <?php
@@ -287,31 +287,31 @@ $active = admin_url('shifts.php');
               <label>
                 <div class="text-xs uppercase tracking-widest text-slate-500">Clock in (local)</div>
                 <input name="clock_in_at" type="datetime-local" value="<?= h($clockInInput) ?>"
-                  class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                  class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
               </label>
 
               <label>
                 <div class="text-xs uppercase tracking-widest text-slate-500">Clock out (local)</div>
                 <input name="clock_out_at" type="datetime-local" value="<?= h($clockOutInput) ?>"
-                  class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                  class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
               </label>
 
               <label>
                 <div class="text-xs uppercase tracking-widest text-slate-500">Training minutes (optional)</div>
                 <input name="training_minutes" type="number" min="0" step="1" value="<?= h($trainingMinutes) ?>"
-                  class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                  class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
               </label>
 
               <label>
                 <div class="text-xs uppercase tracking-widest text-slate-500">Training note (optional)</div>
                 <input name="training_note" value="<?= h($trainingNote) ?>"
-                  class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                  class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
               </label>
 
               <label class="md:col-span-2">
                 <div class="text-xs uppercase tracking-widest text-slate-500">Manager note (optional)</div>
                 <input name="note" value="<?= h($note) ?>"
-                  class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30"
+                  class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                   placeholder="Why was this added?" />
               </label>
             </div>

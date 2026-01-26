@@ -13,9 +13,9 @@ admin_require_perm($user, 'view_punches');
 
 function badge(string $text, string $kind = 'neutral'): string {
   $base = "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold border";
-  if ($kind === 'ok')   return "<span class='$base bg-emerald-500/10 border-emerald-400/20 text-black-100'>$text</span>";
-  if ($kind === 'warn') return "<span class='$base bg-amber-500/10 border-amber-400/20 text-black-100'>$text</span>";
-  if ($kind === 'bad')  return "<span class='$base bg-rose-500/10 border-rose-400/20 text-black-100'>$text</span>";
+  if ($kind === 'ok')   return "<span class='$base bg-emerald-500/10 border-emerald-400/20 text-slate-900'>$text</span>";
+  if ($kind === 'warn') return "<span class='$base bg-amber-500/10 border-amber-400/20 text-slate-900'>$text</span>";
+  if ($kind === 'bad')  return "<span class='$base bg-rose-500/10 border-rose-400/20 text-slate-900'>$text</span>";
   return "<span class='$base bg-white border border-slate-200 text-slate-700'>$text</span>";
 }
 
@@ -248,7 +248,7 @@ $active = admin_url('punch-details.php');
             </form>
 
             <?php if (!empty($err ?? '')): ?>
-              <div class="mt-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-black-100">Error: <?= h((string)$err) ?></div>
+              <div class="mt-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-slate-900">Error: <?= h((string)$err) ?></div>
             <?php endif; ?>
 
             <div class="mt-6 overflow-x-auto">

@@ -177,7 +177,7 @@ admin_page_start($pdo, $title);
             <div class="mt-4 p-3 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-100"><?= h($err) ?></div>
           <?php endif; ?>
           <?php if ($success): ?>
-            <div class="mt-4 p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-black-100"><?= h($success) ?></div>
+            <div class="mt-4 p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-slate-900"><?= h($success) ?></div>
           <?php endif; ?>
 
           <form method="post" class="mt-4 bg-white border border-slate-200 rounded-3xl p-4 space-y-6">

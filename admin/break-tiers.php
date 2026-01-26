@@ -108,7 +108,7 @@ admin_page_start($pdo, 'Break Tiers');
           </header>
 
           <?php if ($err !== ''): ?>
-            <div class="mt-5 rounded-3xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-black-100">
+            <div class="mt-5 rounded-3xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-slate-900">
               <?= h($err) ?>
             </div>
           <?php endif; ?>
@@ -142,7 +142,7 @@ admin_page_start($pdo, 'Break Tiers');
               </div>
 
               <div class="md:col-span-1 flex items-end">
-                <button class="w-full rounded-2xl px-4 py-2 text-sm font-semibold bg-emerald-500/15 border border-emerald-500/30 text-black-100 hover:bg-emerald-500/20">Add</button>
+                <button class="w-full rounded-2xl px-4 py-2 text-sm font-semibold bg-emerald-500/15 border border-emerald-500/30 text-slate-900 hover:bg-emerald-500/20">Add</button>
               </div>
             </form>
           </div>
@@ -174,7 +174,7 @@ admin_page_start($pdo, 'Break Tiers');
                       <td class="py-3 text-slate-600"><?= (int)$t['sort_order'] ?></td>
                       <td class="py-3">
                         <?php if ((int)$t['is_enabled'] === 1): ?>
-                          <span class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold bg-emerald-500/15 border border-emerald-500/30 text-black-100">Yes</span>
+                          <span class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold bg-emerald-500/15 border border-emerald-500/30 text-slate-900">Yes</span>
                         <?php else: ?>
                           <span class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold bg-white border border-slate-200 text-slate-500">No</span>
                         <?php endif; ?>
@@ -212,7 +212,7 @@ admin_page_start($pdo, 'Break Tiers');
                             <input type="hidden" name="csrf" value="<?= h(admin_csrf_token()) ?>">
                             <input type="hidden" name="action" value="delete">
                             <input type="hidden" name="id" value="<?= (int)$t['id'] ?>">
-                            <button class="rounded-2xl px-3 py-2 text-xs font-semibold bg-rose-500/10 border border-rose-500/30 text-black-100 hover:bg-rose-500/20">Delete</button>
+                            <button class="rounded-2xl px-3 py-2 text-xs font-semibold bg-rose-500/10 border border-rose-500/30 text-slate-900 hover:bg-rose-500/20">Delete</button>
                           </form>
                         </div>
                       </td>

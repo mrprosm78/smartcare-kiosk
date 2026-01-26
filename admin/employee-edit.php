@@ -162,7 +162,7 @@ admin_page_start($pdo, $isNew ? 'Add Employee' : 'Edit Employee');
           </header>
 
           <?php if ($err !== ''): ?>
-            <div class="mt-5 rounded-3xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-black-100"><?= h($err) ?></div>
+            <div class="mt-5 rounded-3xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-slate-900"><?= h($err) ?></div>
           <?php endif; ?>
 
           <form method="post" class="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -189,7 +189,7 @@ admin_page_start($pdo, $isNew ? 'Add Employee' : 'Edit Employee');
                 </div>
               <div class="mt-4">
                 <label class="text-xs text-slate-500">Team</label>
-                <select name="team_id" class="mt-1 w-full rounded-2xl bg-slate-900/60 border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30">
+                <select name="team_id" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
                   <option value="0">—</option>
                   <?php foreach ($teams as $t): ?>
                     <option value="<?= (int)$t['id'] ?>" <?= ((int)$employee['team_id']===(int)$t['id'])?'selected':'' ?>><?= h((string)$t['name']) ?></option>

@@ -289,9 +289,9 @@ $active = admin_url('payroll-calendar-employee.php');
 
 function badge_html(string $status): string {
   $map = [
-    'approved' => 'bg-emerald-500/15 text-black-100 border-emerald-500/30',
-    'awaiting' => 'bg-amber-500/15 text-black-100 border-amber-500/30',
-    'open' => 'bg-rose-500/15 text-black-100 border-rose-500/30',
+    'approved' => 'bg-emerald-500/15 text-slate-900 border-emerald-500/30',
+    'awaiting' => 'bg-amber-500/15 text-slate-900 border-amber-500/30',
+    'open' => 'bg-rose-500/15 text-slate-900 border-rose-500/30',
   ];
   $cls = $map[$status] ?? 'bg-slate-50 text-slate-700 border-slate-200';
   return '<span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold '.$cls.'">'.h(ucfirst($status)).'</span>';
@@ -359,7 +359,7 @@ function badge_html(string $status): string {
           Week <?= h($week->format('d M Y')) ?> → <?= h($weekEnd->modify('-1 day')->format('d M Y')) ?>
         </div>
         <div class="text-xs text-slate-500">
-          <?= ($week < $monthStartLocal || $weekEnd > $monthEndLocalEx) ? '<span class="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-black-100 font-semibold">Partial month week</span>' : '<span class="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-700 font-semibold">Full week</span>' ?>
+          <?= ($week < $monthStartLocal || $weekEnd > $monthEndLocalEx) ? '<span class="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-slate-900 font-semibold">Partial month week</span>' : '<span class="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-700 font-semibold">Full week</span>' ?>
         </div>
       </div>
 

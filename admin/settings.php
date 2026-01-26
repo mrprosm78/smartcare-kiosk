@@ -158,11 +158,11 @@ admin_page_start($pdo, 'Settings');
           </header>
 
           <?php if ($success): ?>
-            <div class="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm text-black-100"><?= h($success) ?></div>
+            <div class="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm text-slate-900"><?= h($success) ?></div>
           <?php endif; ?>
 
           <?php if ($err): ?>
-            <div class="mt-4 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-black-100"><?= h($err) ?></div>
+            <div class="mt-4 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-slate-900"><?= h($err) ?></div>
           <?php endif; ?>
 
           <form method="post" class="mt-5 space-y-5">
@@ -189,7 +189,7 @@ admin_page_start($pdo, 'Settings');
                   <label class="rounded-2xl border border-slate-200 bg-white p-4">
                     <div class="text-xs uppercase tracking-widest text-slate-500">Increment (minutes)</div>
                     <input type="number" min="1" step="1" name="round_increment_minutes" value="<?= h((string)$vals['round_increment_minutes']) ?>"
-                      class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                      class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
                     <div class="mt-2 text-xs text-slate-500">Example: 15 ⇒ 00/15/30/45.</div>
                   </label>
                 <?php endif; ?>
@@ -198,7 +198,7 @@ admin_page_start($pdo, 'Settings');
                   <label class="rounded-2xl border border-slate-200 bg-white p-4">
                     <div class="text-xs uppercase tracking-widest text-slate-500">Grace (minutes)</div>
                     <input type="number" min="0" step="1" name="round_grace_minutes" value="<?= h((string)$vals['round_grace_minutes']) ?>"
-                      class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                      class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
                     <div class="mt-2 text-xs text-slate-500">Only snap when within this window.</div>
                   </label>
                 <?php endif; ?>
@@ -226,7 +226,7 @@ admin_page_start($pdo, 'Settings');
                     <label class="rounded-2xl border border-slate-200 bg-white p-4">
                       <div class="text-xs uppercase tracking-widest text-slate-500">Week starts on</div>
                       <select name="payroll_week_starts_on"
-                        class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30"
+                        class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                         <?= $weekLocked ? "disabled" : "" ?>>
                         <?php foreach (['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'] as $d): ?>
                           <option value="<?= h($d) ?>" <?= strtoupper((string)$vals['payroll_week_starts_on'])===$d ? 'selected' : '' ?>><?= h($d) ?></option>
@@ -242,7 +242,7 @@ admin_page_start($pdo, 'Settings');
                     <label class="rounded-2xl border border-slate-200 bg-white p-4">
                       <div class="text-xs uppercase tracking-widest text-slate-500">Payroll timezone</div>
                       <input name="payroll_timezone" value="<?= h((string)$vals['payroll_timezone']) ?>" placeholder="Europe/London"
-                        class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                        class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
                       <div class="mt-2 text-xs text-slate-500">Used for midnight/day boundaries in payroll.</div>
                     </label>
                   <?php endif; ?>
@@ -251,7 +251,7 @@ admin_page_start($pdo, 'Settings');
                     <label class="rounded-2xl border border-slate-200 bg-white p-4 md:col-span-2">
                       <div class="text-xs uppercase tracking-widest text-slate-500">Payroll month boundary</div>
                       <select name="payroll_month_boundary_mode"
-                        class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30">
+                        class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
                         <option value="midnight" <?= ((string)$vals['payroll_month_boundary_mode']==='midnight') ? 'selected' : '' ?>>Split at local midnight (recommended)</option>
                         <option value="end_of_shift" <?= ((string)$vals['payroll_month_boundary_mode']==='end_of_shift') ? 'selected' : '' ?>>Assign whole shift to start month (advanced)</option>
                       </select>
@@ -275,7 +275,7 @@ admin_page_start($pdo, 'Settings');
                   <label class="rounded-2xl border border-slate-200 bg-white p-4">
                     <div class="text-xs uppercase tracking-widest text-slate-500">Uploads base path</div>
                     <input name="uploads_base_path" value="<?= h((string)$vals['uploads_base_path']) ?>" placeholder="auto"
-                      class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                      class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
                     <div class="mt-2 text-xs text-slate-500">
                       Use <code class="px-1.5 py-0.5 rounded-xl bg-slate-50">auto</code> to use the private uploads path, or set a relative directory like <code class="px-1.5 py-0.5 rounded-xl bg-slate-50">uploads</code>.
                     </div>
@@ -292,14 +292,14 @@ admin_page_start($pdo, 'Settings');
                   <label class="rounded-2xl border border-slate-200 bg-white p-4">
                     <div class="text-xs uppercase tracking-widest text-slate-500">Admin pairing mode until (UTC)</div>
                     <input name="admin_pairing_mode_until" value="<?= h((string)$vals['admin_pairing_mode_until']) ?>" placeholder=""
-                      class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                      class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
                     <div class="mt-2 text-xs text-slate-500">Optional UTC datetime. If expired, pairing is auto-disabled.</div>
                   </label>
 
                   <label class="rounded-2xl border border-slate-200 bg-white p-4">
                     <div class="text-xs uppercase tracking-widest text-slate-500">Admin pairing passcode</div>
                     <input name="admin_pairing_code" value="" placeholder="(leave blank to keep current)"
-                      class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30" />
+                      class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
                     <div class="mt-2 text-xs text-slate-500">Leave blank to avoid overwriting the existing code.</div>
                   </label>
                 </div>

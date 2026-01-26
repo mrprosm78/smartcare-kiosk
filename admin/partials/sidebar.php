@@ -40,7 +40,7 @@ $items[] = ['href' => admin_url('settings.php'), 'label' => 'Settings', 'perm' =
         <div class="mt-1 text-xs text-slate-500">Signed in as <span class="font-semibold text-slate-900"><?= h((string)($user['username'] ?? '')) ?></span></div>
         <div class="mt-1 text-xs text-slate-400">Role: <?= h((string)($user['role'] ?? '')) ?></div>
       </div>
-      <a href="<?= h(admin_url('logout.php')) ?>" class="rounded-2xl px-3 py-2 text-xs font-semibold bg-rose-500/10 border border-rose-500/30 text-black-100 hover:bg-rose-500/20">Logout</a>
+      <a href="<?= h(admin_url('logout.php')) ?>" class="rounded-2xl px-3 py-2 text-xs font-semibold bg-rose-500/10 border border-rose-500/30 text-rose-700 hover:bg-rose-500/20">Logout</a>
     </div>
 
     <div class="mt-4 grid gap-2">

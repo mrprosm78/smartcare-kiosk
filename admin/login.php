@@ -95,7 +95,7 @@ $css = admin_asset_css($pdo);
     <main class="flex-1 px-4 sm:px-6 pb-10">
       <div class="max-w-xl mx-auto">
         <?php if ($error !== ''): ?>
-          <div class="mb-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-black-100">
+          <div class="mb-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-slate-900">
             <?= h($error) ?>
           </div>
         <?php endif; ?>

@@ -307,9 +307,9 @@ $active = admin_url('index.php');
 
 function badge(string $text, string $kind = 'neutral'): string {
   $base = "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold border";
-  if ($kind === 'ok')   return "<span class='$base bg-emerald-500/10 border-emerald-400/20 text-black-100'>$text</span>";
-  if ($kind === 'warn') return "<span class='$base bg-amber-500/10 border-amber-400/20 text-black-100'>$text</span>";
-  if ($kind === 'bad')  return "<span class='$base bg-rose-500/10 border-rose-400/20 text-black-100'>$text</span>";
+  if ($kind === 'ok')   return "<span class='$base bg-emerald-500/10 border-emerald-400/20 text-slate-900'>$text</span>";
+  if ($kind === 'warn') return "<span class='$base bg-amber-500/10 border-amber-400/20 text-slate-900'>$text</span>";
+  if ($kind === 'bad')  return "<span class='$base bg-rose-500/10 border-rose-400/20 text-slate-900'>$text</span>";
   return "<span class='$base bg-white border border-slate-200 text-slate-700'>$text</span>";
 }
 ?>
@@ -340,7 +340,7 @@ function badge(string $text, string $kind = 'neutral'): string {
           </header>
 
           <?php if ($counts['month_unapproved'] > 0): ?>
-            <div class="mt-5 rounded-3xl border border-amber-400/20 bg-amber-500/10 p-5 text-sm text-black-100">
+            <div class="mt-5 rounded-3xl border border-amber-400/20 bg-amber-500/10 p-5 text-sm text-slate-900">
               <b><?= (int)$counts['month_unapproved'] ?></b> shifts are unapproved this month.
               <a class="underline ml-2" href="<?= h(admin_url('shifts.php?period=this_month&status=unapproved')) ?>">Review now</a>
             </div>

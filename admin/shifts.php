@@ -28,9 +28,9 @@ function sc_shift_reason_badge(array $s): string {
 
 function badge(string $text, string $kind): string {
   $base = "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold border";
-  if ($kind === 'ok')   return "<span class='$base bg-emerald-500/10 border-emerald-400/20 text-black-100'>$text</span>";
-  if ($kind === 'warn') return "<span class='$base bg-amber-500/10 border-amber-400/20 text-black-100'>$text</span>";
-  if ($kind === 'bad')  return "<span class='$base bg-rose-500/10 border-rose-400/20 text-black-100'>$text</span>";
+  if ($kind === 'ok')   return "<span class='$base bg-emerald-500/10 border-emerald-400/20 text-slate-900'>$text</span>";
+  if ($kind === 'warn') return "<span class='$base bg-amber-500/10 border-amber-400/20 text-slate-900'>$text</span>";
+  if ($kind === 'bad')  return "<span class='$base bg-rose-500/10 border-rose-400/20 text-slate-900'>$text</span>";
   return "<span class='$base bg-white border border-slate-200 text-slate-700'>$text</span>";
 }
 
@@ -386,7 +386,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
           </header>
 
           <?php if ((string)($_GET['n'] ?? '') === 'locked'): ?>
-            <div class="mt-5 rounded-3xl border border-rose-400/20 bg-rose-500/10 p-5 text-sm text-black-100">
+            <div class="mt-5 rounded-3xl border border-rose-400/20 bg-rose-500/10 p-5 text-sm text-slate-900">
               This shift is <b>Payroll Locked</b> and cannot be edited or (un)approved. Super Admin can unlock if needed.
             </div>
           <?php endif; ?>
@@ -396,7 +396,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
               <label class="md:col-span-2">
                 <div class="text-xs uppercase tracking-widest text-slate-500">Period</div>
-                <select name="period" id="period" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30">
+                <select name="period" id="period" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
                   <?php foreach ([
                     'today' => 'Today',
                     'yesterday' => 'Yesterday',
@@ -413,17 +413,17 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
               <label class="md:col-span-1">
                 <div class="text-xs uppercase tracking-widest text-slate-500">From</div>
-                <input type="date" name="from" id="from" value="<?= h($fromDt->format('Y-m-d')) ?>" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30"/>
+                <input type="date" name="from" id="from" value="<?= h($fromDt->format('Y-m-d')) ?>" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"/>
               </label>
 
               <label class="md:col-span-1">
                 <div class="text-xs uppercase tracking-widest text-slate-500">To</div>
-                <input type="date" name="to" id="to" value="<?= h($toDt->format('Y-m-d')) ?>" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30"/>
+                <input type="date" name="to" id="to" value="<?= h($toDt->format('Y-m-d')) ?>" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"/>
               </label>
 
               <label class="md:col-span-1">
                 <div class="text-xs uppercase tracking-widest text-slate-500">Employee</div>
-                <select name="employee_id" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30">
+                <select name="employee_id" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
                   <option value="0">All</option>
                   <?php foreach ($emps as $e): ?>
                     <?php
@@ -440,7 +440,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
               <label class="md:col-span-1">
                 <div class="text-xs uppercase tracking-widest text-slate-500">Status</div>
-                <select name="status" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-white/30">
+                <select name="status" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
                   <?php foreach ([
                     'all'=>'All',
                     'open'=>'Open',

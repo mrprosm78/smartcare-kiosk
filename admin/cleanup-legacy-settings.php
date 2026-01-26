@@ -71,7 +71,7 @@ admin_page_start($pdo, 'Cleanup legacy settings');
           </header>
 
           <?php if ($deleted > 0): ?>
-            <div class="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm text-black-100">
+            <div class="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm text-slate-900">
               Deleted <?= (int)$deleted ?> rows.
             </div>
           <?php elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $err === ''): ?>
@@ -81,7 +81,7 @@ admin_page_start($pdo, 'Cleanup legacy settings');
           <?php endif; ?>
 
           <?php if ($err): ?>
-            <div class="mt-4 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-black-100"><?= h($err) ?></div>
+            <div class="mt-4 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-slate-900"><?= h($err) ?></div>
           <?php endif; ?>
 
           <form method="post" class="mt-5">

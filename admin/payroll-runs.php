@@ -75,7 +75,7 @@ admin_page_start($pdo, $title);
             <div class="mt-4 p-3 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-100"><?php echo h($err); ?></div>
           <?php endif; ?>
           <?php if ($success): ?>
-            <div class="mt-4 p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-black-100"><?php echo h($success); ?></div>
+            <div class="mt-4 p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-slate-900"><?php echo h($success); ?></div>
           <?php endif; ?>
 
           <div class="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
