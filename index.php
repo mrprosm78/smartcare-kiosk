@@ -238,7 +238,7 @@ $v = h($ui_version);
               <div class="flex items-center justify-between gap-4">
                 <div>
                   <div class="text-xl md:text-2xl font-bold">Clock Out</div>
-                  <div class="text-base text-sky-50/90 mt-2">Finish your shift</div>
+                  <div class="text-base text-black-50/90 mt-2">Finish your shift</div>
                 </div>
                 <div class="h-16 w-16 rounded-2xl bg-white/15 flex items-center justify-center">
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" class="text-white">

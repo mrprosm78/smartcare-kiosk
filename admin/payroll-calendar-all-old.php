@@ -231,7 +231,7 @@ function badge_html(string $status): string {
               <div class="text-sm font-semibold">
                 <?= h($d->format('D d M')) ?>
                 <?php if ($cell['is_bh']): ?>
-                  <span class="ml-1 rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[11px] font-semibold text-sky-100">BH</span>
+                  <span class="ml-1 rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[11px] font-semibold text-black-100">BH</span>
                 <?php endif; ?>
               </div>
               <div class="text-xs text-slate-500">

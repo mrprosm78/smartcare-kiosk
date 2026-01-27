@@ -313,27 +313,28 @@ async function submitPin() {
   const event_uuid = makeUuid();
   const device_time = new Date().toISOString();
 
+  // Decide connectivity FIRST. Avoid expensive crypto on fast online punches.
+  let online = navigator.onLine;
+  if (online) online = await pingServer();
+
+  // Only attempt to encrypt for offline storage when plaintext offline PINs are not allowed.
   let pin_enc = null;
-  try {
-    pin_enc = await encryptPin(pin);
-  } catch (e) {
-    pin_enc = null;
-  }
-
-  if (!pin_enc) {
-    let online = navigator.onLine;
-    if (online) online = await pingServer();
-
-    if (!online) {
-      if (!OFFLINE_ALLOW_UNENCRYPTED_PIN) {
-        closePin();
-        showThank(currentAction, { offline: false, staffLabel: "", messageOverride: "This device can't save offline punches. Please try again when online or ask manager to re-pair." });
-        isSubmitting = false;
-        setKeypadDisabled(false);
-        return;
-      }
-      // Allow plaintext PIN storage (server-controlled) when WebCrypto is unavailable
+  if (!online && !OFFLINE_ALLOW_UNENCRYPTED_PIN) {
+    try {
+      pin_enc = await encryptPin(pin);
+    } catch (e) {
       pin_enc = null;
+    }
+    if (!pin_enc) {
+      closePin();
+      showThank(currentAction, {
+        offline: false,
+        staffLabel: "",
+        messageOverride: "This device can't save offline punches. Please try again when online or ask manager to re-pair."
+      });
+      isSubmitting = false;
+      setKeypadDisabled(false);
+      return;
     }
   }
 
@@ -341,10 +342,8 @@ async function submitPin() {
     event_uuid,
     action: currentAction,
     pin_enc,
-    // Production safety:
-    // If server allows plaintext offline PIN storage, always keep a fallback copy.
-    // This prevents lost punches if WebView storage resets and encrypted payload can't be decrypted.
-    pin_plain: OFFLINE_ALLOW_UNENCRYPTED_PIN ? pin : null,
+    // Plain PIN is stored ONLY when server allows it (offline mode).
+    pin_plain: (!online && OFFLINE_ALLOW_UNENCRYPTED_PIN) ? pin : null,
     device_time,
     created_at: new Date().toISOString(),
     status: "queued",
@@ -355,9 +354,6 @@ async function submitPin() {
 
   try { await queueEvent(evt); } catch {}
 
-  let online = navigator.onLine;
-  if (online) online = await pingServer();
-
   if (online) {
     const res = await postPunch({ event_uuid, action: currentAction, pin, device_time, was_offline: false, source: 'online' });
 
@@ -366,32 +362,30 @@ async function submitPin() {
       try { await deleteEvent(event_uuid); } catch {}
       closePin();
 
-      // Camera add-on: capture AFTER PIN is accepted (so invalid PIN never triggers camera)
-      try {
-        if (window.SC_CAM && typeof window.SC_CAM.openAndWaitCapture === 'function') {
-          const blob = await window.SC_CAM.openAndWaitCapture();
-          if (blob && window.SC_PHOTO && typeof window.SC_PHOTO.enqueuePhoto === 'function') {
-            await window.SC_PHOTO.enqueuePhoto({ event_uuid, action: currentAction, device_time, blob });
-          }
-        }
-      } catch (e) {
-        // Fail-safe: never block clocking because camera failed.
-        try { if (typeof toast === 'function') toast('warning', 'Camera unavailable', 'Clock recorded without a photo.'); } catch {}
-      }
-
-      // Prefer new employee_label (nickname-friendly), fallback to old fields
+      // Show success immediately (don't block on camera/photo).
       const staffLabel = (res.employee_label || res.name || res.employee_name || "").toString();
-
-      // Cache for offline-friendly UX (Option A)
       try { sc_cache_staff_label(pin, staffLabel); } catch {}
-
-      // Update open shifts list immediately if server returned it
-      if (Array.isArray(res.open_shifts)) {
-        // if server returns list, show it (but only if setting enabled)
-        renderOpenShifts(res.open_shifts);
-      }
+      if (Array.isArray(res.open_shifts)) renderOpenShifts(res.open_shifts);
 
       showThank(currentAction, { offline: false, staffLabel });
+
+      // Camera add-on: capture AFTER confirming punch; run async so UI stays snappy.
+      try {
+        if (window.SC_CAM && typeof window.SC_CAM.openAndWaitCapture === 'function') {
+          (async () => {
+            try {
+              const blob = await window.SC_CAM.openAndWaitCapture();
+              if (blob && window.SC_PHOTO && typeof window.SC_PHOTO.enqueuePhoto === 'function') {
+                await window.SC_PHOTO.enqueuePhoto({ event_uuid, action: currentAction, device_time, blob });
+              }
+            } catch (e) {
+              try { if (typeof toast === 'function') toast('warning', 'Camera unavailable', 'Clock recorded without a photo.'); } catch {}
+            }
+            try { if (window.SC_PHOTO && typeof window.SC_PHOTO.syncPhotosIfNeeded === 'function') window.SC_PHOTO.syncPhotosIfNeeded(true); } catch {}
+          })();
+        }
+      } catch (e) {}
+
       syncQueueIfNeeded(true);
       try { if (window.SC_PHOTO && typeof window.SC_PHOTO.syncPhotosIfNeeded === 'function') window.SC_PHOTO.syncPhotosIfNeeded(true); } catch {}
       return;

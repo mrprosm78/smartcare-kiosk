@@ -73,7 +73,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                 <div class="flex flex-wrap gap-2">
                   <a href="<?= h(admin_url('departments.php')) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Department</a>
                   <a href="<?= h(admin_url('employee-edit.php')) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-emerald-500/15 border border-emerald-500/30 text-slate-900 hover:bg-emerald-500/20">Add employee</a>
-                  <a href="<?= h(admin_url('employee-edit.php')) ?>?agency=1" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-sky-500/15 border border-sky-500/30 text-sky-100 hover:bg-sky-500/20">Add agency</a>
+                  <a href="<?= h(admin_url('employee-edit.php')) ?>?agency=1" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-sky-500/15 border border-sky-500/30 text-black-100 hover:bg-sky-500/20">Add agency</a>
                 </div>
               <?php endif; ?>
             </div>
@@ -153,7 +153,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                         <div class="font-semibold text-slate-900"><?= h($name) ?></div>
                         <div class="text-xs text-slate-500">ID: <?= (int)$r['id'] ?> <?= $r['employee_code'] ? '• ' . h((string)$r['employee_code']) : '' ?></div>
                       </td>
-                      <td class="px-4 py-3"><span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold <?= ((int)$r['is_agency']===1) ? 'bg-sky-500/15 border border-sky-500/30 text-sky-100' : 'bg-emerald-500/10 border border-emerald-500/30 text-slate-900' ?>"><?= h($type) ?></span></td>
+                      <td class="px-4 py-3"><span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold <?= ((int)$r['is_agency']===1) ? 'bg-sky-500/15 border border-sky-500/30 text-black-100' : 'bg-emerald-500/10 border border-emerald-500/30 text-slate-900' ?>"><?= h($type) ?></span></td>
                       <td class="px-4 py-3 text-slate-700"><?= h((string)($r['department_name'] ?? '—')) ?></td>
                       <?php if ($showContract): ?>
                         <td class="px-4 py-3 text-slate-700"><?= h($contract) ?></td>
@@ -171,7 +171,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                             <a href="<?= h(admin_url('employee-edit.php')) ?>?id=<?= (int)$r['id'] ?>" class="rounded-2xl px-3 py-2 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Edit</a>
                           <?php endif; ?>
                           <?php if (admin_can($user, 'view_contract')): ?>
-                            <a href="<?= h(admin_url('employee-contract.php')) ?>?id=<?= (int)$r['id'] ?>" class="rounded-2xl px-3 py-2 text-xs font-semibold bg-sky-500/10 border border-sky-500/30 text-sky-100 hover:bg-sky-500/20">Contract</a>
+                            <a href="<?= h(admin_url('employee-contract.php')) ?>?id=<?= (int)$r['id'] ?>" class="rounded-2xl px-3 py-2 text-xs font-semibold bg-sky-500/10 border border-sky-500/30 text-black-100 hover:bg-sky-500/20">Contract</a>
                           <?php endif; ?>
                           <?php if (!admin_can($user, 'manage_employees') && !admin_can($user, 'view_contract')): ?>
                             <span class="text-xs text-slate-400">—</span>

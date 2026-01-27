@@ -81,6 +81,7 @@ function seed_employee_departments(PDO $pdo): void {
     ['Maintenance', 'maintenance', 60],
     ['Admin', 'admin', 70],
     ['Agency', 'agency', 80],
+    
   ];
 
   $stmt = $pdo->prepare("INSERT INTO kiosk_employee_departments (name, slug, sort_order, is_active) VALUES (?,?,?,1)");
