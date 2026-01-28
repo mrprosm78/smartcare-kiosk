@@ -29,6 +29,9 @@ $basicAllow = [
     'round_grace_minutes',
     // payroll boundaries
     'payroll_timezone',
+    // kiosk policy
+    'auto_approve_clean_shifts',
+    'clockin_cooldown_minutes',
   ],
   'superadmin' => [
     'rounding_enabled',
@@ -38,6 +41,9 @@ $basicAllow = [
     'payroll_week_starts_on',
     'payroll_timezone',
     'payroll_month_boundary_mode',
+    // kiosk policy
+    'auto_approve_clean_shifts',
+    'clockin_cooldown_minutes',
   ],
 ];
 
@@ -59,8 +65,13 @@ $vals = [
   // payroll boundaries (LOCKED rules)
   'payroll_week_starts_on' => admin_setting_str($pdo, 'payroll_week_starts_on', 'MONDAY'),
   'payroll_timezone' => admin_setting_str($pdo, 'payroll_timezone', 'Europe/London'),
-  'payroll_month_boundary_mode' => admin_setting_str($pdo, 'payroll_month_boundary_mode', 'midnight'),
-  'payroll_month_boundary_mode' => admin_setting_str($pdo, 'payroll_month_boundary_mode', 'midnight'),
+  // Payroll month boundary:
+  // Default to end_of_shift so the full shift is assigned to the month it STARTED.
+  'payroll_month_boundary_mode' => admin_setting_str($pdo, 'payroll_month_boundary_mode', 'end_of_shift'),
+
+  // kiosk policy
+  'auto_approve_clean_shifts' => admin_setting_bool($pdo, 'auto_approve_clean_shifts', true),
+  'clockin_cooldown_minutes' => admin_setting_int($pdo, 'clockin_cooldown_minutes', 240),
 
   // high-level (superadmin only)
   'admin_pairing_mode' => admin_setting_bool($pdo, 'admin_pairing_mode', false),
@@ -100,6 +111,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (in_array('payroll_timezone', $allowedBasic, true)) {
       admin_set_setting($pdo, 'payroll_timezone', trim((string)($_POST['payroll_timezone'] ?? 'Europe/London')));
     }
+
+    // -------------------------
+    // Kiosk policy
+    // -------------------------
+    if (in_array('auto_approve_clean_shifts', $allowedBasic, true)) {
+      admin_set_setting($pdo, 'auto_approve_clean_shifts', isset($_POST['auto_approve_clean_shifts']) ? '1' : '0');
+    }
+    if (in_array('clockin_cooldown_minutes', $allowedBasic, true)) {
+      $mins = (int)($_POST['clockin_cooldown_minutes'] ?? 240);
+      if ($mins < 0) $mins = 0;
+      if ($mins > 10080) $mins = 10080; // cap at 7 days
+      admin_set_setting($pdo, 'clockin_cooldown_minutes', (string)$mins);
+    }
+
 
     // Month boundary (superadmin only):
     // - midnight: split shifts at local midnight (recommended)
@@ -157,6 +182,21 @@ admin_page_start($pdo, 'Settings');
             </p>
           </header>
 
+          <section class="mt-4 rounded-3xl border border-slate-200 bg-white p-5">
+            <h2 class="text-lg font-semibold">Quick links</h2>
+            <p class="mt-1 text-sm text-slate-600">Manage your departments, teams and break tiers.</p>
+
+            <div class="mt-4 flex flex-wrap gap-2">
+              <?php if (admin_can($user, 'manage_employees')): ?>
+                <a href="<?= h(admin_url('departments.php')) ?>" class="rounded-2xl px-3 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Departments</a>
+                <a href="<?= h(admin_url('teams.php')) ?>" class="rounded-2xl px-3 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Teams</a>
+              <?php endif; ?>
+              <?php if (admin_can($user, 'manage_settings_basic')): ?>
+                <a href="<?= h(admin_url('break-tiers.php')) ?>" class="rounded-2xl px-3 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Break tiers</a>
+              <?php endif; ?>
+            </div>
+          </section>
+
           <?php if ($success): ?>
             <div class="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm text-slate-900"><?= h($success) ?></div>
           <?php endif; ?>
@@ -212,7 +252,9 @@ admin_page_start($pdo, 'Settings');
             <?php
               $canSeePayrollBoundary = in_array('payroll_week_starts_on', $allowedBasic, true)
                 || in_array('payroll_timezone', $allowedBasic, true)
-                || in_array('payroll_month_boundary_mode', $allowedBasic, true);
+                || in_array('payroll_month_boundary_mode', $allowedBasic, true)
+                || in_array('auto_approve_clean_shifts', $allowedBasic, true)
+                || in_array('clockin_cooldown_minutes', $allowedBasic, true);
             ?>
             <?php if ($canSeePayrollBoundary): ?>
               <section class="rounded-3xl border border-slate-200 bg-white p-5">
@@ -245,6 +287,26 @@ admin_page_start($pdo, 'Settings');
                         class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
                       <div class="mt-2 text-xs text-slate-500">Used for midnight/day boundaries in payroll.</div>
                     </label>
+
+                  <?php if (in_array('auto_approve_clean_shifts', $allowedBasic, true)): ?>
+                    <label class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+                      <input type="checkbox" name="auto_approve_clean_shifts" class="h-4 w-4 rounded" <?= $vals['auto_approve_clean_shifts'] ? 'checked' : '' ?>/>
+                      <div>
+                        <div class="text-sm font-semibold">Auto-approve clean shifts</div>
+                        <div class="text-xs text-slate-500">When enabled, normal clock-in/out shifts are approved automatically. Managers only review exceptions.</div>
+                      </div>
+                    </label>
+                  <?php endif; ?>
+
+                  <?php if (in_array('clockin_cooldown_minutes', $allowedBasic, true)): ?>
+                    <label class="rounded-2xl border border-slate-200 bg-white p-4">
+                      <div class="text-xs uppercase tracking-widest text-slate-500">Clock-in cooldown (minutes)</div>
+                      <input type="number" min="0" step="1" name="clockin_cooldown_minutes" value="<?= h((string)$vals['clockin_cooldown_minutes']) ?>"
+                        class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
+                      <div class="mt-2 text-xs text-slate-500">0 disables. Default 240 minutes (4 hours).</div>
+                    </label>
+                  <?php endif; ?>
+
                   <?php endif; ?>
 
                   <?php if ($role === 'superadmin' && in_array('payroll_month_boundary_mode', $allowedBasic, true)): ?>
@@ -252,11 +314,11 @@ admin_page_start($pdo, 'Settings');
                       <div class="text-xs uppercase tracking-widest text-slate-500">Payroll month boundary</div>
                       <select name="payroll_month_boundary_mode"
                         class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
-                        <option value="midnight" <?= ((string)$vals['payroll_month_boundary_mode']==='midnight') ? 'selected' : '' ?>>Split at local midnight (recommended)</option>
-                        <option value="end_of_shift" <?= ((string)$vals['payroll_month_boundary_mode']==='end_of_shift') ? 'selected' : '' ?>>Assign whole shift to start month (advanced)</option>
+                        <option value="end_of_shift" <?= ((string)$vals['payroll_month_boundary_mode']==='end_of_shift') ? 'selected' : '' ?>>Assign whole shift to start month (recommended)</option>
+                        <option value="midnight" <?= ((string)$vals['payroll_month_boundary_mode']==='midnight') ? 'selected' : '' ?>>Split at local midnight (advanced)</option>
                       </select>
                       <div class="mt-2 text-xs text-slate-500">
-                        Default is <b>midnight</b>. Changing this affects how cross-month shifts are assigned. Only change for a care home if you are sure — do not change retroactively after payroll has been run.
+                        Default is <b>assign whole shift to start month</b>. Changing this affects how cross-month shifts are assigned. Do not change retroactively after payroll has been run.
                       </div>
                     </label>
                   <?php endif; ?>

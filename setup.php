@@ -81,7 +81,7 @@ function seed_employee_departments(PDO $pdo): void {
     ['Maintenance', 'maintenance', 60],
     ['Admin', 'admin', 70],
     ['Agency', 'agency', 80],
-    
+    ['Activities', 'activities', 90],
   ];
 
   $stmt = $pdo->prepare("INSERT INTO kiosk_employee_departments (name, slug, sort_order, is_active) VALUES (?,?,?,1)");
@@ -431,10 +431,20 @@ function seed_settings(PDO $pdo): void {
       'type' => 'string', 'editable_by' => 'admin', 'sort' => 715, 'secret' => 0,
     ],
     [
-      'key' => 'payroll_month_boundary_mode', 'value' => 'midnight', 'group' => 'payroll',
+      'key' => 'payroll_month_boundary_mode', 'value' => 'end_of_shift', 'group' => 'payroll',
       'label' => 'Payroll Month Boundary',
       'description' => 'How to assign shifts that cross the month boundary: midnight (split at local midnight) or end_of_shift (assign whole shift to the month of its start date). Only superadmin should change this and it should not be changed retroactively.',
       'type' => 'string', 'editable_by' => 'superadmin', 'sort' => 718, 'secret' => 0,
+    ],
+    [
+      'key' => 'auto_approve_clean_shifts', 'value' => '1', 'group' => 'payroll',
+      'label' => 'Auto-approve Clean Shifts', 'description' => 'If 1, shifts that clock-in and clock-out normally (not autoclosed, not edited, valid duration) are auto-approved.',
+      'type' => 'bool', 'editable_by' => 'admin', 'sort' => 719, 'secret' => 0,
+    ],
+    [
+      'key' => 'clockin_cooldown_minutes', 'value' => '240', 'group' => 'payroll',
+      'label' => 'Clock-in Cooldown Minutes', 'description' => 'Minimum minutes required after last clock-out before employee can clock in again. Set 0 to disable.',
+      'type' => 'int', 'editable_by' => 'admin', 'sort' => 720, 'secret' => 0,
     ],
   ];
   // Cleanup: remove legacy/global payroll-rule settings.
@@ -674,7 +684,7 @@ function create_tables(PDO $pdo): void {
       first_name VARCHAR(100),
       last_name VARCHAR(100),
       nickname VARCHAR(100) NULL,
-      category_id INT UNSIGNED NULL,
+      department_id INT UNSIGNED NULL,
       team_id INT UNSIGNED NULL,
       is_agency TINYINT(1) NOT NULL DEFAULT 0,
       agency_label VARCHAR(100) NULL,
@@ -686,13 +696,13 @@ function create_tables(PDO $pdo): void {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       KEY idx_active (is_active),
-      KEY idx_category (category_id),
+      KEY idx_department (department_id),
       KEY idx_team (team_id),
       UNIQUE KEY uq_pin_fp (pin_fingerprint),
       KEY idx_agency (is_agency)
     ) ENGINE=InnoDB;
   ");
-  add_column_if_missing($pdo, 'kiosk_employees', 'category_id', 'INT UNSIGNED NULL');
+  add_column_if_missing($pdo, 'kiosk_employees', 'department_id', 'INT UNSIGNED NULL');
   add_column_if_missing($pdo, 'kiosk_employees', 'team_id', 'INT UNSIGNED NULL');
   add_column_if_missing($pdo, 'kiosk_employees', 'pin_fingerprint', 'CHAR(64) NULL');
   try { $pdo->exec("ALTER TABLE kiosk_employees ADD UNIQUE KEY uq_pin_fp (pin_fingerprint)"); } catch (Throwable $e) { /* ignore */ }

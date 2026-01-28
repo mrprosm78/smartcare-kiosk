@@ -89,7 +89,7 @@ if ($status === 'active') {
   $where[] = 'e.is_active = 0';
 }
 if ($cat > 0) {
-  $where[] = 'e.department_id = ?';
+  $where[] = 'e.category_id = ?';
   $params[] = $cat;
 }
 if ($q !== '') {
@@ -98,10 +98,10 @@ if ($q !== '') {
 }
 
 $sqlEmp = "SELECT e.id, e.first_name, e.last_name, e.nickname, e.employee_code, e.is_active, e.is_agency,
-                 e.department_id, d.name AS department_name,
+                 e.category_id, d.name AS department_name,
                  p.contract_hours_per_week, p.break_is_paid
           FROM kiosk_employees e
-          LEFT JOIN kiosk_employee_departments d ON d.id = e.department_id
+          LEFT JOIN kiosk_employee_departments d ON d.id = e.category_id
           LEFT JOIN kiosk_employee_pay_profiles p ON p.employee_id = e.id";
 if ($where) $sqlEmp .= ' WHERE ' . implode(' AND ', $where);
 $sqlEmp .= ' ORDER BY e.is_active DESC, e.is_agency ASC, e.first_name ASC, e.last_name ASC LIMIT 500';

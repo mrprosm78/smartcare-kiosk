@@ -35,18 +35,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'toggle') {
       $id = (int)($_POST['id'] ?? 0);
-      if ($id <= 0) throw new RuntimeException('Invalid category');
+      if ($id <= 0) throw new RuntimeException('Invalid department');
       $pdo->prepare("UPDATE kiosk_employee_departments SET is_active = IF(is_active=1,0,1) WHERE id=?")->execute([$id]);
       admin_redirect(admin_url('departments.php'));
     }
 
     if ($action === 'delete') {
       $id = (int)($_POST['id'] ?? 0);
-      if ($id <= 0) throw new RuntimeException('Invalid category');
+      if ($id <= 0) throw new RuntimeException('Invalid department');
 
       // prevent deleting departments in use
-      $c = (int)$pdo->prepare("SELECT COUNT(*) FROM kiosk_employees WHERE category_id=?")->execute([$id]) ?: 0;
-      $stmtC = $pdo->prepare("SELECT COUNT(*) FROM kiosk_employees WHERE category_id=?");
+      $c = (int)$pdo->prepare("SELECT COUNT(*) FROM kiosk_employees WHERE department_id=?")->execute([$id]) ?: 0;
+      $stmtC = $pdo->prepare("SELECT COUNT(*) FROM kiosk_employees WHERE department_id=?");
       $stmtC->execute([$id]);
       $inUse = (int)$stmtC->fetchColumn();
       if ($inUse > 0) throw new RuntimeException('Department is in use by employees. Deactivate instead.');
@@ -89,7 +89,7 @@ admin_page_start($pdo, 'Employee Departments');
           <?php endif; ?>
 
           <div class="mt-5 rounded-3xl border border-slate-200 bg-white p-5">
-            <h2 class="text-lg font-semibold">Add category</h2>
+            <h2 class="text-lg font-semibold">Add department</h2>
             <form method="post" class="mt-4 grid grid-cols-1 md:grid-cols-6 gap-3">
               <input type="hidden" name="csrf" value="<?= h(admin_csrf_token()) ?>">
               <input type="hidden" name="action" value="create">
@@ -150,7 +150,7 @@ admin_page_start($pdo, 'Employee Departments');
                           </button>
                         </form>
 
-                        <form method="post" class="inline" onsubmit="return confirm('Delete this category? Only allowed if not in use.');">
+                        <form method="post" class="inline" onsubmit="return confirm('Delete this department? Only allowed if not in use.');">
                           <input type="hidden" name="csrf" value="<?= h(admin_csrf_token()) ?>">
                           <input type="hidden" name="action" value="delete">
                           <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">

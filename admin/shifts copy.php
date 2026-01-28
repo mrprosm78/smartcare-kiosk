@@ -89,7 +89,7 @@ if ($status === 'active') {
   $where[] = 'e.is_active = 0';
 }
 if ($cat > 0) {
-  $where[] = 'e.department_id = ?';
+  $where[] = 'e.category_id = ?';
   $params[] = $cat;
 }
 if ($q !== '') {
@@ -98,10 +98,10 @@ if ($q !== '') {
 }
 
 $sqlEmp = "SELECT e.id, e.first_name, e.last_name, e.nickname, e.employee_code, e.is_active, e.is_agency,
-                 e.department_id, d.name AS department_name,
+                 e.category_id, d.name AS department_name,
                  p.contract_hours_per_week, p.break_is_paid
           FROM kiosk_employees e
-          LEFT JOIN kiosk_employee_departments d ON d.id = e.department_id
+          LEFT JOIN kiosk_employee_departments d ON d.id = e.category_id
           LEFT JOIN kiosk_employee_pay_profiles p ON p.employee_id = e.id";
 if ($where) $sqlEmp .= ' WHERE ' . implode(' AND ', $where);
 $sqlEmp .= ' ORDER BY e.is_active DESC, e.is_agency ASC, e.first_name ASC, e.last_name ASC LIMIT 500';
@@ -277,19 +277,6 @@ foreach ($employees as $e) {
   $deptTotals[$dept] = ($deptTotals[$dept] ?? 0) + (int)($weekTotals[$empId] ?? 0);
 }
 
-// Build running totals (cumulative from week start through each day)
-// Example (Sunday start): Sun 7.5, Tue 7.5 => Tue running total 15.0
-$runningTotals = []; // [empId][ymd] => minutes
-foreach ($employees as $e) {
-  $empId = (int)$e['id'];
-  $cum = 0;
-  foreach ($days as $d) {
-    $ymd = $d['ymd'];
-    $cum += (int)($dayTotals[$empId][$ymd] ?? 0);
-    $runningTotals[$empId][$ymd] = $cum;
-  }
-}
-
 // ----------------------
 // Render
 // ----------------------
@@ -364,15 +351,15 @@ $active = admin_url('shifts.php');
 
           <section class="mt-5 rounded-3xl border border-slate-200 bg-white p-4">
             <div class="overflow-auto">
-              <table class="min-w-[980px] w-full table-fixed text-sm border-separate border-spacing-0 border border-slate-200">
+              <table class="min-w-[1200px] w-full text-sm border-separate border-spacing-0">
                 <thead>
                   <tr>
-                    <th class="sticky left-0 z-10 bg-white border-b border-slate-200 p-2 text-left w-[220px]">Employee</th>
+                    <th class="sticky left-0 z-10 bg-white border-b border-slate-200 p-3 text-left">Employee</th>
                     <?php foreach ($days as $d):
                       $isBH = array_key_exists($d['ymd'], $bh);
                       $thCls = $isBH ? 'bg-amber-50' : 'bg-white';
                     ?>
-                      <th class="border-b border-slate-200 p-2 text-center whitespace-pre-line min-w-[105px] max-w-[120px] <?= $thCls ?>">
+                      <th class="border-b border-slate-200 p-3 text-center whitespace-pre-line <?= $thCls ?>">
                         <div class="font-semibold"><?= h($d['label']) ?></div>
                         <?php if ($isBH): ?>
                           <div class="mt-1 text-[11px] font-semibold text-amber-800">BH</div>
@@ -398,7 +385,7 @@ $active = admin_url('shifts.php');
                     $varH = $totalH - $contractH;
                   ?>
                     <tr class="align-top">
-                      <td class="sticky left-0 z-10 bg-white border-b border-slate-200 p-2 w-[220px]">
+                      <td class="sticky left-0 z-10 bg-white border-b border-slate-200 p-3 w-[260px]">
                         <div class="font-semibold text-slate-900"><?= h($name) ?></div>
                         <div class="mt-1 text-[11px] text-slate-600"><?= h($code !== '' ? $code : '—') ?> · <?= h($dept !== '' ? $dept : '—') ?></div>
                       </td>
@@ -410,21 +397,20 @@ $active = admin_url('shifts.php');
                         $blocks = $cell[$empId][$ymd] ?? [];
                         $dayM = (int)($dayTotals[$empId][$ymd] ?? 0);
                       ?>
-                        <td class="border-b border-slate-200 p-1 align-top min-w-[105px] max-w-[120px] <?= $tdCls ?>">
+                        <td class="border-b border-slate-200 p-2 align-top <?= $tdCls ?>">
                           <?php if ($blocks): ?>
-                            <div class="flex flex-col gap-1">
+                            <div class="flex flex-col gap-2">
                               <?php
-                                // Running total up to this day (cumulative from week start)
-                                $totalMins = (int)($runningTotals[$empId][$ymd] ?? 0);
+                                $totalMins = (int)($weekTotals[$empId] ?? 0);
                                 $contractHours = (float)($e['contract_hours_per_week'] ?? 0);
                                 $contractMins = (int)round($contractHours * 60);
                                 $over = ($contractMins > 0 && $totalMins > $contractMins);
                                 $weekCls = $over ? 'text-red-700' : 'text-green-700';
                               ?>
                               <?php foreach ($blocks as $b): ?>
-                                <div class="rounded-md border bg-white px-1.5 py-1 text-xs shadow-sm">
-                                  <div class="flex items-center gap-2">
-                                    <div class="truncate font-semibold text-slate-900">
+                                <div class="rounded-lg border bg-white px-2 py-2 text-sm shadow-sm">
+                                  <div class="flex items-center justify-between gap-2">
+                                    <div class="truncate font-medium text-gray-900">
                                       <?= h((string)$b['actual']) ?>
                                     </div>
                                     <div class="flex items-center gap-2 shrink-0">
@@ -434,12 +420,12 @@ $active = admin_url('shifts.php');
                                       <?php endif; ?>
                                     </div>
                                   </div>
-                                  <div class="flex items-center gap-2 pt-1 text-[11px]">
+                                  <div class="flex items-center justify-between pt-1 text-xs">
                                     <div class="text-slate-700 font-semibold">
                                       <?= h(payroll_fmt_hhmm((int)$b['net_mins'])) ?> <span class="text-slate-400 font-semibold">(-b)</span>
                                     </div>
                                     <div class="<?= $weekCls ?> font-semibold">
-                                      <?= h(payroll_fmt_hhmm($totalMins)) ?><span class="text-slate-400 font-semibold">(t)</span>
+                                      <?= h(payroll_fmt_hhmm($totalMins)) ?><span class="text-slate-400 font-semibold">(h)</span>
                                     </div>
                                   </div>
                                 </div>

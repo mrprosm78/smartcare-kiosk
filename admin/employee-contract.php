@@ -16,7 +16,7 @@ if ($employeeId <= 0) {
 $stmt = $pdo->prepare(
   "SELECT e.*, c.name AS department_name, t.name AS team_name
    FROM kiosk_employees e
-   LEFT JOIN kiosk_employee_departments c ON c.id = e.category_id
+   LEFT JOIN kiosk_employee_departments c ON c.id = e.department_id
    LEFT JOIN kiosk_employee_teams t ON t.id = e.team_id
    WHERE e.id = ?
    LIMIT 1"
@@ -36,7 +36,7 @@ $success = '';
  * LOCKED model:
  * - Break minutes come from Shift Rules (care home). Contract only controls paid/unpaid breaks.
  * - No legacy BH fields, no day/night rates
- * - Per-category rules stored in rules_json:
+ * - Per-department rules stored in rules_json:
  *   *_multiplier (nullable), *_premium_per_hour (nullable)
  * - Contract-first; if contract rule is null, payroll falls back to care-home defaults.
  */
@@ -204,36 +204,14 @@ admin_page_start($pdo, $title);
               </div>
             </div>
 
-            <div>
-              <h2 class="text-lg font-semibold">Payroll Rule Overrides (Contract wins)</h2>
-              <div class="mt-1 text-sm text-slate-500">Leave blank to inherit care-home defaults. One multiplier and one premium can apply per minute (per locked stacking rules).</div>
-
-              <?php
-                $currentRules = [];
-                if (!empty($prow['rules_json'])) {
-                  $tmp = json_decode((string)$prow['rules_json'], true);
-                  if (is_array($tmp)) $currentRules = $tmp;
-                }
-                $stackVal = (string)($currentRules['stacking_override'] ?? 'inherit');
-              ?>
-
-              <div class="mt-3">
-                <label class="block">
-                  <div class="text-sm text-slate-600">Stacking override</div>
-                  <select name="stacking_override" class="mt-1 w-full md:w-72 rounded-xl bg-slate-50 border border-slate-200 px-3 py-2">
-                    <?php foreach (['inherit'=>'Inherit care-home setting','exclusive'=>'Exclusive','stack'=>'Stack (1 multiplier + 1 premium)'] as $v=>$lbl): ?>
-                      <option value="<?= h($v) ?>" <?= ($stackVal===$v) ? 'selected' : '' ?>><?= h($lbl) ?></option>
-                    <?php endforeach; ?>
-                  </select>
-                </label>
-              </div>
+    
 
               <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <?php foreach ($ruleKeys as $k):
                   $mk = $k.'_multiplier';
                   $pk = $k.'_premium_per_hour';
-                  $mv = $currentRules[$mk] ?? '';
-                  $pv = $currentRules[$pk] ?? '';
+                  $mv = $rules[$mk] ?? '';
+                  $pv = $rules[$pk] ?? '';
                   $label = ucwords(str_replace('_',' ', $k));
                 ?>
                   <div class="rounded-2xl border border-slate-200 bg-white p-4">

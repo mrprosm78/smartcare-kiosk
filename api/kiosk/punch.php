@@ -213,6 +213,43 @@ function punch_mark(PDO $pdo, string $eventUuid, string $status, ?string $errorC
     $stmt->execute([$status, $errorCode, $shiftId, $eventUuid]);
 }
 
+
+/** Return true if this shift has any manual edit records. */
+function shift_has_manual_edits(PDO $pdo, int $shiftId): bool {
+    if ($shiftId <= 0) return false;
+    try {
+        $st = $pdo->prepare("SELECT 1 FROM kiosk_shift_changes WHERE shift_id=? AND change_type='edit' LIMIT 1");
+        $st->execute([$shiftId]);
+        return (bool)$st->fetchColumn();
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+/** Best-effort insert into kiosk_shift_changes (audit). */
+function shift_change_log(PDO $pdo, int $shiftId, string $type, ?int $userId, ?string $username, ?string $role, ?string $reason, ?string $note, ?array $old, ?array $new): void {
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO kiosk_shift_changes
+            (shift_id, change_type, changed_by_user_id, changed_by_username, changed_by_role, reason, note, old_json, new_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())
+        ");
+        $stmt->execute([
+            $shiftId,
+            $type,
+            $userId,
+            $username,
+            $role,
+            $reason,
+            $note,
+            $old ? json_encode($old, JSON_UNESCAPED_SLASHES) : null,
+            $new ? json_encode($new, JSON_UNESCAPED_SLASHES) : null,
+        ]);
+    } catch (Throwable $e) {
+        // ignore
+    }
+}
+
 /**
  * Auto-close forgotten open shifts for this employee (if older than max_shift_minutes).
  * - Silent (does not block punch)
@@ -603,6 +640,34 @@ try {
             json_response(['ok'=>false,'error'=>'already_clocked_in'], 409);
         }
 
+
+        // Clock-in cooldown (configurable): block clock-in if last clock-out was too recent
+        $cooldownMins = s_int($pdo, 'clockin_cooldown_minutes', 240);
+        if ($cooldownMins > 0) {
+            $lastOut = $pdo->prepare("
+                SELECT clock_out_at
+                FROM kiosk_shifts
+                WHERE employee_id = ?
+                  AND clock_out_at IS NOT NULL
+                ORDER BY clock_out_at DESC
+                LIMIT 1
+            ");
+            $lastOut->execute([$employeeId]);
+            $lastClockOut = $lastOut->fetchColumn();
+
+            if ($lastClockOut) {
+                $diffStmt = $pdo->prepare("SELECT TIMESTAMPDIFF(MINUTE, ?, ?) AS diff_min");
+                $diffStmt->execute([(string)$lastClockOut, $effectiveTimeSql]);
+                $diffMin = (int)$diffStmt->fetchColumn();
+
+                if ($diffMin >= 0 && $diffMin < $cooldownMins) {
+                    $remain = max(0, $cooldownMins - $diffMin);
+                    punch_mark($pdo, $eventUuid, 'rejected', 'cooldown_active', null);
+                    json_response(['ok'=>false,'error'=>'cooldown_active','minutes_remaining'=>$remain], 409);
+                }
+            }
+        }
+
         $pdo->prepare("INSERT INTO kiosk_shifts (employee_id, clock_in_at, is_closed) VALUES (?, ?, 0)")
             ->execute([$employeeId, $effectiveTimeSql]);
 
@@ -677,7 +742,82 @@ try {
             ");
             $upd->execute([$effectiveTimeSql, $mins, $breakMins, $paidMins, (int)$s['id']]);
 
-            punch_mark($pdo, $eventUuid, 'processed', null, (int)$s['id']);
+            
+        // Auto-approve clean shifts (configurable)
+        $autoApprove = s_bool($pdo, 'auto_approve_clean_shifts', true);
+        if ($autoApprove) {
+            $shiftId = (int)$s['id'];
+
+            // Only approve if:
+            // - not too long flagged
+            // - not autoclosed
+            // - no close_reason set (e.g., too_long)
+            // - duration within bounds and not negative
+            // - no manual edits exist
+            $isAutoclosed = 0;
+            $closeReason  = null;
+            try {
+                $stMeta = $pdo->prepare("SELECT is_autoclosed, close_reason, approved_at, duration_minutes FROM kiosk_shifts WHERE id=? LIMIT 1");
+                $stMeta->execute([$shiftId]);
+                $meta = $stMeta->fetch(PDO::FETCH_ASSOC) ?: null;
+                if ($meta) {
+                    $isAutoclosed = (int)($meta['is_autoclosed'] ?? 0);
+                    $closeReason  = $meta['close_reason'] ?? null;
+                    $alreadyApproved = !empty($meta['approved_at']);
+                    $dur = (int)($meta['duration_minutes'] ?? $mins);
+                } else {
+                    $alreadyApproved = false;
+                    $dur = $mins;
+                }
+            } catch (Throwable $e) {
+                $alreadyApproved = false;
+                $dur = $mins;
+            }
+
+            $maxShiftMins = setting_int($pdo,'max_shift_minutes', 960);
+            $durOk = ($dur > 0) && ($maxShiftMins <= 0 || $dur <= $maxShiftMins);
+
+            if (!$alreadyApproved
+                && !$tooLong
+                && $isAutoclosed === 0
+                && (empty($closeReason))
+                && $durOk
+                && !shift_has_manual_edits($pdo, $shiftId)
+            ) {
+                try {
+                    $ap = $pdo->prepare("
+                        UPDATE kiosk_shifts
+                        SET approved_at = UTC_TIMESTAMP(),
+                            approved_by = 'system',
+                            approval_note = 'Auto-approved (clean punch)',
+                            updated_source = 'system'
+                        WHERE id = ?
+                          AND approved_at IS NULL
+                        LIMIT 1
+                    ");
+                    $ap->execute([$shiftId]);
+
+                    if ($ap->rowCount() > 0) {
+                        shift_change_log(
+                            $pdo,
+                            $shiftId,
+                            'approve',
+                            null,
+                            'system',
+                            'system',
+                            'auto_approve',
+                            'Auto-approved (clean punch)',
+                            null,
+                            ['mode'=>'auto','rule'=>'clean_punch']
+                        );
+                    }
+                } catch (Throwable $e) {
+                    // ignore auto-approve errors
+                }
+            }
+        }
+
+punch_mark($pdo, $eventUuid, 'processed', null, (int)$s['id']);
         }
 
         // Optional open shifts list for UI (after clock out)

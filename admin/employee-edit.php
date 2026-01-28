@@ -25,7 +25,7 @@ $employee = [
   'first_name' => '',
   'last_name' => '',
   'nickname' => '',
-  'category_id' => null,
+  'department_id' => null,
   'team_id' => null,
   'is_agency' => 0,
   'agency_label' => '',
@@ -57,8 +57,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $first = trim((string)($_POST['first_name'] ?? ''));
     $last = trim((string)($_POST['last_name'] ?? ''));
     $nick = trim((string)($_POST['nickname'] ?? ''));
-    $category_id = (int)($_POST['category_id'] ?? 0);
-    $category_id = $category_id > 0 ? $category_id : null;
+    $department_id = (int)($_POST['department_id'] ?? 0);
+    $department_id = $department_id > 0 ? $department_id : null;
     $is_agency = (int)($_POST['is_agency'] ?? 0) === 1 ? 1 : 0;
     $agency_label = trim((string)($_POST['agency_label'] ?? ''));
     $is_active = (int)($_POST['is_active'] ?? 1) === 1 ? 1 : 0;
@@ -88,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($isNew) {
       $stmt = $pdo->prepare(
-        'INSERT INTO kiosk_employees (employee_code, first_name, last_name, nickname, category_id, team_id, is_agency, agency_label, pin_hash, pin_fingerprint, pin_updated_at, is_active, created_at, updated_at)
+        'INSERT INTO kiosk_employees (employee_code, first_name, last_name, nickname, department_id, team_id, is_agency, agency_label, pin_hash, pin_fingerprint, pin_updated_at, is_active, created_at, updated_at)
          VALUES (:code,:first,:last,:nick,:cat,:team,:ag,:al,:pin,:pinfp, UTC_TIMESTAMP, :active, UTC_TIMESTAMP, UTC_TIMESTAMP)'
       );
       $stmt->execute([
@@ -96,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ':first' => $first,
         ':last' => $last,
         ':nick' => $nick !== '' ? $nick : null,
-        ':cat' => $category_id,
+        ':cat' => $department_id,
         ':team' => $team_id,
         ':ag' => $is_agency,
         ':al' => $agency_label !== '' ? $agency_label : null,
@@ -111,14 +111,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $pdo->prepare('INSERT IGNORE INTO kiosk_employee_pay_profiles (employee_id, created_at, updated_at) VALUES (?, UTC_TIMESTAMP, UTC_TIMESTAMP)')
         ->execute([$id]);
     } else {
-      $sql = 'UPDATE kiosk_employees SET employee_code=:code, first_name=:first, last_name=:last, nickname=:nick, category_id=:cat, team_id=:team, is_agency=:ag, agency_label=:al, is_active=:active, updated_at=UTC_TIMESTAMP';
+      $sql = 'UPDATE kiosk_employees SET employee_code=:code, first_name=:first, last_name=:last, nickname=:nick, department_id=:cat, team_id=:team, is_agency=:ag, agency_label=:al, is_active=:active, updated_at=UTC_TIMESTAMP';
       $params = [
         ':team' => $team_id,
         ':code' => $employee_code !== '' ? $employee_code : null,
         ':first' => $first,
         ':last' => $last,
         ':nick' => $nick !== '' ? $nick : null,
-        ':cat' => $category_id,
+        ':cat' => $department_id,
         ':ag' => $is_agency,
         ':al' => $agency_label !== '' ? $agency_label : null,
         ':active' => $is_active,
@@ -179,10 +179,10 @@ admin_page_start($pdo, $isNew ? 'Add Employee' : 'Edit Employee');
 
                 <div>
                   <label class="block text-xs font-semibold text-slate-600">Department</label>
-                  <select name="category_id" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+                  <select name="department_id" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
                     <option value="0">—</option>
                     <?php foreach ($cats as $c): ?>
-                      <option value="<?= (int)$c['id'] ?>" <?php if ((int)($employee['category_id'] ?? 0) === (int)$c['id']) echo 'selected'; ?>><?= h((string)$c['name']) ?></option>
+                      <option value="<?= (int)$c['id'] ?>" <?php if ((int)($employee['department_id'] ?? 0) === (int)$c['id']) echo 'selected'; ?>><?= h((string)$c['name']) ?></option>
                     <?php endforeach; ?>
                   </select>
                   <div class="mt-2 text-xs text-slate-500"><a class="underline hover:text-slate-900" href="<?= h(admin_url('departments.php')) ?>">Manage department</a></div>

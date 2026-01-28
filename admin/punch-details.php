@@ -23,13 +23,18 @@ function iso_date(string $ymd): bool {
   return (bool)preg_match('/^\d{4}-\d{2}-\d{2}$/', $ymd);
 }
 
-function period_bounds(string $mode, string $tz = 'Europe/London'): array {
+function period_bounds(string $mode, string $tz = 'Europe/London', string $weekStartsOn = 'MONDAY'): array {
   $now = new DateTimeImmutable('now', new DateTimeZone($tz));
   $today = $now->setTime(0, 0, 0);
-  $mondayThisWeek = $today->modify('monday this week');
-  $mondayLastWeek = $mondayThisWeek->modify('-7 days');
-  $sundayThisWeek = $mondayThisWeek->modify('+6 days');
-  $sundayLastWeek = $mondayLastWeek->modify('+6 days');
+
+  $ws = strtoupper(trim($weekStartsOn));
+  $wsLower = strtolower($ws);
+  // PHP supports phrases like "monday this week", "sunday this week", etc.
+  $weekStartThis = $today->modify($wsLower . ' this week');
+  $weekStartLast = $weekStartThis->modify('-7 days');
+  $weekEndThis   = $weekStartThis->modify('+6 days');
+  $weekEndLast   = $weekStartLast->modify('+6 days');
+
   $firstThisMonth = $today->modify('first day of this month');
   $lastThisMonth  = $today->modify('last day of this month');
   $firstLastMonth = $firstThisMonth->modify('-1 month');
@@ -43,12 +48,12 @@ function period_bounds(string $mode, string $tz = 'Europe/London'): array {
       $to = $from;
       break;
     case 'this_week':
-      $from = $mondayThisWeek;
-      $to = $sundayThisWeek;
+      $from = $weekStartThis;
+      $to = $weekEndThis;
       break;
     case 'last_week':
-      $from = $mondayLastWeek;
-      $to = $sundayLastWeek;
+      $from = $weekStartLast;
+      $to = $weekEndLast;
       break;
     case 'this_month':
       $from = $firstThisMonth;
@@ -72,13 +77,16 @@ function period_bounds(string $mode, string $tz = 'Europe/London'): array {
 }
 
 $tz = admin_setting_str($pdo, 'payroll_timezone', 'Europe/London');
+$weekStartsOn = payroll_week_starts_on($pdo);
 
-$mode = (string)($_GET['mode'] ?? 'this_week');
+$hasQuery = !empty($_GET);
+// Default behaviour: on first load (no query params), show Yesterday.
+$mode = (string)($_GET['mode'] ?? ($hasQuery ? 'this_week' : 'yesterday'));
 if (!in_array($mode, ['today','yesterday','this_week','last_week','this_month','last_month','custom'], true)) {
   $mode = 'this_week';
 }
 
-$bounds = period_bounds($mode === 'custom' ? 'this_week' : $mode, $tz);
+$bounds = period_bounds($mode === 'custom' ? 'this_week' : $mode, $tz, $weekStartsOn);
 $from = (string)($_GET['from'] ?? $bounds['from']);
 $to   = (string)($_GET['to'] ?? $bounds['to']);
 if (!iso_date($from)) $from = $bounds['from'];
@@ -186,10 +194,11 @@ $active = admin_url('punch-details.php');
               <div class="text-xs text-slate-500">Showing up to 500 rows</div>
             </div>
 
-            <form method="get" class="mt-5 grid grid-cols-1 md:grid-cols-6 gap-3">
-              <label class="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <div class="text-[11px] uppercase tracking-widest text-slate-500">Period</div>
-                <select name="mode" id="mode" class="mt-2 w-full rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm">
+            <form id="filters" method="get" class="mt-4 flex flex-wrap items-center gap-2">
+              <!-- One-row compact filters (label + control on the same line) -->
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-semibold text-slate-700">Period</span>
+                <select name="mode" id="mode" class="h-9 rounded-lg bg-white border border-slate-200 px-2.5 text-sm">
                   <?php
                     $modes = [
                       'today' => 'Today',
@@ -206,20 +215,11 @@ $active = admin_url('punch-details.php');
                     }
                   ?>
                 </select>
-              </label>
+              </div>
 
-              <label class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <div class="text-[11px] uppercase tracking-widest text-slate-500">From</div>
-                <input type="date" name="from" id="from" value="<?= h($from) ?>" class="mt-2 w-full rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm" />
-              </label>
-              <label class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <div class="text-[11px] uppercase tracking-widest text-slate-500">To</div>
-                <input type="date" name="to" id="to" value="<?= h($to) ?>" class="mt-2 w-full rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm" />
-              </label>
-
-              <label class="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <div class="text-[11px] uppercase tracking-widest text-slate-500">Employee</div>
-                <select name="employee_id" class="mt-2 w-full rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-semibold text-slate-700">Employee</span>
+                <select name="employee_id" id="employee_id" class="h-9 min-w-[240px] rounded-lg bg-white border border-slate-200 px-2.5 text-sm">
                   <option value="0">All employees</option>
                   <?php foreach ($employees as $e):
                     $id = (int)($e['id'] ?? 0);
@@ -231,19 +231,29 @@ $active = admin_url('punch-details.php');
                     <option value="<?= $id ?>" <?= $sel ?>><?= h($text) ?></option>
                   <?php endforeach; ?>
                 </select>
-              </label>
+              </div>
 
-              <label class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <div class="text-[11px] uppercase tracking-widest text-slate-500">Action</div>
-                <select name="action" class="mt-2 w-full rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-semibold text-slate-700">From</span>
+                <input type="date" name="from" id="from" value="<?= h($from) ?>" class="h-9 rounded-lg bg-white border border-slate-200 px-2.5 text-sm" />
+              </div>
+
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-semibold text-slate-700">To</span>
+                <input type="date" name="to" id="to" value="<?= h($to) ?>" class="h-9 rounded-lg bg-white border border-slate-200 px-2.5 text-sm" />
+              </div>
+
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-semibold text-slate-700">Action</span>
+                <select name="action" id="action" class="h-9 rounded-lg bg-white border border-slate-200 px-2.5 text-sm">
                   <option value="" <?= $action === '' ? 'selected' : '' ?>>All</option>
                   <option value="IN" <?= $action === 'IN' ? 'selected' : '' ?>>IN</option>
                   <option value="OUT" <?= $action === 'OUT' ? 'selected' : '' ?>>OUT</option>
                 </select>
-              </label>
+              </div>
 
               <div class="flex items-end">
-                <button class="w-full rounded-2xl bg-white text-slate-900 px-4 py-3 text-sm font-semibold hover:bg-white/90">Apply</button>
+                <button class="h-9 rounded-xl border border-slate-200 bg-white text-slate-900 px-4 text-sm font-semibold hover:bg-slate-50">Apply</button>
               </div>
             </form>
 
@@ -252,20 +262,20 @@ $active = admin_url('punch-details.php');
             <?php endif; ?>
 
             <div class="mt-6 overflow-x-auto">
-              <table class="min-w-full text-sm">
+              <table class="min-w-full text-sm border border-slate-200 border-collapse">
                 <thead>
-                  <tr class="text-left text-slate-500">
-                    <th class="py-2 pr-4">Time</th>
-                    <th class="py-2 pr-4">Employee</th>
-                    <th class="py-2 pr-4">Action</th>
-                    <th class="py-2 pr-4">Status</th>
-                    <th class="py-2 pr-4">Source</th>
-                    <th class="py-2 pr-4">Shift</th>
-                    <th class="py-2 pr-4">Photo</th>
-                    <th class="py-2 pr-4">Details</th>
+                  <tr class="text-left text-xs uppercase tracking-widest text-slate-500">
+                    <th class="py-2 px-2 border-b border-slate-200 bg-slate-50 whitespace-nowrap">Time</th>
+                    <th class="py-2 px-2 border-b border-slate-200 bg-slate-50 whitespace-nowrap">Employee</th>
+                    <th class="py-2 px-2 border-b border-slate-200 bg-slate-50 whitespace-nowrap">Action</th>
+                    <th class="py-2 px-2 border-b border-slate-200 bg-slate-50 whitespace-nowrap">Status</th>
+                    <th class="py-2 px-2 border-b border-slate-200 bg-slate-50 whitespace-nowrap">Source</th>
+                    <th class="py-2 px-2 border-b border-slate-200 bg-slate-50 whitespace-nowrap">Shift</th>
+                    <th class="py-2 px-2 border-b border-slate-200 bg-slate-50 whitespace-nowrap">Photo</th>
+                    <th class="py-2 px-2 border-b border-slate-200 bg-slate-50 whitespace-nowrap">Details</th>
                   </tr>
                 </thead>
-                <tbody class="divide-y divide-white/10">
+                <tbody>
                   <?php if (empty($rows)): ?>
                     <tr><td colspan="8" class="py-6 text-slate-500">No punches found for this range.</td></tr>
                   <?php else: ?>
@@ -287,11 +297,11 @@ $active = admin_url('punch-details.php');
                       $ip = (string)($r['ip_address'] ?? '');
                       $uuid = (string)($r['event_uuid'] ?? '');
                     ?>
-                      <tr class="align-top">
-                        <td class="py-3 pr-4 whitespace-nowrap text-slate-900"><?= h($t !== '' ? admin_fmt_dt($t) : '—') ?></td>
-                        <td class="py-3 pr-4 whitespace-nowrap"><?= h($empLabel) ?></td>
-                        <td class="py-3 pr-4"><?= $act === 'IN' ? badge('IN','ok') : ($act === 'OUT' ? badge('OUT','warn') : badge('—')) ?></td>
-                        <td class="py-3 pr-4">
+                      <tr class="align-top border-b border-slate-100">
+                        <td class="py-2 px-2 whitespace-nowrap text-slate-900"><?= h($t !== '' ? admin_fmt_dt($t) : '—') ?></td>
+                        <td class="py-2 px-2 whitespace-nowrap"><?= h($empLabel) ?></td>
+                        <td class="py-2 px-2"><?= $act === 'IN' ? badge('IN','ok') : ($act === 'OUT' ? badge('OUT','warn') : badge('—')) ?></td>
+                        <td class="py-2 px-2">
                           <div class="flex flex-col gap-1">
                             <?php
                               // kiosk_punch_events.result_status is typically: received | processed | rejected
@@ -304,24 +314,24 @@ $active = admin_url('punch-details.php');
                               echo $status !== '' ? badge($status, $kind) : badge('—');
                             ?>
                             <?php if ($offline): ?><span class="text-[11px] text-slate-500">offline</span><?php endif; ?>
-                            <?php if ($errCode !== ''): ?><span class="text-[11px] text-black-200"><?= h($errCode) ?></span><?php endif; ?>
+                            <?php if ($errCode !== ''): ?><span class="text-[11px] text-slate-700"><?= h($errCode) ?></span><?php endif; ?>
                           </div>
                         </td>
-                        <td class="py-3 pr-4 whitespace-nowrap"><?= h($src !== '' ? $src : '—') ?></td>
-                        <td class="py-3 pr-4 whitespace-nowrap"><?= h($shiftId !== '' ? $shiftId : '—') ?></td>
-                        <td class="py-3 pr-4">
+                        <td class="py-2 px-2 whitespace-nowrap"><?= h($src !== '' ? $src : '—') ?></td>
+                        <td class="py-2 px-2 whitespace-nowrap"><?= h($shiftId !== '' ? $shiftId : '—') ?></td>
+                        <td class="py-2 px-2">
                           <?php if ($photoId > 0): ?>
                             <a href="<?= h(admin_url('punch-photo.php?id=' . $photoId . '&size=full')) ?>" target="_blank" class="inline-block">
-                              <img src="<?= h(admin_url('punch-photo.php?id=' . $photoId . '&size=thumb')) ?>" alt="Punch photo" class="h-12 w-12 rounded-xl object-cover border border-slate-200" />
+                              <img src="<?= h(admin_url('punch-photo.php?id=' . $photoId . '&size=thumb')) ?>" alt="Punch photo" class="h-10 w-10 rounded-lg object-cover border border-slate-200" />
                             </a>
                           <?php else: ?>
                             <span class="text-slate-400">—</span>
                           <?php endif; ?>
                         </td>
-                        <td class="py-3 pr-4">
-                          <details class="rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                            <summary class="cursor-pointer select-none text-xs text-slate-600">View</summary>
-                            <div class="mt-2 text-[11px] text-slate-500 space-y-1">
+                        <td class="py-2 px-2">
+                          <details class="rounded-xl border border-slate-200 bg-white px-2 py-1">
+                            <summary class="cursor-pointer select-none text-[11px] text-slate-600">View</summary>
+                            <div class="mt-1 text-[11px] text-slate-500 space-y-1">
                               <?php if ($uuid !== ''): ?><div><span class="text-slate-400">event_uuid:</span> <?= h($uuid) ?></div><?php endif; ?>
                               <?php if ($ip !== ''): ?><div><span class="text-slate-400">ip:</span> <?= h($ip) ?></div><?php endif; ?>
                               <?php if ($ua !== ''): ?><div class="break-words"><span class="text-slate-400">ua:</span> <?= h($ua) ?></div><?php endif; ?>
@@ -345,45 +355,52 @@ $active = admin_url('punch-details.php');
 
 <script>
 (function(){
+  const WEEK_START = "<?= h(payroll_week_starts_on($pdo)) ?>"; // e.g. MONDAY or SUNDAY
   const mode = document.getElementById('mode');
   const from = document.getElementById('from');
   const to = document.getElementById('to');
+  const emp = document.getElementById('employee_id');
+  const act = document.getElementById('action');
+  const form = document.getElementById('filters');
   if (!mode || !from || !to) return;
   function pad(n){ return (n<10?('0'+n):(''+n)); }
-  function fmt(d){ return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate()); }
+  function fmt(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
 
   function weekStart(d){
-    // Monday start; d is Date
-    const day = (d.getUTCDay() + 6) % 7; // Mon=0..Sun=6
-    const s = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-    s.setUTCDate(s.getUTCDate() - day);
+    // Week start based on configured payroll week start
+    const map = {SUNDAY:0, MONDAY:1, TUESDAY:2, WEDNESDAY:3, THURSDAY:4, FRIDAY:5, SATURDAY:6};
+    const start = map[WEEK_START] ?? 1; // default Monday
+    const day = d.getDay(); // 0..6
+    const diff = (day - start + 7) % 7;
+    const s = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    s.setDate(s.getDate() - diff);
     return s;
   }
 
   function setRange(k){
     const now = new Date();
-    const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     let a = new Date(today);
     let b = new Date(today);
 
     if (k === 'yesterday') {
-      a.setUTCDate(a.getUTCDate() - 1);
+      a.setDate(a.getDate() - 1);
       b = new Date(a);
     } else if (k === 'this_week') {
       a = weekStart(today);
       b = new Date(a);
-      b.setUTCDate(b.getUTCDate() + 6);
+      b.setDate(b.getDate() + 6);
     } else if (k === 'last_week') {
       a = weekStart(today);
-      a.setUTCDate(a.getUTCDate() - 7);
+      a.setDate(a.getDate() - 7);
       b = new Date(a);
-      b.setUTCDate(b.getUTCDate() + 6);
+      b.setDate(b.getDate() + 6);
     } else if (k === 'this_month') {
-      a = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
-      b = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth()+1, 0));
+      a = new Date(today.getFullYear(), today.getMonth(), 1);
+      b = new Date(today.getFullYear(), today.getMonth()+1, 0);
     } else if (k === 'last_month') {
-      a = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth()-1, 1));
-      b = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 0));
+      a = new Date(today.getFullYear(), today.getMonth()-1, 1);
+      b = new Date(today.getFullYear(), today.getMonth(), 0);
     } else {
       // today
     }
@@ -392,10 +409,30 @@ $active = admin_url('punch-details.php');
     to.value = fmt(b);
   }
 
+  function submitNow(){
+    if (!form) return;
+    form.submit();
+  }
+
+  let tmr = null;
+  function submitSoon(){
+    if (!form) return;
+    if (tmr) clearTimeout(tmr);
+    tmr = setTimeout(()=>form.submit(), 200);
+  }
+
+  // Period: set dates + auto-apply (except Custom)
   mode.addEventListener('change', function(){
-    if (this.value === 'custom') return;
+    if (this.value === 'custom') { submitNow(); return; }
     setRange(this.value);
+    submitNow();
   });
+
+  // Other filters auto-apply
+  if (emp) emp.addEventListener('change', submitNow);
+  if (act) act.addEventListener('change', submitNow);
+  from.addEventListener('change', function(){ mode.value = 'custom'; submitSoon(); });
+  to.addEventListener('change', function(){ mode.value = 'custom'; submitSoon(); });
 })();
 </script>
 

@@ -5,7 +5,7 @@ require_once __DIR__ . '/layout.php';
 admin_require_perm($user, 'view_payroll');
 
 $tzName = (string) setting($pdo, 'payroll_timezone', 'Europe/London');
-$weekStartsOn = (string) setting($pdo, 'payroll_week_starts_on', 'monday'); // monday|sunday
+$weekStartsOn = payroll_week_starts_on($pdo); // MONDAY|SUNDAY|...
 $monthBoundaryMode = (string) setting($pdo, 'payroll_month_boundary_mode', 'midnight'); // midnight|end_of_shift
 $tz = new DateTimeZone($tzName);
 
@@ -24,7 +24,7 @@ $monthEndUtcEx = $monthEndLocalEx->setTimezone(new DateTimeZone('UTC'));
 
 function week_start_for(DateTimeImmutable $d, string $weekStartsOn): DateTimeImmutable {
   $dow = (int)$d->format('N'); // 1..7
-  $startDow = ($weekStartsOn === 'sunday') ? 7 : 1;
+  $startDow = ($weekStartsOn === 'SUNDAY') ? 7 : 1;
   $delta = ($dow - $startDow);
   if ($delta < 0) $delta += 7;
   return $d->setTime(0,0)->modify("-{$delta} days");

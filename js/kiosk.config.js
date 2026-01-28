@@ -1,7 +1,7 @@
 // kiosk.config.js
 
 // Deployment config
-const API_BASE = "https://smartkiosk.uk/kiosk-dev";
+const API_BASE = "https://smartkiosk.uk/kiosk-stowpark";
 
 const API_STATUS     = `${API_BASE}/api/kiosk/status.php`;
 const API_PAIR       = `${API_BASE}/api/kiosk/pair.php`;
@@ -9,7 +9,7 @@ const ENDPOINT_PUNCH = `${API_BASE}/api/kiosk/punch.php`;
 const ENDPOINT_PING  = `${API_BASE}/api/kiosk/ping.php`;
 const ENDPOINT_PHOTO = `${API_BASE}/api/kiosk/photo_upload.php`;
 
-const KIOSK_CODE = "KIOSK-dev";
+const KIOSK_CODE = "KIOSK-STOWPPARK";
 
 // Runtime defaults (may be overwritten by status.php)
 let THANK_MS = 3000;

@@ -36,8 +36,9 @@ function payroll_run_month(PDO $pdo, array $user, string $ym, string $reason = '
   // Month boundary mode:
   // - midnight: split shifts at local midnight and assign each minute to the month it was worked
   // - end_of_shift: assign whole shift to the month of its start date (advanced)
-  $monthBoundaryMode = strtolower(trim((string)setting($pdo, 'payroll_month_boundary_mode', 'midnight')));
-  if (!in_array($monthBoundaryMode, ['midnight','end_of_shift'], true)) $monthBoundaryMode = 'midnight';
+  // Default to end_of_shift so a shift is assigned to the month it STARTED.
+  $monthBoundaryMode = strtolower(trim((string)setting($pdo, 'payroll_month_boundary_mode', 'end_of_shift')));
+  if (!in_array($monthBoundaryMode, ['midnight','end_of_shift'], true)) $monthBoundaryMode = 'end_of_shift';
 
   // bank holiday set (Y-m-d)
   $bh = [];
@@ -87,65 +88,6 @@ function payroll_run_month(PDO $pdo, array $user, string $ym, string $reason = '
     $diff = $todayDow - $weekStartDow;
     if ($diff < 0) $diff += 7;
     return $dayLocal->modify("-{$diff} days");
-  };
-
-  // Compute paid minutes (after breaks) for an employee within a UTC window.
-  // Used for weekly overtime totals (includes minutes from outside the payroll month when a week spans months).
-  $computePaidForWindow = function(int $employeeId, DateTimeImmutable $winStartUtc, DateTimeImmutable $winEndUtc) use ($pdo, $pickBreak): int {
-    $q = $pdo->prepare(
-      "SELECT s.id, s.clock_in_at, s.clock_out_at, s.duration_minutes, s.break_minutes,
-              p.break_is_paid
-       FROM kiosk_shifts s
-       LEFT JOIN kiosk_employee_pay_profiles p ON p.employee_id = s.employee_id
-       WHERE s.employee_id = :eid
-         AND s.clock_in_at < :end_utc
-         AND s.clock_out_at > :start_utc
-         AND s.clock_out_at IS NOT NULL
-         AND s.approved_at IS NOT NULL"
-    );
-    $q->execute([
-      ':eid' => $employeeId,
-      ':start_utc' => $winStartUtc->format('Y-m-d H:i:s'),
-      ':end_utc' => $winEndUtc->format('Y-m-d H:i:s'),
-    ]);
-    $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-    $sumPaid = 0;
-    foreach ($rows as $s) {
-      $shiftInUtc  = new DateTimeImmutable((string)$s['clock_in_at'],  new DateTimeZone('UTC'));
-      $shiftOutUtc = new DateTimeImmutable((string)$s['clock_out_at'], new DateTimeZone('UTC'));
-
-      $inUtc = max_dt($shiftInUtc, $winStartUtc);
-      $outUtc = min_dt($shiftOutUtc, $winEndUtc);
-      if ($outUtc <= $inUtc) continue;
-
-      $workedTotal = (int)($s['duration_minutes'] ?? 0);
-      if ($workedTotal <= 0) {
-        $workedTotal = (int)round(($shiftOutUtc->getTimestamp() - $shiftInUtc->getTimestamp()) / 60);
-      }
-      if ($workedTotal < 0) $workedTotal = 0;
-
-      $worked = (int)round(($outUtc->getTimestamp() - $inUtc->getTimestamp()) / 60);
-      if ($worked < 0) $worked = 0;
-
-      $breakTotal = ($s['break_minutes'] !== null) ? (int)$s['break_minutes'] : $pickBreak($workedTotal);
-      if ($breakTotal < 0) $breakTotal = 0;
-      if ($breakTotal > $workedTotal) $breakTotal = $workedTotal;
-
-      // Proportional break allocation when clipping to a window
-      $break = $breakTotal;
-      if ($workedTotal > 0 && $worked !== $workedTotal) {
-        $break = (int)floor(($worked * $breakTotal) / $workedTotal);
-      }
-      if ($break < 0) $break = 0;
-      if ($break > $worked) $break = $worked;
-
-      $breakPaid = ((int)($s['break_is_paid'] ?? 0) === 1);
-      $paid = ($breakPaid ? $worked : max(0, $worked - $break));
-      $sumPaid += $paid;
-    }
-
-    return $sumPaid;
   };
 
   // Compute paid minutes (after breaks) for an employee within a UTC window.
