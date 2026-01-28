@@ -110,6 +110,36 @@ $stEmp = $pdo->prepare($sqlEmp);
 $stEmp->execute($params);
 $employees = $stEmp->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
+// Sort employees by Department (dept sort_order/name) then display name
+$deptOrder = [];
+$di = 0;
+foreach ($cats as $c) { $deptOrder[(int)$c['id']] = $di++; }
+$displayName = function(array $e): string {
+  if ((int)($e['is_agency'] ?? 0) === 1) {
+    $label = trim((string)($e['agency_label'] ?? ''));
+    return $label !== '' ? $label : 'Agency';
+  }
+  $nick = trim((string)($e['nickname'] ?? ''));
+  if ($nick !== '') return $nick;
+  $fn = trim((string)($e['first_name'] ?? ''));
+  $ln = trim((string)($e['last_name'] ?? ''));
+  $n = trim($fn . ' ' . $ln);
+  return $n !== '' ? $n : '—';
+};
+
+usort($employees, function($a,$b) use ($deptOrder,$displayName) {
+  $da = (int)($a['department_id'] ?? 0);
+  $db = (int)($b['department_id'] ?? 0);
+  $oa = $deptOrder[$da] ?? 9999;
+  $ob = $deptOrder[$db] ?? 9999;
+  if ($oa !== $ob) return $oa <=> $ob;
+  $na = mb_strtolower($displayName($a));
+  $nb = mb_strtolower($displayName($b));
+  if ($na !== $nb) return $na <=> $nb;
+  return ((int)($a['id'] ?? 0)) <=> ((int)($b['id'] ?? 0));
+});
+
+
 $employeeIds = array_map(fn($r) => (int)$r['id'], $employees);
 
 // ----------------------
@@ -272,6 +302,7 @@ foreach ($shifts as $s) {
 // Build department totals based on weekTotals
 foreach ($employees as $e) {
   $empId = (int)$e['id'];
+  if ($hideEmpty && (int)($weekTotals[$empId] ?? 0) === 0) continue;
   $dept = (string)($e['department_name'] ?? '—');
   if ($dept === '') $dept = '—';
   $deptTotals[$dept] = ($deptTotals[$dept] ?? 0) + (int)($weekTotals[$empId] ?? 0);
@@ -294,6 +325,19 @@ foreach ($employees as $e) {
 // Render
 // ----------------------
 $weekTitle = $weekStartLocal->format('d M Y') . ' – ' . $weekStartLocal->modify('+6 days')->format('d M Y');
+
+// Week picker options (week start dates around current week)
+$weekOptions = [];
+for ($i = -12; $i <= 12; $i++) {
+  $ws = $weekStartLocal->modify(($i * 7) . ' days');
+  $weekOptions[] = [
+    'value' => $ws->format('Y-m-d'),
+    'label' => $ws->format('d M Y') . ' – ' . $ws->modify('+6 days')->format('d M Y'),
+  ];
+}
+
+$hideEmpty = (int)($_GET['hide_empty'] ?? 0) === 1;
+
 
 admin_page_start($pdo, 'Shifts');
 $active = admin_url('shifts.php');
@@ -326,20 +370,25 @@ $active = admin_url('shifts.php');
               </div>
             </div>
 
-            <form method="get" class="mt-4 grid grid-cols-1 md:grid-cols-12 gap-3">
+            
+            <form id="shiftFilters" method="get" class="mt-4 grid grid-cols-1 md:grid-cols-12 gap-3">
               <div class="md:col-span-3">
-                <label class="block text-xs font-semibold text-slate-600">Week (any date inside week)</label>
-                <input type="date" name="week" value="<?= h($weekStartLocal->format('Y-m-d')) ?>" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+                <label class="block text-xs font-semibold text-slate-600">Week starting</label>
+                <select name="week" id="week" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+                  <?php foreach ($weekOptions as $opt): ?>
+                    <option value="<?= h($opt['value']) ?>" <?= ($opt['value'] === $weekStartLocal->format('Y-m-d')) ? 'selected' : '' ?>><?= h($opt['label']) ?></option>
+                  <?php endforeach; ?>
+                </select>
               </div>
 
-              <div class="md:col-span-4">
+              <div class="md:col-span-3">
                 <label class="block text-xs font-semibold text-slate-600">Search</label>
-                <input name="q" value="<?= h($q) ?>" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm" placeholder="Name, code, nickname">
+                <input name="q" id="q" value="<?= h($q) ?>" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm" placeholder="Name, code, nickname">
               </div>
 
               <div class="md:col-span-3">
                 <label class="block text-xs font-semibold text-slate-600">Department</label>
-                <select name="cat" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+                <select name="cat" id="cat" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
                   <option value="0">All</option>
                   <?php foreach ($cats as $c): ?>
                     <option value="<?= (int)$c['id'] ?>" <?= ((int)$c['id'] === $cat) ? 'selected' : '' ?>><?= h((string)$c['name']) ?></option>
@@ -349,17 +398,26 @@ $active = admin_url('shifts.php');
 
               <div class="md:col-span-1">
                 <label class="block text-xs font-semibold text-slate-600">Status</label>
-                <select name="status" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+                <select name="status" id="status" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
                   <option value="active" <?= $status==='active'?'selected':'' ?>>Active</option>
                   <option value="inactive" <?= $status==='inactive'?'selected':'' ?>>Inactive</option>
                   <option value="all" <?= $status==='all'?'selected':'' ?>>All</option>
                 </select>
               </div>
 
+              <div class="md:col-span-1">
+                <label class="block text-xs font-semibold text-slate-600">Hide empty</label>
+                <label class="mt-1 inline-flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="hide_empty" value="1" <?= $hideEmpty ? 'checked' : '' ?> class="h-4 w-4 rounded border-slate-300" />
+                  <span class="text-slate-700">Yes</span>
+                </label>
+              </div>
+
               <div class="md:col-span-1 flex items-end">
-                <button class="w-full rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Apply</button>
+                <a href="<?= h(admin_url('shifts.php')) ?>" class="w-full text-center rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Clear</a>
               </div>
             </form>
+
           </header>
 
           <section class="mt-5 rounded-3xl border border-slate-200 bg-white p-4">
@@ -386,7 +444,7 @@ $active = admin_url('shifts.php');
                     <tr><td colspan="8" class="p-6 text-slate-600">No employees match this filter.</td></tr>
                   <?php endif; ?>
 
-                  <?php foreach ($employees as $e):
+                  <?php $lastDept = null; foreach ($employees as $e):
                     $empId = (int)$e['id'];
                     $name = trim((string)($e['first_name'] ?? '') . ' ' . (string)($e['last_name'] ?? ''));
                     if ($name === '') $name = (string)($e['nickname'] ?? '');
@@ -396,10 +454,21 @@ $active = admin_url('shifts.php');
                     $totalM = (int)($weekTotals[$empId] ?? 0);
                     $totalH = $totalM / 60;
                     $varH = $totalH - $contractH;
+
+                    if ($hideEmpty && $totalM === 0) {
+                      continue;
+                    }
+                    $deptLabel = (string)($e['department_name'] ?? '—');
+                    if ($deptLabel === '') $deptLabel = '—';
+                    if ($lastDept !== $deptLabel) {
+                      $lastDept = $deptLabel;
+                      echo '<tr class="bg-slate-50"><td colspan="8" class="px-2 py-2 text-xs font-semibold text-slate-700 border-b border-slate-200">' . h($deptLabel) . '</td></tr>';
+                    }
+
                   ?>
                     <tr class="align-top">
                       <td class="sticky left-0 z-10 bg-white border-b border-slate-200 p-2 w-[220px]">
-                        <div class="font-semibold text-slate-900"><?= h($name) ?></div>
+                        <a href="<?= h(admin_url('employee-edit.php')) ?>?id=<?= (int)$empId ?>" class="font-semibold text-slate-900 hover:underline"><?= h($name) ?></a>
                         <div class="mt-1 text-[11px] text-slate-600"><?= h($code !== '' ? $code : '—') ?> · <?= h($dept !== '' ? $dept : '—') ?></div>
                       </td>
 
@@ -490,4 +559,24 @@ $active = admin_url('shifts.php');
   </div>
 </div>
 
-<?php admin_page_end();
+
+<script>
+  (function(){
+    const form = document.getElementById('shiftFilters');
+    if(!form) return;
+    const submitNow = () => form.submit();
+    form.querySelectorAll('select,input[type=checkbox]').forEach(el => {
+      el.addEventListener('change', submitNow);
+    });
+    const q = document.getElementById('q');
+    if(q){
+      let tmr = null;
+      q.addEventListener('input', () => {
+        if(tmr) clearTimeout(tmr);
+        tmr = setTimeout(() => form.submit(), 300);
+      });
+    }
+  })();
+</script>
+
+<?php admin_page_end(); ?>

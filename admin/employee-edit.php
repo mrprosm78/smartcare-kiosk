@@ -63,7 +63,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $agency_label = trim((string)($_POST['agency_label'] ?? ''));
     $is_active = (int)($_POST['is_active'] ?? 1) === 1 ? 1 : 0;
 
-    if ($first === '' && $is_agency === 0) throw new RuntimeException('First name is required');
+    // Care homes use nicknames day-to-day. Nickname is required for staff; first name is optional.
+    if ($nick === '' && $is_agency === 0) throw new RuntimeException('Nickname is required');
     if ($is_agency === 1 && $agency_label === '') $agency_label = 'Agency';
 
     // PIN
@@ -210,7 +211,7 @@ admin_page_start($pdo, $isNew ? 'Add Employee' : 'Edit Employee');
 
                 <div>
                   <label class="block text-xs font-semibold text-slate-600">Nickname (optional)</label>
-                  <input name="nickname" value="<?= h((string)($employee['nickname'] ?? '')) ?>" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm" placeholder="e.g. Ash">
+                  <input name="nickname" required value="<?= h((string)($employee['nickname'] ?? '')) ?>" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm" placeholder="e.g. Ash">
                 </div>
 
                 <div>

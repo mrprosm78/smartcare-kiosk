@@ -194,11 +194,11 @@ $active = admin_url('punch-details.php');
               <div class="text-xs text-slate-500">Showing up to 500 rows</div>
             </div>
 
-            <form id="filters" method="get" class="mt-4 flex flex-wrap items-center gap-2">
-              <!-- One-row compact filters (label + control on the same line) -->
-              <div class="flex items-center gap-2">
-                <span class="text-xs font-semibold text-slate-700">Period</span>
-                <select name="mode" id="mode" class="h-9 rounded-lg bg-white border border-slate-200 px-2.5 text-sm">
+            
+            <form id="filters" method="get" class="mt-4 grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+              <div class="md:col-span-2">
+                <label class="block text-xs font-semibold text-slate-600">Period</label>
+                <select name="mode" id="mode" class="mt-1 w-full h-10 rounded-2xl bg-white border border-slate-200 px-3 text-sm">
                   <?php
                     $modes = [
                       'today' => 'Today',
@@ -217,9 +217,9 @@ $active = admin_url('punch-details.php');
                 </select>
               </div>
 
-              <div class="flex items-center gap-2">
-                <span class="text-xs font-semibold text-slate-700">Employee</span>
-                <select name="employee_id" id="employee_id" class="h-9 min-w-[240px] rounded-lg bg-white border border-slate-200 px-2.5 text-sm">
+              <div class="md:col-span-4">
+                <label class="block text-xs font-semibold text-slate-600">Employee</label>
+                <select name="employee_id" id="employee_id" class="mt-1 w-full h-10 rounded-2xl bg-white border border-slate-200 px-3 text-sm">
                   <option value="0">All employees</option>
                   <?php foreach ($employees as $e):
                     $id = (int)($e['id'] ?? 0);
@@ -233,29 +233,30 @@ $active = admin_url('punch-details.php');
                 </select>
               </div>
 
-              <div class="flex items-center gap-2">
-                <span class="text-xs font-semibold text-slate-700">From</span>
-                <input type="date" name="from" id="from" value="<?= h($from) ?>" class="h-9 rounded-lg bg-white border border-slate-200 px-2.5 text-sm" />
+              <div class="md:col-span-2">
+                <label class="block text-xs font-semibold text-slate-600">From</label>
+                <input type="date" name="from" id="from" value="<?= h($from) ?>" class="mt-1 w-full h-10 rounded-2xl bg-white border border-slate-200 px-3 text-sm" />
               </div>
 
-              <div class="flex items-center gap-2">
-                <span class="text-xs font-semibold text-slate-700">To</span>
-                <input type="date" name="to" id="to" value="<?= h($to) ?>" class="h-9 rounded-lg bg-white border border-slate-200 px-2.5 text-sm" />
+              <div class="md:col-span-2">
+                <label class="block text-xs font-semibold text-slate-600">To</label>
+                <input type="date" name="to" id="to" value="<?= h($to) ?>" class="mt-1 w-full h-10 rounded-2xl bg-white border border-slate-200 px-3 text-sm" />
               </div>
 
-              <div class="flex items-center gap-2">
-                <span class="text-xs font-semibold text-slate-700">Action</span>
-                <select name="action" id="action" class="h-9 rounded-lg bg-white border border-slate-200 px-2.5 text-sm">
+              <div class="md:col-span-1">
+                <label class="block text-xs font-semibold text-slate-600">Action</label>
+                <select name="action" id="action" class="mt-1 w-full h-10 rounded-2xl bg-white border border-slate-200 px-3 text-sm">
                   <option value="" <?= $action === '' ? 'selected' : '' ?>>All</option>
                   <option value="IN" <?= $action === 'IN' ? 'selected' : '' ?>>IN</option>
                   <option value="OUT" <?= $action === 'OUT' ? 'selected' : '' ?>>OUT</option>
                 </select>
               </div>
 
-              <div class="flex items-end">
-                <button class="h-9 rounded-xl border border-slate-200 bg-white text-slate-900 px-4 text-sm font-semibold hover:bg-slate-50">Apply</button>
+              <div class="md:col-span-1 flex items-end justify-end">
+                <a href="<?= h(admin_url('punch-details.php')) ?>" class="inline-flex h-10 items-center justify-center rounded-2xl px-4 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 w-full">Clear</a>
               </div>
             </form>
+
 
             <?php if (!empty($err ?? '')): ?>
               <div class="mt-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-slate-900">Error: <?= h((string)$err) ?></div>
@@ -435,5 +436,9 @@ $active = admin_url('punch-details.php');
   to.addEventListener('change', function(){ mode.value = 'custom'; submitSoon(); });
 })();
 </script>
+
+
+
+
 
 <?php admin_page_end(); ?>

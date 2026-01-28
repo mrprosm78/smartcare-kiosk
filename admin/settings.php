@@ -17,7 +17,6 @@ $role = strtolower((string)($user['role'] ?? ''));
 $basicAllow = [
   'manager' => [
     'rounding_enabled',
-    'round_increment_minutes',
     'round_grace_minutes',
   ],
   'payroll' => [
@@ -25,7 +24,6 @@ $basicAllow = [
   ],
   'admin' => [
     'rounding_enabled',
-    'round_increment_minutes',
     'round_grace_minutes',
     // payroll boundaries
     'payroll_timezone',
@@ -35,7 +33,6 @@ $basicAllow = [
   ],
   'superadmin' => [
     'rounding_enabled',
-    'round_increment_minutes',
     'round_grace_minutes',
     // payroll boundaries
     'payroll_week_starts_on',
@@ -56,7 +53,6 @@ $canHigh = admin_can($user, 'manage_settings_high');
 $vals = [
   // rounding
   'rounding_enabled' => admin_setting_bool($pdo, 'rounding_enabled', true),
-  'round_increment_minutes' => admin_setting_int($pdo, 'round_increment_minutes', 15),
   'round_grace_minutes' => admin_setting_int($pdo, 'round_grace_minutes', 5),
 
   // setup lock
@@ -95,9 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (in_array('rounding_enabled', $allowedBasic, true)) {
       admin_set_setting($pdo, 'rounding_enabled', isset($_POST['rounding_enabled']) ? '1' : '0');
     }
-    if (in_array('round_increment_minutes', $allowedBasic, true)) {
-      admin_set_setting($pdo, 'round_increment_minutes', (string)max(1, (int)($_POST['round_increment_minutes'] ?? 15)));
-    }
+ 
     if (in_array('round_grace_minutes', $allowedBasic, true)) {
       admin_set_setting($pdo, 'round_grace_minutes', (string)max(0, (int)($_POST['round_grace_minutes'] ?? 5)));
     }
@@ -225,14 +219,7 @@ admin_page_start($pdo, 'Settings');
                   </label>
                 <?php endif; ?>
 
-                <?php if (in_array('round_increment_minutes', $allowedBasic, true)): ?>
-                  <label class="rounded-2xl border border-slate-200 bg-white p-4">
-                    <div class="text-xs uppercase tracking-widest text-slate-500">Increment (minutes)</div>
-                    <input type="number" min="1" step="1" name="round_increment_minutes" value="<?= h((string)$vals['round_increment_minutes']) ?>"
-                      class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
-                    <div class="mt-2 text-xs text-slate-500">Example: 15 ⇒ 00/15/30/45.</div>
-                  </label>
-                <?php endif; ?>
+           
 
                 <?php if (in_array('round_grace_minutes', $allowedBasic, true)): ?>
                   <label class="rounded-2xl border border-slate-200 bg-white p-4">

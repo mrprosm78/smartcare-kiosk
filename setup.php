@@ -207,11 +207,7 @@ function seed_settings(PDO $pdo): void {
       'label' => 'Rounding Enabled', 'description' => 'If 1, admin/payroll views can calculate rounded times for payroll without changing originals.',
       'type' => 'bool', 'editable_by' => 'superadmin', 'sort' => 10, 'secret' => 0,
     ],
-    [
-      'key' => 'round_increment_minutes', 'value' => '15', 'group' => 'rounding',
-      'label' => 'Rounding Increment Minutes', 'description' => 'Snap time to this minute grid (e.g., 15 => 00,15,30,45).',
-      'type' => 'int', 'editable_by' => 'superadmin', 'sort' => 20, 'secret' => 0,
-    ],
+   
     [
       'key' => 'round_grace_minutes', 'value' => '5', 'group' => 'rounding',
       'label' => 'Rounding Grace Minutes', 'description' => 'Only snap when within this many minutes of boundary.',
@@ -847,21 +843,7 @@ function create_tables(PDO $pdo): void {
   ");
 
 
-  // BREAK RULES (shift windows; matched by shift start time)
-  $pdo->exec("
-    CREATE TABLE IF NOT EXISTS kiosk_break_rules (
-      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-      start_time CHAR(5) NOT NULL,
-      end_time CHAR(5) NOT NULL,
-      break_minutes INT NOT NULL,
-      is_paid_break TINYINT(1) NOT NULL DEFAULT 0,
-      priority INT NOT NULL DEFAULT 0,
-      is_enabled TINYINT(1) NOT NULL DEFAULT 1,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      KEY idx_enabled_priority (is_enabled, priority)
-    ) ENGINE=InnoDB;
-  ");
+  
 
   // BREAK TIERS (LOCKED payroll rule: tiered by worked minutes)
   $pdo->exec("
@@ -1081,7 +1063,6 @@ function drop_all(PDO $pdo): void {
     'kiosk_shift_changes',
     'kiosk_shifts',
     'kiosk_break_tiers',
-    'kiosk_break_rules',
     'kiosk_employee_pay_profiles',
     'kiosk_employee_departments',
     'kiosk_employee_teams',

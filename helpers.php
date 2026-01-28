@@ -323,25 +323,6 @@ function payroll_fmt_hhmm(int $minutes): string {
   return sprintf('%02d:%02d', $h, $m);
 }
 
-/** Round minutes using settings (increment + grace). Returns minutes (may be unchanged). */
-function payroll_round_minutes(PDO $pdo, int $minutes): int {
-  if ($minutes <= 0) return 0;
-  if (!setting_bool($pdo, 'rounding_enabled', true)) return $minutes;
-  $inc = max(1, setting_int($pdo, 'round_increment_minutes', 15));
-  $grace = max(0, setting_int($pdo, 'round_grace_minutes', 5));
-
-  // Round to nearest increment if within grace of boundary.
-  $rem = $minutes % $inc;
-  $down = $minutes - $rem;
-  $up = $down + $inc;
-  $distDown = $rem;
-  $distUp = $inc - $rem;
-
-  if ($distDown <= $grace && $distDown <= $distUp) return $down;
-  if ($distUp <= $grace && $distUp < $distDown) return $up;
-  return $minutes;
-}
-
 /**
  * Split a UTC interval into chunks by local midnight boundaries.
  * Returns list of segments: [start_utc, end_utc, minutes, local_date_ymd, local_start]

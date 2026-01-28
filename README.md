@@ -1,127 +1,266 @@
-# SmartCare Kiosk — Payroll Rules & Engineering Notes (Jan 2026)
+# SmartCare Kiosk
 
-This README is the **source of truth** for payroll rules and key system decisions agreed in **Jan 2026**.
+**Status:** Stable core · Active development (automation & UX)
 
-## 1) Locked system rules
+SmartCare Kiosk is an **offline‑first time & attendance system with a payroll‑hours engine** designed specifically for care homes. The system focuses on **accurate, auditable hours**, not pay amounts, so payroll teams can export clean data directly into external payroll software (e.g. Sage).
 
-### UTC storage + payroll timezone boundaries
-- All database timestamps are stored in **UTC**.
-- Payroll day/week/month boundaries are computed in **payroll timezone** (`kiosk_settings.payroll_timezone`, usually `Europe/London`) and then converted to UTC for querying.
+This README is **authoritative and up‑to‑date** as of **Jan 2026**.
 
-### Month boundary mode (care-home setting; superadmin only)
-`kiosk_settings.payroll_month_boundary_mode` controls how cross-month shifts are assigned:
-- `midnight` (default, recommended): split at local midnight; each minute belongs to the month/day it was worked.
-- `end_of_shift` (advanced): assign the whole shift to the month of its start date.
-This should not be changed retroactively after payroll has been run.
+---
 
-### Week start is global and locked
-- Week boundaries for payroll/overtime/rota views use `kiosk_settings.payroll_week_starts_on`.
-- This is set at initial setup and becomes **read-only** after `app_initialized = 1`.
+## 1. Core Principles
 
-### Shift open/closed truth (do not trust is_closed)
-- **Open shift:** `kiosk_shifts.clock_out_at IS NULL`
-- **Closed shift:** `kiosk_shifts.clock_out_at IS NOT NULL`
+- **Hours only** – no money calculations in the app
+- **Auditability first** – every punch and shift change is traceable
+- **Offline‑first kiosk** – works without internet, syncs later
+- **Simple rules** – explicit behaviour, no hidden stacking
+- **Incremental automation** – managers stay in control
 
-### Approval rule (payroll only uses approved shifts)
-Payroll runs include only shifts that are:
-- **closed**, and
-- **approved** (`approved_at IS NOT NULL`).
+---
 
-### Rounding (applied only at payroll/export)
-- Rounding is configurable (e.g., 5/10/15 minutes).
-- Rounding is applied at **payroll/export time**, never at punch time.
+## 2. High‑Level Architecture
 
-## 2) Break policy (locked)
+### Main concepts
 
-### Breaks are per-shift and tier-based
-- Breaks are calculated **per shift**, not per day.
-- Tiers are stored in `kiosk_break_tiers` as:
-  - `min_worked_minutes` → `break_minutes`
-- Rule: pick the tier with the **highest** `min_worked_minutes` where `min_worked_minutes <= worked_minutes`.
-- If no tier matches, break is **0**.
+- **Punch** → raw event (clock‑in / clock‑out)
+- **Shift** → derived working period built from punches
+- **Payroll snapshot** → frozen result used for export
 
-### Breaks are unpaid by default; contract can make them paid
-- Employee contract field: `kiosk_employee_pay_profiles.break_is_paid` (0/1).
-- Per shift:
-  - `worked_minutes = clock_out_at - clock_in_at`
-  - `break_minutes = tier(worked_minutes)`
-  - If unpaid breaks: `paid_minutes = max(0, worked_minutes - break_minutes)`
-  - If paid breaks: `paid_minutes = worked_minutes`
+### Key tables
 
-All internal calculations use **minutes**; UI may display **HH:MM**.
+- `kiosk_punch_events` – immutable audit log
+- `kiosk_shifts` – editable shifts
+- `kiosk_shift_changes` – history of edits / approvals
+- `kiosk_employee_pay_profiles` – contracts
+- `kiosk_break_tiers` – care‑home break rules
+- `payroll_batches`, `payroll_shift_snapshots` – payroll engine
 
-## 3) Uplifts (weekend / bank holiday / overtime) (locked)
+---
 
-### Contract-first
-All uplift rules come from **employee contracts** (`kiosk_employee_pay_profiles.rules_json`).
-There are **no care-home/global uplift rates**.
+## 3. Roles & Permissions
 
-### Weekend
-- Weekend = Saturday + Sunday (based on payroll timezone date).
+### Kiosk (Employees)
+- Clock IN / OUT using PIN
+- Photo captured on punch
+- Works offline (IndexedDB)
 
-### Bank holiday
-- Bank holiday is based on **local calendar date**.
-- If a shift crosses midnight, bank holiday minutes apply **only on the BH date** (does not carry past midnight).
+### Manager
+- Weekly shifts grid
+- Fix shifts
+- Approve shifts
+- Cannot edit contracts
 
-### No stacking (exclusive, multiplier-first)
-For any minute, apply **only one** uplift:
-- If multiple multipliers qualify: choose the **highest multiplier**.
-- Otherwise choose the **highest premium**.
+### Payroll
+- Review approved hours
+- Export monthly CSV
 
-## 4) Overtime + monthly payroll runs (locked)
+### Admin / Superadmin
+- Full access
+- System configuration
 
-### Weekly overtime
-- Overtime is calculated **weekly** (using `payroll_week_starts_on`).
-- Threshold comes from employee contract: `contract_hours_per_week`.
-  - If 0 → overtime disabled.
-- Overtime uses **weekly paid_minutes** (paid breaks count).
+---
 
-### Monthly payroll run with month-end deferral
-- Payroll is run **monthly**.
-- If the month ends mid-week, overtime for that incomplete week is **not finalized** in that month.
-- It is finalized in the **next month payroll** when that week completes.
+## 4. Timekeeping Model
 
-## 5) Current implementation status
+### Shift truth rules
 
-### Implemented
-- Punch audit trail: `kiosk_punch_events`
-- Derived shifts: `kiosk_shifts`
-- Auto-close stale shifts at `clock_in_at + max_shift_minutes` with `is_autoclosed=1`, `close_reason='autoclose_max'`
-- Break tiers (`kiosk_break_tiers`) + per-shift paid_minutes
-- Bank holiday list: `payroll_bank_holidays`
-- Payroll batching:
-  - `payroll_batches`
-  - `payroll_shift_snapshots`
-- `admin/payroll-runner.php` creates per-shift snapshots and calculates raw minute buckets split by local midnight:
-  - `normal_minutes`, `weekend_minutes`, `bank_holiday_minutes`
+- **Open shift:** `clock_out_at IS NULL`
+- **Closed shift:** `clock_out_at IS NOT NULL`
+- `is_closed` is informational only
 
-- Weekly overtime allocation (no stacking):
-  - OT is computed weekly from total **paid minutes** in the payroll week (payroll timezone).
-  - OT minutes are allocated from the **end of the week backwards**.
-  - OT minutes override other buckets (weekend/BH) so each paid minute belongs to exactly one bucket.
-  - If a payroll month ends mid-week, OT for that incomplete week is **deferred** to the next month's payroll.
+### Auto‑close
 
-- Payroll month boundary mode (`payroll_month_boundary_mode`):
-  - `midnight` (default): split at local midnight and allocate minutes to the month worked.
-  - `end_of_shift`: assign whole shift to the month of its start date.
+- If an employee forgets to clock out:
+  - Shift auto‑closes at `clock_in + max_shift_minutes`
+  - `is_autoclosed = 1`
+  - Auto‑closed shifts are **not auto‑approved**
 
-- Payroll UI audit view (Option C): employee → week → day breakdown
-  - `admin/payroll-view.php` includes an Employee breakdown section that groups by payroll week and shows daily totals.
-  - Backed by `payroll_shift_snapshots.day_breakdown_json` (stored during payroll run).
+---
 
-### Not implemented yet (next steps)
-1) Contract rule "winner selection" (exclusive uplift, multiplier-first) across BH/weekend/OT *rates* (we already ensure minutes do not stack)
-2) Rounding stored into snapshots/export (store raw + rounded)
+## 5. Offline Behaviour (Confirmed)
 
-## 6) Settings cleanup (Jan 2026 change)
+- Kiosk works fully offline once loaded
+- Punches and photos queue locally
+- Sync order: punches → photos
 
-Legacy global/care-home payroll uplift settings were removed from the UI and should not exist in DB.
+⚠️ Do **not** refresh kiosk page while offline (Android WebView limitation).
 
-`setup.php` actively deletes any legacy keys to prevent drift/confusion.
-If you are upgrading an existing database, run the cleanup migration:
-- `migrations/2026-01-legacy-payroll-settings-cleanup.sql`
+---
 
-## 7) Developer reminders
-- Always determine closed shifts by `clock_out_at IS NOT NULL`.
-- Always compute day/week cutoffs in `payroll_timezone` then convert to UTC.
-- Keep README updated when rules/implementation changes.
+## 6. Break Rules (Care‑Home Level)
+
+### Break tiers
+
+Stored in `kiosk_break_tiers`:
+
+- `min_worked_minutes`
+- `break_minutes`
+
+Rule:
+> Pick the tier with the highest `min_worked_minutes ≤ worked_minutes`
+
+### Paid vs unpaid
+
+- Controlled per employee contract (`break_is_paid`)
+- Breaks deducted first
+- Paid breaks added back later
+
+All calculations use **minutes internally**.
+
+---
+
+## 7. Departments (Final Model)
+
+Employees belong to **Departments**.
+
+Canonical department list:
+
+- Management
+- Care
+- Nursing
+- Kitchen
+- Housekeeping
+- Laundry
+- Maintenance
+- Activities
+- Admin
+- Agency
+
+Field used:
+- `kiosk_employees.department_id`
+
+⚠️ Any legacy references to *category* are obsolete.
+
+---
+
+## 8. Employee Contracts
+
+### Table
+`kiosk_employee_pay_profiles`
+
+Used fields:
+
+- `employee_id`
+- `contract_hours_per_week`
+- `break_is_paid`
+- `rules_json`
+
+### Contract hours rule
+
+- **0 or blank = 0‑hour contract**
+- 0‑hour contracts are **not eligible for overtime**
+
+### rules_json (locked format)
+
+```json
+{
+  "bank_holiday_multiplier": 1.5,
+  "bank_holiday_premium_per_hour": null,
+  "weekend_multiplier": null,
+  "weekend_premium_per_hour": null,
+  "night_multiplier": null,
+  "night_premium_per_hour": null,
+  "overtime_multiplier": null,
+  "overtime_premium_per_hour": null,
+  "callout_multiplier": null,
+  "callout_premium_per_hour": null
+}
+```
+
+Rules:
+- `null` = rule disabled
+- Never store `0` in JSON
+- Highest multiplier wins
+- **No stacking**
+
+---
+
+## 9. Shifts UI (Source of Truth)
+
+### File
+`admin/shifts.php`
+
+This weekly grid is **authoritative**.
+
+Features:
+- Employees × 7‑day week
+- Approved + unapproved shifts
+- **Only closed shifts shown**
+- Bank holidays highlighted
+- Fix button shown when:
+  - auto‑closed
+  - edited
+  - close_reason present
+- Department totals shown below
+
+⚠️ Do not replace this page with compact or legacy versions.
+
+---
+
+## 10. Payroll Engine
+
+### Design
+
+- Snapshot‑based
+- Results frozen at run time
+
+### Behaviour
+
+- Weekly overtime calculation
+- Monthly payroll runs
+- Partial weeks defer overtime to next month
+- Multiplier‑first, no stacking
+
+---
+
+## 11. setup.php Behaviour
+
+### What setup.php does
+
+- Creates all required tables
+- Seeds **default** data
+- Locks configuration after install (`app_initialized`)
+
+### Important notes
+
+- Department seeding in setup.php is **DEV‑default only**
+- Live installs may override departments manually
+- Legacy tables (e.g. `kiosk_break_rules`) still exist but are **not used**
+
+---
+
+## 12. Known Issues
+
+- Kiosk may show “rejected” when photo upload fails (UX only)
+- Payroll week start bug (case mismatch, some hardcoded Monday logic)
+
+---
+
+## 13. Planned (Not Implemented Yet)
+
+1. Auto‑approve clean shifts
+2. Clock‑in cooldown after clock‑out (configurable, default 240 mins)
+
+Settings already exist, logic pending.
+
+---
+
+## 14. MariaDB Compatibility
+
+- Server uses **MariaDB 10.6**
+- Use `VALUES(col)` in `ON DUPLICATE KEY UPDATE`
+- Avoid MySQL‑only alias syntax
+
+---
+
+## 15. Current Status
+
+- Core system stable
+- Payroll logic correct and auditable
+- Offline mode proven
+- Remaining work is automation, not redesign
+
+---
+
+**This README is the definitive reference for SmartCare Kiosk.**
+

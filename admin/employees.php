@@ -9,7 +9,6 @@ $showContract = admin_can($user, 'view_contract');
 admin_page_start($pdo, 'Employees');
 $active = admin_url('employees.php');
 
-$q = trim((string)($_GET['q'] ?? ''));
 $status = (string)($_GET['status'] ?? 'active'); // active|inactive|all
 $cat = (int)($_GET['cat'] ?? 0);
 $agency = (string)($_GET['agency'] ?? 'all'); // all|agency|staff
@@ -36,12 +35,10 @@ if ($agency === 'agency') {
   $where[] = 'e.is_agency = 0';
 }
 
-if ($q !== '') {
-  $where[] = '(e.first_name LIKE ? OR e.last_name LIKE ? OR e.nickname LIKE ? OR e.employee_code LIKE ? OR e.agency_label LIKE ?)';
-  for ($i=0;$i<5;$i++) $params[] = '%' . $q . '%';
-}
+// Search removed by design (filters only).
 
-$sql = "SELECT e.*, c.name AS department_name, t.name AS team_name, p.contract_hours_per_week
+$sql = "SELECT e.*, c.name AS department_name, t.name AS team_name,
+               p.contract_hours_per_week, p.break_is_paid, p.rules_json
         FROM kiosk_employees e
         LEFT JOIN kiosk_employee_departments c ON c.id = e.department_id
    LEFT JOIN kiosk_employee_teams t ON t.id = e.team_id
@@ -49,7 +46,7 @@ $sql = "SELECT e.*, c.name AS department_name, t.name AS team_name, p.contract_h
 if ($where) {
   $sql .= ' WHERE ' . implode(' AND ', $where);
 }
-$sql .= ' ORDER BY e.is_active DESC, e.is_agency ASC, e.first_name ASC, e.last_name ASC LIMIT 500';
+ $sql .= " ORDER BY e.is_active DESC, c.sort_order ASC, c.name ASC, e.is_agency ASC, COALESCE(NULLIF(e.nickname,''), e.first_name, '') ASC, e.last_name ASC LIMIT 500";
 
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
@@ -78,13 +75,8 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
               <?php endif; ?>
             </div>
 
-            <form method="get" class="mt-4 grid grid-cols-1 md:grid-cols-12 gap-3">
-              <div class="md:col-span-4">
-                <label class="block text-xs font-semibold text-slate-600">Search</label>
-                <input name="q" value="<?= h($q) ?>" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm" placeholder="Name, code, nickname, agency">
-              </div>
-
-              <div class="md:col-span-3">
+            <form method="get" id="filters" class="mt-4 grid grid-cols-1 md:grid-cols-12 gap-3">
+              <div class="md:col-span-5">
                 <label class="block text-xs font-semibold text-slate-600">Department</label>
                 <select name="cat" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
                   <option value="0">All</option>
@@ -94,7 +86,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                 </select>
               </div>
 
-              <div class="md:col-span-2">
+              <div class="md:col-span-3">
                 <label class="block text-xs font-semibold text-slate-600">Status</label>
                 <select name="status" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
                   <option value="active" <?= $status==='active'?'selected':'' ?>>Active</option>
@@ -103,7 +95,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                 </select>
               </div>
 
-              <div class="md:col-span-2">
+              <div class="md:col-span-3">
                 <label class="block text-xs font-semibold text-slate-600">Type</label>
                 <select name="agency" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
                   <option value="all" <?= $agency==='all'?'selected':'' ?>>All</option>
@@ -113,7 +105,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
               </div>
 
               <div class="md:col-span-1 flex items-end">
-                <button class="w-full rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Filter</button>
+                <a href="<?= h(admin_url('employees.php')) ?>" class="w-full text-center rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Clear</a>
               </div>
             </form>
           </header>
@@ -124,20 +116,23 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
             </div>
 
             <div class="overflow-x-auto">
-              <table class="min-w-full text-sm">
-                <thead class="bg-white text-slate-600">
+              <table class="min-w-full text-sm border border-slate-200 border-collapse">
+                <thead class="bg-slate-50 text-slate-600">
                   <tr>
                     <th class="text-left font-semibold px-4 py-3">Name</th>
+                    <th class="text-left font-semibold px-4 py-3">Emp ID</th>
                     <th class="text-left font-semibold px-4 py-3">Type</th>
                     <th class="text-left font-semibold px-4 py-3">Department</th>
                     <?php if ($showContract): ?>
                       <th class="text-left font-semibold px-4 py-3">Contract</th>
+                      <th class="text-left font-semibold px-4 py-3">Break</th>
+                      <th class="text-left font-semibold px-4 py-3">Multipliers</th>
                     <?php endif; ?>
                     <th class="text-left font-semibold px-4 py-3">Status</th>
                     <th class="text-right font-semibold px-4 py-3">Action</th>
                   </tr>
                 </thead>
-                <tbody class="divide-y divide-white/5">
+                <tbody class="divide-y divide-slate-200">
                   <?php foreach ($rows as $r):
                     $name = trim(((string)$r['first_name'] . ' ' . (string)$r['last_name']));
                     $nick = trim((string)($r['nickname'] ?? ''));
@@ -147,16 +142,51 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                     }
                     $type = ((int)$r['is_agency'] === 1) ? 'Agency' : 'Staff';
                     $contract = $r['contract_hours_per_week'] !== null && $r['contract_hours_per_week'] !== '' ? ((string)$r['contract_hours_per_week'] . ' hrs/wk') : '—';
+
+                    $breakPaid = ((int)($r['break_is_paid'] ?? 0) === 1);
+
+                    $rules = [];
+                    if (!empty($r['rules_json'])) {
+                      $decoded = json_decode((string)$r['rules_json'], true);
+                      if (is_array($decoded)) $rules = $decoded;
+                    }
+                    $fmtMult = function($v): string {
+                      if ($v === null || $v === '' || (is_numeric($v) && (float)$v <= 0)) return '—';
+                      $f = (float)$v;
+                      $s = rtrim(rtrim(number_format($f, 2, '.', ''), '0'), '.');
+                      return $s === '' ? '—' : $s;
+                    };
+                    $m_bh = $fmtMult($rules['bank_holiday_multiplier'] ?? null);
+                    $m_we = $fmtMult($rules['weekend_multiplier'] ?? null);
+                    $m_ng = $fmtMult($rules['night_multiplier'] ?? null);
+                    $m_ot = $fmtMult($rules['overtime_multiplier'] ?? null);
+                    $m_co = $fmtMult($rules['callout_multiplier'] ?? null);
                   ?>
                     <tr>
                       <td class="px-4 py-3">
-                        <div class="font-semibold text-slate-900"><?= h($name) ?></div>
-                        <div class="text-xs text-slate-500">ID: <?= (int)$r['id'] ?> <?= $r['employee_code'] ? '• ' . h((string)$r['employee_code']) : '' ?></div>
+                        <a href="<?= h(admin_url('employee-edit.php')) ?>?id=<?= (int)$r['id'] ?>" class="font-semibold text-slate-900 hover:underline"><?= h($name) ?></a>
+                      </td>
+                      <td class="px-4 py-3 text-slate-700 whitespace-nowrap">
+                        <?= $r['employee_code'] ? h((string)$r['employee_code']) : '—' ?>
                       </td>
                       <td class="px-4 py-3"><span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold <?= ((int)$r['is_agency']===1) ? 'bg-sky-500/15 border border-sky-500/30 text-black-100' : 'bg-emerald-500/10 border border-emerald-500/30 text-slate-900' ?>"><?= h($type) ?></span></td>
                       <td class="px-4 py-3 text-slate-700"><?= h((string)($r['department_name'] ?? '—')) ?></td>
                       <?php if ($showContract): ?>
                         <td class="px-4 py-3 text-slate-700"><?= h($contract) ?></td>
+                        <td class="px-4 py-3">
+                          <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold <?= $breakPaid ? 'bg-emerald-500/10 border border-emerald-500/30 text-slate-900' : 'bg-white border border-slate-200 text-slate-600' ?>">
+                            <?= $breakPaid ? 'Paid' : 'Unpaid' ?>
+                          </span>
+                        </td>
+                        <td class="px-4 py-3">
+                          <div class="flex flex-wrap gap-1">
+                            <span class="inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold bg-white border border-slate-200 text-slate-700">BH <?= h($m_bh) ?></span>
+                            <span class="inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold bg-white border border-slate-200 text-slate-700">WE <?= h($m_we) ?></span>
+                            <span class="inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold bg-white border border-slate-200 text-slate-700">N <?= h($m_ng) ?></span>
+                            <span class="inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold bg-white border border-slate-200 text-slate-700">OT <?= h($m_ot) ?></span>
+                            <span class="inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold bg-white border border-slate-200 text-slate-700">CO <?= h($m_co) ?></span>
+                          </div>
+                        </td>
                       <?php endif; ?>
                       <td class="px-4 py-3">
                         <?php if ((int)$r['is_active']===1): ?>
@@ -183,13 +213,22 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
                   <?php if (!$rows): ?>
                     <tr>
-                      <td colspan="<?= $showContract ? 6 : 5 ?>" class="px-4 py-8 text-center text-slate-500">No employees found.</td>
+                      <td colspan="<?= $showContract ? 9 : 6 ?>" class="px-4 py-8 text-center text-slate-500">No employees found.</td>
                     </tr>
                   <?php endif; ?>
                 </tbody>
               </table>
             </div>
           </div>
+
+          <script>
+            (function(){
+              var form = document.getElementById('filters');
+              if (!form) return;
+              var selects = form.querySelectorAll('select');
+              selects.forEach(function(s){ s.addEventListener('change', function(){ form.submit(); }); });
+            })();
+          </script>
 
         </main>
       </div>
