@@ -78,6 +78,7 @@ $bh = payroll_bank_holidays($pdo, $days[0]['ymd'], $days[6]['ymd']);
 $status = qstr('status', 'active'); // active|inactive|all
 $cat = (int)($_GET['cat'] ?? 0);
 $q = qstr('q', '');
+$hideEmpty = (int)($_GET['hide_empty'] ?? 0) === 1;
 
 $cats = $pdo->query("SELECT id, name FROM kiosk_employee_departments ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
@@ -149,6 +150,9 @@ $shifts = [];
 if ($employeeIds) {
   $in = implode(',', array_fill(0, count($employeeIds), '?'));
 
+  // IMPORTANT RULE (LOCKED): shifts are anchored to the START (clock-in) local date.
+  // A shift that crosses midnight belongs entirely to its start day/week/month.
+  // Therefore, the weekly grid only loads shifts whose clock_in_at falls within this week.
   $sqlShift = "SELECT s.*, c.new_json AS latest_edit_json
                FROM kiosk_shifts s
                LEFT JOIN (
@@ -162,14 +166,14 @@ if ($employeeIds) {
                  ) sc2 ON sc2.max_id = sc1.id
                ) c ON c.shift_id = s.id
                WHERE s.employee_id IN ($in)
+                 AND s.clock_in_at >= ?
                  AND s.clock_in_at < ?
-                 AND (s.clock_out_at IS NULL OR s.clock_out_at > ?)
                  AND (s.close_reason IS NULL OR s.close_reason <> 'void')
                ORDER BY s.clock_in_at ASC";
 
   $paramsShift = $employeeIds;
-  $paramsShift[] = $weekEndUtcEx->format('Y-m-d H:i:s');
   $paramsShift[] = $weekStartUtc->format('Y-m-d H:i:s');
+  $paramsShift[] = $weekEndUtcEx->format('Y-m-d H:i:s');
 
   $st = $pdo->prepare($sqlShift);
   $st->execute($paramsShift);
@@ -219,14 +223,8 @@ foreach ($shifts as $s) {
     continue;
   }
 
-  $visStart = $startUtc < $weekStartUtc ? $weekStartUtc : $startUtc;
-  $visEnd = ($endUtc > $weekEndUtcEx ? $weekEndUtcEx : $endUtc);
-  if ($visEnd <= $visStart) continue;
-
-  $shiftWorkedFull = null;
-  if ($hasOut && $endUtc) {
-    $shiftWorkedFull = max(0, (int)floor(($endUtc->getTimestamp() - $startUtc->getTimestamp()) / 60));
-  }
+  // Work minutes are always based on the full shift (no midnight splitting in this view).
+  $shiftWorkedFull = max(0, (int)floor(($endUtc->getTimestamp() - $startUtc->getTimestamp()) / 60));
 
   $breakMinutes = null;
   if ($eff['break_minutes'] !== null) {
@@ -241,62 +239,46 @@ foreach ($shifts as $s) {
 
   $breakIsPaid = ((int)($emp['break_is_paid'] ?? 0) === 1);
 
-  $segments = payroll_split_by_local_day($visStart, $visEnd, $tz);
+  // Determine which day this shift belongs to (START day in payroll timezone).
+  $startLocal = $startUtc->setTimezone($tz);
+  $endLocal = $endUtc->setTimezone($tz);
+  $ymd = $startLocal->format('Y-m-d');
 
-  // Status flags
-  $isAutoclosed = ((int)($s['is_autoclosed'] ?? 0) === 1);
-  $closeReason = (string)($s['close_reason'] ?? '');
-  $isApproved = !empty($s['approved_at']);
-
-  foreach ($segments as $seg) {
-    $ymd = (string)$seg['local_date'];
-    // Ensure day is in our header list
-    $isHeaderDay = false;
-    foreach ($days as $d) {
-      if ($d['ymd'] === $ymd) { $isHeaderDay = true; break; }
-    }
-    if (!$isHeaderDay) continue;
-
-    $segMins = (int)$seg['minutes'];
-    if ($segMins <= 0) continue;
-
-    // Allocate break proportionally across the FULL shift (not just week clamp)
-    $breakSeg = 0;
-    if (!$breakIsPaid && $hasOut && $shiftWorkedFull && $shiftWorkedFull > 0 && $breakMinutes > 0) {
-      $breakSeg = (int)floor(($segMins * $breakMinutes) / $shiftWorkedFull);
-      if ($breakSeg < 0) $breakSeg = 0;
-      if ($breakSeg > $segMins) $breakSeg = $segMins;
-    }
-
-    $netMins = $segMins - $breakSeg;
-    if ($netMins < 0) $netMins = 0;
-    // Render times (local)
-    $segStartLocal = ($seg['start_utc'] instanceof DateTimeImmutable) ? $seg['start_utc']->setTimezone($tz) : null;
-    $segEndLocal = ($seg['end_utc'] instanceof DateTimeImmutable) ? $seg['end_utc']->setTimezone($tz) : null;
-
-    $actual = fmt_local_hhmm($segStartLocal) . '–' . fmt_local_hhmm($segEndLocal);
-
-    $isAutoclosed = ((int)($s['is_autoclosed'] ?? 0) === 1);
-    $closeReason = trim((string)($s['close_reason'] ?? ''));
-    $isEdited = !empty($s['latest_edit_json']);
-    $needsFix = $isAutoclosed || ($closeReason !== '' && $closeReason !== '0') || $isEdited;
-
-    $fixUrl = admin_url('shift-edit.php?id=' . (int)$s['id']);
-    $viewUrl = admin_url('punch-details.php?mode=custom&employee_id=' . $empId . '&from=' . rawurlencode($ymd) . '&to=' . rawurlencode($ymd));
-
-    $cell[$empId][$ymd] = $cell[$empId][$ymd] ?? [];
-    $cell[$empId][$ymd][] = [
-      'shift_id' => (int)$s['id'],
-      'actual' => $actual,
-      'net_mins' => $netMins,
-      'needs_fix' => $needsFix,
-      'fix_url' => $fixUrl,
-      'view_url' => $viewUrl,
-    ];
-
-    $dayTotals[$empId][$ymd] = ($dayTotals[$empId][$ymd] ?? 0) + $netMins;
-    $weekTotals[$empId] = ($weekTotals[$empId] ?? 0) + $netMins;
+  // Ensure day is in our header list (it should be, because we filtered by week clock_in_at).
+  $isHeaderDay = false;
+  foreach ($days as $d) {
+    if ($d['ymd'] === $ymd) { $isHeaderDay = true; break; }
   }
+  if (!$isHeaderDay) continue;
+
+  $breakDeduct = (!$breakIsPaid ? max(0, (int)$breakMinutes) : 0);
+  $netMins = max(0, $shiftWorkedFull - $breakDeduct);
+
+  $actual = fmt_local_hhmm($startLocal) . '–' . fmt_local_hhmm($endLocal);
+  if ($endLocal->format('Y-m-d') !== $ymd) {
+    $actual .= ' (+1)';
+  }
+
+  $isAutoclosed = ((int)($s['is_autoclosed'] ?? 0) === 1);
+  $closeReason = trim((string)($s['close_reason'] ?? ''));
+  $isEdited = !empty($s['latest_edit_json']);
+  $needsFix = $isAutoclosed || ($closeReason !== '' && $closeReason !== '0') || $isEdited;
+
+  $fixUrl = admin_url('shift-edit.php?id=' . (int)$s['id']);
+  $viewUrl = admin_url('punch-details.php?mode=custom&employee_id=' . $empId . '&from=' . rawurlencode($ymd) . '&to=' . rawurlencode($ymd));
+
+  $cell[$empId][$ymd] = $cell[$empId][$ymd] ?? [];
+  $cell[$empId][$ymd][] = [
+    'shift_id' => (int)$s['id'],
+    'actual' => $actual,
+    'net_mins' => $netMins,
+    'needs_fix' => $needsFix,
+    'fix_url' => $fixUrl,
+    'view_url' => $viewUrl,
+  ];
+
+  $dayTotals[$empId][$ymd] = ($dayTotals[$empId][$ymd] ?? 0) + $netMins;
+  $weekTotals[$empId] = ($weekTotals[$empId] ?? 0) + $netMins;
 }
 
 // Build department totals based on weekTotals
@@ -335,9 +317,6 @@ for ($i = -12; $i <= 12; $i++) {
     'label' => $ws->format('d M Y') . ' – ' . $ws->modify('+6 days')->format('d M Y'),
   ];
 }
-
-$hideEmpty = (int)($_GET['hide_empty'] ?? 0) === 1;
-
 
 admin_page_start($pdo, 'Shifts');
 $active = admin_url('shifts.php');
