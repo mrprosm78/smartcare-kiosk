@@ -185,17 +185,16 @@ $active = admin_url('punch-details.php');
         <?php require __DIR__ . '/partials/sidebar.php'; ?>
 
         <main class="flex-1">
-          <div class="rounded-3xl border border-slate-200 bg-white p-6">
-            <div class="flex items-start justify-between gap-4">
+          <header class="rounded-3xl border border-slate-200 bg-white p-5">
+            <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
               <div>
                 <h1 class="text-2xl font-semibold">Punch Details</h1>
-                <p class="mt-1 text-sm text-slate-600">Read-only audit of punch events. Photos are served via admin endpoint (no direct links).</p>
+                <p class="mt-2 text-sm text-slate-600">Read-only audit of punch events. Photos are served via admin endpoint (no direct links).</p>
               </div>
               <div class="text-xs text-slate-500">Showing up to 500 rows</div>
             </div>
 
-            
-            <form id="filters" method="get" class="mt-4 grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+            <form id="filters" method="get" class="mt-4 grid grid-cols-1 md:grid-cols-12 gap-3">
               <div class="md:col-span-2">
                 <label class="block text-xs font-semibold text-slate-600">Period</label>
                 <select name="mode" id="mode" class="mt-1 w-full h-10 rounded-2xl bg-white border border-slate-200 px-3 text-sm">
@@ -257,7 +256,9 @@ $active = admin_url('punch-details.php');
               </div>
             </form>
 
+          </header>
 
+          <div class="mt-5 rounded-3xl border border-slate-200 bg-white p-5">
             <?php if (!empty($err ?? '')): ?>
               <div class="mt-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-slate-900">Error: <?= h((string)$err) ?></div>
             <?php endif; ?>
