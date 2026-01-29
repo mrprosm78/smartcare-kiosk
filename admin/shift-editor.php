@@ -1,0 +1,623 @@
+<?php
+declare(strict_types=1);
+
+require_once __DIR__ . '/layout.php';
+admin_require_perm($user, 'view_shifts');
+
+// ---------------------------------------------------------------------
+// Shift Editor (All Shifts)
+// Single page for finding + editing shifts (open + closed) with filters.
+// NOTE: This is UI-first. Save is standard POST for now; can be converted
+// to AJAX later without changing the layout.
+// ---------------------------------------------------------------------
+
+function q(string $k, string $default = ''): string {
+  $v = $_GET[$k] ?? $default;
+  return is_string($v) ? trim($v) : $default;
+}
+
+function is_ymd(string $s): bool {
+  return (bool)preg_match('/^\d{4}-\d{2}-\d{2}$/', $s);
+}
+
+function is_datetime_local(string $s): bool {
+  // HTML datetime-local: YYYY-MM-DDTHH:MM
+  return (bool)preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/', $s);
+}
+
+function dt_utc_to_local_input(?string $utcDt, DateTimeZone $tz): string {
+  if (!$utcDt) return '';
+  try {
+    $d = new DateTimeImmutable($utcDt, new DateTimeZone('UTC'));
+    return $d->setTimezone($tz)->format('Y-m-d\TH:i');
+  } catch (Throwable $e) {
+    return '';
+  }
+}
+
+function local_input_to_utc(?string $localInput, DateTimeZone $tz): ?string {
+  $localInput = is_string($localInput) ? trim($localInput) : '';
+  if ($localInput === '') return null;
+  if (!is_datetime_local($localInput)) return null;
+  try {
+    $dLocal = new DateTimeImmutable(str_replace('T', ' ', $localInput) . ':00', $tz);
+    return $dLocal->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+  } catch (Throwable $e) {
+    return null;
+  }
+}
+
+function minutes_to_hhmm(int $mins): string {
+  $mins = max(0, $mins);
+  $h = intdiv($mins, 60);
+  $m = $mins % 60;
+  return sprintf('%d:%02d', $h, $m);
+}
+
+$tzName = payroll_timezone($pdo);
+$tz = new DateTimeZone($tzName);
+
+// Defaults: last 7 days
+$todayLocal = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->setTimezone($tz);
+$defaultTo = $todayLocal->format('Y-m-d');
+$defaultFrom = $todayLocal->modify('-6 days')->format('Y-m-d');
+
+$from = q('from', $defaultFrom);
+$to   = q('to', $defaultTo);
+if (!is_ymd($from)) $from = $defaultFrom;
+if (!is_ymd($to))   $to   = $defaultTo;
+
+$employeeId = (int)($_GET['employee_id'] ?? 0);
+$deptId = (int)($_GET['dept_id'] ?? 0);
+$status = q('status', 'all'); // all|open|closed
+$duration = q('duration', 'all'); // all|lt1|1_4|4_8|8_12|gt12
+
+$selectedShiftId = (int)($_GET['shift_id'] ?? 0);
+
+$flash = '';
+
+// ---------------------------------------------------------------------
+// Save (POST)
+// ---------------------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  admin_verify_csrf($_POST['_csrf'] ?? null);
+
+  $sid = (int)($_POST['shift_id'] ?? 0);
+  $mode = (string)($_POST['mode'] ?? 'edit'); // edit|add
+
+  // Collect inputs
+  $inLocal  = (string)($_POST['clock_in_local'] ?? '');
+  $outLocal = (string)($_POST['clock_out_local'] ?? '');
+  $isCallout = (int)($_POST['is_callout'] ?? 0) === 1 ? 1 : 0;
+  $trainingMins = (int)($_POST['training_minutes'] ?? 0);
+  if ($trainingMins < 0) $trainingMins = 0;
+  $trainingNote = trim((string)($_POST['training_note'] ?? ''));
+  if (strlen($trainingNote) > 255) $trainingNote = substr($trainingNote, 0, 255);
+
+  $clockInUtc = local_input_to_utc($inLocal, $tz);
+  $clockOutUtc = local_input_to_utc($outLocal, $tz);
+
+  // For OPEN shifts, allow blank clock_out_at.
+  // For CLOSED shifts, clock_out_at must be present.
+
+  if ($mode === 'add') {
+    $emp = (int)($_POST['employee_id'] ?? 0);
+    if ($emp <= 0 || !$clockInUtc) {
+      $flash = 'Missing employee or clock-in time.';
+    } else {
+      $isClosed = $clockOutUtc ? 1 : 0;
+      $durationMinutes = null;
+      if ($clockOutUtc) {
+        try {
+          $d1 = new DateTimeImmutable($clockInUtc, new DateTimeZone('UTC'));
+          $d2 = new DateTimeImmutable($clockOutUtc, new DateTimeZone('UTC'));
+          $durationMinutes = max(0, (int)round(($d2->getTimestamp() - $d1->getTimestamp()) / 60));
+        } catch (Throwable $e) {
+          $durationMinutes = null;
+        }
+      }
+
+      $ins = $pdo->prepare("INSERT INTO kiosk_shifts (employee_id, clock_in_at, clock_out_at, is_closed, is_autoclosed, close_reason, is_callout, training_minutes, training_note, duration_minutes, last_modified_reason, updated_source)
+                            VALUES (?, ?, ?, ?, 0, NULL, ?, ?, ?, ?, 'manual_add', 'admin')");
+      $ins->execute([
+        $emp,
+        $clockInUtc,
+        $clockOutUtc,
+        $isClosed,
+        $isCallout,
+        $trainingMins ?: null,
+        $trainingNote !== '' ? $trainingNote : null,
+        $durationMinutes,
+      ]);
+      $newId = (int)$pdo->lastInsertId();
+
+      // Log change
+      $newRow = $pdo->prepare('SELECT * FROM kiosk_shifts WHERE id=? LIMIT 1');
+      $newRow->execute([$newId]);
+      $newShift = $newRow->fetch(PDO::FETCH_ASSOC) ?: null;
+      $log = $pdo->prepare("INSERT INTO kiosk_shift_changes (shift_id, change_type, changed_by_user_id, changed_by_username, changed_by_role, reason, old_json, new_json)
+                            VALUES (?, 'edit', ?, ?, ?, 'manual_add', NULL, ?)");
+      $log->execute([
+        $newId,
+        (int)($user['id'] ?? 0) ?: null,
+        (string)($user['username'] ?? ''),
+        (string)($user['role'] ?? ''),
+        $newShift ? json_encode($newShift, JSON_UNESCAPED_SLASHES) : null,
+      ]);
+
+      admin_redirect(admin_url('shift-editor.php?' . http_build_query([
+        'from' => $from,
+        'to' => $to,
+        'employee_id' => $employeeId,
+        'dept_id' => $deptId,
+        'status' => $status,
+        'duration' => $duration,
+        'shift_id' => $newId,
+      ])));
+    }
+  } else {
+    if ($sid <= 0) {
+      $flash = 'Missing shift.';
+    } else {
+      $st = $pdo->prepare('SELECT * FROM kiosk_shifts WHERE id=? LIMIT 1');
+      $st->execute([$sid]);
+      $old = $st->fetch(PDO::FETCH_ASSOC);
+      if (!$old) {
+        $flash = 'Shift not found.';
+      } else {
+        // If user cleared clock_out, keep open.
+        $isClosed = $clockOutUtc ? 1 : 0;
+
+        // Recompute duration if closed.
+        $durationMinutes = null;
+        if ($clockInUtc && $clockOutUtc) {
+          try {
+            $d1 = new DateTimeImmutable($clockInUtc, new DateTimeZone('UTC'));
+            $d2 = new DateTimeImmutable($clockOutUtc, new DateTimeZone('UTC'));
+            $durationMinutes = max(0, (int)round(($d2->getTimestamp() - $d1->getTimestamp()) / 60));
+          } catch (Throwable $e) {
+            $durationMinutes = null;
+          }
+        }
+
+        $upd = $pdo->prepare("UPDATE kiosk_shifts
+                              SET clock_in_at=?, clock_out_at=?, is_closed=?, is_callout=?, training_minutes=?, training_note=?, duration_minutes=?, last_modified_reason='manual_edit', updated_source='admin'
+                              WHERE id=?");
+        $upd->execute([
+          $clockInUtc ?? (string)$old['clock_in_at'],
+          $clockOutUtc,
+          $isClosed,
+          $isCallout,
+          $trainingMins ?: null,
+          $trainingNote !== '' ? $trainingNote : null,
+          $durationMinutes,
+          $sid,
+        ]);
+
+        $st2 = $pdo->prepare('SELECT * FROM kiosk_shifts WHERE id=? LIMIT 1');
+        $st2->execute([$sid]);
+        $new = $st2->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        // Log change
+        $log = $pdo->prepare("INSERT INTO kiosk_shift_changes (shift_id, change_type, changed_by_user_id, changed_by_username, changed_by_role, reason, old_json, new_json)
+                              VALUES (?, 'edit', ?, ?, ?, 'manual_edit', ?, ?)");
+        $log->execute([
+          $sid,
+          (int)($user['id'] ?? 0) ?: null,
+          (string)($user['username'] ?? ''),
+          (string)($user['role'] ?? ''),
+          json_encode($old, JSON_UNESCAPED_SLASHES),
+          $new ? json_encode($new, JSON_UNESCAPED_SLASHES) : null,
+        ]);
+
+        admin_redirect(admin_url('shift-editor.php?' . http_build_query([
+          'from' => $from,
+          'to' => $to,
+          'employee_id' => $employeeId,
+          'dept_id' => $deptId,
+          'status' => $status,
+          'duration' => $duration,
+          'shift_id' => $sid,
+        ])));
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------
+// Data for filters
+// ---------------------------------------------------------------------
+$employees = $pdo->query("SELECT e.id, e.nickname, e.first_name, e.last_name, e.employee_code, e.is_agency, e.agency_label, d.name AS dept
+                          FROM kiosk_employees e
+                          LEFT JOIN kiosk_employee_departments d ON d.id=e.department_id
+                          WHERE e.is_active=1
+                          ORDER BY d.sort_order ASC, d.name ASC, e.nickname ASC, e.first_name ASC, e.last_name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+$depts = $pdo->query("SELECT id, name FROM kiosk_employee_departments ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+$displayName = function(array $e): string {
+  if ((int)($e['is_agency'] ?? 0) === 1) {
+    $label = trim((string)($e['agency_label'] ?? ''));
+    return $label !== '' ? $label : 'Agency';
+  }
+  $nick = trim((string)($e['nickname'] ?? ''));
+  if ($nick !== '') return $nick;
+  $fn = trim((string)($e['first_name'] ?? ''));
+  $ln = trim((string)($e['last_name'] ?? ''));
+  $name = trim($fn . ' ' . $ln);
+  return $name !== '' ? $name : ('Emp #' . (string)($e['employee_code'] ?? ''));
+};
+
+// ---------------------------------------------------------------------
+// Shift list query (UTC window derived from local day range)
+// ---------------------------------------------------------------------
+try {
+  $fromLocal = new DateTimeImmutable($from . ' 00:00:00', $tz);
+  $toLocalEx = (new DateTimeImmutable($to . ' 00:00:00', $tz))->modify('+1 day');
+} catch (Throwable $e) {
+  $fromLocal = new DateTimeImmutable($defaultFrom . ' 00:00:00', $tz);
+  $toLocalEx = (new DateTimeImmutable($defaultTo . ' 00:00:00', $tz))->modify('+1 day');
+}
+
+$fromUtc = $fromLocal->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+$toUtcEx = $toLocalEx->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+
+$where = ["s.clock_in_at >= ?", "s.clock_in_at < ?"];
+$params = [$fromUtc, $toUtcEx];
+
+if ($employeeId > 0) {
+  $where[] = 's.employee_id = ?';
+  $params[] = $employeeId;
+}
+if ($deptId > 0) {
+  $where[] = 'e.department_id = ?';
+  $params[] = $deptId;
+}
+if ($status === 'open') {
+  $where[] = 's.clock_out_at IS NULL';
+} elseif ($status === 'closed') {
+  $where[] = 's.clock_out_at IS NOT NULL';
+}
+
+// Duration band filter (use stored duration_minutes when available; fall back to timestamp diff for open)
+if ($duration !== 'all') {
+  $expr = "COALESCE(s.duration_minutes, TIMESTAMPDIFF(MINUTE, s.clock_in_at, COALESCE(s.clock_out_at, UTC_TIMESTAMP())))";
+  if ($duration === 'lt1')      { $where[] = "$expr < 60"; }
+  elseif ($duration === '1_4')  { $where[] = "$expr >= 60 AND $expr < 240"; }
+  elseif ($duration === '4_8')  { $where[] = "$expr >= 240 AND $expr < 480"; }
+  elseif ($duration === '8_12') { $where[] = "$expr >= 480 AND $expr < 720"; }
+  elseif ($duration === 'gt12') { $where[] = "$expr >= 720"; }
+}
+
+$sql = "SELECT s.*, e.nickname, e.first_name, e.last_name, e.employee_code, e.is_agency, e.agency_label,
+               d.name AS department_name
+        FROM kiosk_shifts s
+        JOIN kiosk_employees e ON e.id=s.employee_id
+        LEFT JOIN kiosk_employee_departments d ON d.id=e.department_id
+        WHERE " . implode(' AND ', $where) . "
+        ORDER BY s.clock_in_at DESC
+        LIMIT 600";
+
+$st = $pdo->prepare($sql);
+$st->execute($params);
+$shifts = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+if ($selectedShiftId <= 0 && $shifts) {
+  $selectedShiftId = (int)$shifts[0]['id'];
+}
+
+$selected = null;
+foreach ($shifts as $s) {
+  if ((int)$s['id'] === $selectedShiftId) { $selected = $s; break; }
+}
+
+admin_page_start($pdo, 'Shift Editor');
+$active = admin_url('shift-editor.php');
+?>
+
+<div class="min-h-dvh">
+  <div class="px-4 sm:px-6 pt-6 pb-8">
+    <div class="max-w-7xl mx-auto">
+      <div class="flex flex-col lg:flex-row gap-5">
+        <?php require __DIR__ . '/partials/sidebar.php'; ?>
+
+        <main class="flex-1">
+          <header class="rounded-3xl border border-slate-200 bg-white p-5">
+            <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+              <div>
+                <h1 class="text-2xl font-semibold">Shift Editor</h1>
+                <p class="mt-2 text-sm text-slate-600">Find and edit shifts (open + closed). Timezone: <span class="font-semibold"><?= h($tzName) ?></span></p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <a href="<?= h(admin_url('shift-editor.php')) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Clear</a>
+                <a href="<?= h(admin_url('shifts.php')) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800">Back to weekly grid</a>
+              </div>
+            </div>
+
+            <?php if ($flash !== ''): ?>
+              <div class="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><?= h($flash) ?></div>
+            <?php endif; ?>
+
+            <form method="get" id="filters" class="mt-4 grid grid-cols-1 md:grid-cols-12 gap-3">
+              <div class="md:col-span-2">
+                <label class="block text-xs font-semibold text-slate-600">From</label>
+                <input type="date" name="from" value="<?= h($from) ?>" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm" />
+              </div>
+              <div class="md:col-span-2">
+                <label class="block text-xs font-semibold text-slate-600">To</label>
+                <input type="date" name="to" value="<?= h($to) ?>" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm" />
+              </div>
+              <div class="md:col-span-3">
+                <label class="block text-xs font-semibold text-slate-600">Employee</label>
+                <select name="employee_id" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+                  <option value="0">All</option>
+                  <?php foreach ($employees as $e): ?>
+                    <option value="<?= (int)$e['id'] ?>" <?= ((int)$e['id'] === $employeeId) ? 'selected' : '' ?>><?= h($displayName($e)) ?><?= ($e['employee_code'] ? ' · ' . h((string)$e['employee_code']) : '') ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+              <div class="md:col-span-2">
+                <label class="block text-xs font-semibold text-slate-600">Department</label>
+                <select name="dept_id" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+                  <option value="0">All</option>
+                  <?php foreach ($depts as $d): ?>
+                    <option value="<?= (int)$d['id'] ?>" <?= ((int)$d['id'] === $deptId) ? 'selected' : '' ?>><?= h((string)$d['name']) ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+              <div class="md:col-span-2">
+                <label class="block text-xs font-semibold text-slate-600">Status</label>
+                <select name="status" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+                  <option value="all" <?= $status==='all'?'selected':'' ?>>All</option>
+                  <option value="open" <?= $status==='open'?'selected':'' ?>>Open</option>
+                  <option value="closed" <?= $status==='closed'?'selected':'' ?>>Closed</option>
+                </select>
+              </div>
+              <div class="md:col-span-1">
+                <label class="block text-xs font-semibold text-slate-600">Hours</label>
+                <select name="duration" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+                  <option value="all" <?= $duration==='all'?'selected':'' ?>>All</option>
+                  <option value="lt1" <?= $duration==='lt1'?'selected':'' ?>>&lt;1h</option>
+                  <option value="1_4" <?= $duration==='1_4'?'selected':'' ?>>1–4h</option>
+                  <option value="4_8" <?= $duration==='4_8'?'selected':'' ?>>4–8h</option>
+                  <option value="8_12" <?= $duration==='8_12'?'selected':'' ?>>8–12h</option>
+                  <option value="gt12" <?= $duration==='gt12'?'selected':'' ?>>&gt;12h</option>
+                </select>
+              </div>
+              <input type="hidden" name="shift_id" value="<?= (int)$selectedShiftId ?>" />
+            </form>
+          </header>
+
+          <div class="mt-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
+            <!-- List -->
+            <section class="lg:col-span-7 rounded-3xl border border-slate-200 bg-white overflow-hidden">
+              <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+                <div class="text-sm font-semibold">Shifts (<?= count($shifts) ?>)</div>
+                <button type="button" id="addShiftBtn" class="rounded-2xl px-3 py-2 text-sm font-semibold bg-sky-500/15 border border-sky-500/30 text-slate-900 hover:bg-sky-500/20">Add shift</button>
+              </div>
+              <div class="overflow-auto">
+                <table class="min-w-full text-sm">
+                  <thead class="bg-slate-50 text-slate-600">
+                    <tr class="text-left">
+                      <th class="px-4 py-2 font-semibold">Employee</th>
+                      <th class="px-4 py-2 font-semibold">Dept</th>
+                      <th class="px-4 py-2 font-semibold">In</th>
+                      <th class="px-4 py-2 font-semibold">Out</th>
+                      <th class="px-4 py-2 font-semibold">Duration</th>
+                      <th class="px-4 py-2 font-semibold">Flags</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-200">
+                  <?php if (!$shifts): ?>
+                    <tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">No shifts found for this filter.</td></tr>
+                  <?php endif; ?>
+                  <?php foreach ($shifts as $s): ?>
+                    <?php
+                      $isSel = ((int)$s['id'] === (int)$selectedShiftId);
+                      $inLocal = (new DateTimeImmutable((string)$s['clock_in_at'], new DateTimeZone('UTC')))->setTimezone($tz);
+                      $outLocal = null;
+                      if (!empty($s['clock_out_at'])) {
+                        $outLocal = (new DateTimeImmutable((string)$s['clock_out_at'], new DateTimeZone('UTC')))->setTimezone($tz);
+                      }
+                      $durMin = null;
+                      if ($s['duration_minutes'] !== null) {
+                        $durMin = (int)$s['duration_minutes'];
+                      } else {
+                        $endTs = $outLocal ? $outLocal->getTimestamp() : (new DateTimeImmutable('now', $tz))->getTimestamp();
+                        $durMin = max(0, (int)round(($endTs - $inLocal->getTimestamp())/60));
+                      }
+                      $flags = [];
+                      if (!empty($s['approved_at'])) $flags[] = 'approved';
+                      if ((int)($s['is_autoclosed'] ?? 0) === 1) $flags[] = 'autoclosed';
+                      if (!empty($s['last_modified_reason'])) $flags[] = (string)$s['last_modified_reason'];
+                      if ((int)($s['is_callout'] ?? 0) === 1) $flags[] = 'callout';
+                      $flagText = $flags ? implode(', ', $flags) : '—';
+                    ?>
+                    <tr class="<?= $isSel ? 'bg-emerald-50' : 'bg-white' ?> hover:bg-slate-50 cursor-pointer" data-shift-id="<?= (int)$s['id'] ?>">
+                      <td class="px-4 py-2">
+                        <div class="font-semibold text-slate-900"><?= h($displayName($s)) ?></div>
+                        <div class="text-xs text-slate-500">#<?= h((string)$s['employee_code']) ?> · <?= h((string)$inLocal->format('d M Y')) ?></div>
+                      </td>
+                      <td class="px-4 py-2 text-slate-700"><?= h((string)($s['department_name'] ?? '—')) ?></td>
+                      <td class="px-4 py-2 font-semibold text-slate-900"><?= h($inLocal->format('H:i')) ?></td>
+                      <td class="px-4 py-2 font-semibold text-slate-900"><?= $outLocal ? h($outLocal->format('H:i')) : '<span class="text-amber-700">Open</span>' ?></td>
+                      <td class="px-4 py-2 text-slate-700"><?= h(minutes_to_hhmm((int)$durMin)) ?></td>
+                      <td class="px-4 py-2 text-xs text-slate-600"><?= h($flagText) ?></td>
+                    </tr>
+                  <?php endforeach; ?>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <!-- Editor panel -->
+            <aside class="lg:col-span-5 rounded-3xl border border-slate-200 bg-white overflow-hidden" id="editorPanel">
+              <div class="px-5 py-4 border-b border-slate-200">
+                <div class="text-sm font-semibold" id="editorTitle">Edit shift</div>
+                <div class="mt-1 text-xs text-slate-500" id="editorSub">Select a shift on the left.</div>
+              </div>
+
+              <div class="p-5">
+                <?php if ($selected): ?>
+                  <?php
+                    $selIn = dt_utc_to_local_input((string)$selected['clock_in_at'], $tz);
+                    $selOut = dt_utc_to_local_input($selected['clock_out_at'] ? (string)$selected['clock_out_at'] : null, $tz);
+                    $selName = $displayName($selected);
+                    $selDept = (string)($selected['department_name'] ?? '—');
+                  ?>
+                  <form method="post" id="editForm" class="space-y-4">
+                    <input type="hidden" name="_csrf" value="<?= h(admin_csrf_token()) ?>" />
+                    <input type="hidden" name="mode" id="formMode" value="edit" />
+                    <input type="hidden" name="shift_id" id="shift_id" value="<?= (int)$selected['id'] ?>" />
+
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                      <div class="text-sm font-semibold text-slate-900"><?= h($selName) ?> <span class="text-slate-500 font-normal">#<?= h((string)$selected['employee_code']) ?></span></div>
+                      <div class="text-xs text-slate-600 mt-1"><?= h($selDept) ?> · Shift ID <?= (int)$selected['id'] ?></div>
+                    </div>
+
+                    <div>
+                      <label class="block text-xs font-semibold text-slate-600">Clock in</label>
+                      <input type="datetime-local" name="clock_in_local" id="clock_in_local" value="<?= h($selIn) ?>" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm" required>
+                    </div>
+
+                    <div>
+                      <label class="block text-xs font-semibold text-slate-600">Clock out (leave blank = open)</label>
+                      <input type="datetime-local" name="clock_out_local" id="clock_out_local" value="<?= h($selOut) ?>" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                      <input type="checkbox" id="is_callout" name="is_callout" value="1" <?= ((int)($selected['is_callout'] ?? 0)===1)?'checked':'' ?> class="h-4 w-4 rounded border-slate-300">
+                      <label for="is_callout" class="text-sm text-slate-800 font-semibold">Callout</label>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label class="block text-xs font-semibold text-slate-600">Training minutes</label>
+                        <input type="number" min="0" step="1" name="training_minutes" id="training_minutes" value="<?= (int)($selected['training_minutes'] ?? 0) ?>" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+                      </div>
+                      <div class="sm:col-span-2">
+                        <label class="block text-xs font-semibold text-slate-600">Training note</label>
+                        <input type="text" name="training_note" id="training_note" value="<?= h((string)($selected['training_note'] ?? '')) ?>" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm" maxlength="255">
+                      </div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2 pt-2">
+                      <button type="submit" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700">Save</button>
+                      <a href="<?= h(admin_url('shift-editor.php?' . http_build_query([
+                        'from' => $from,
+                        'to' => $to,
+                        'employee_id' => $employeeId,
+                        'dept_id' => $deptId,
+                        'status' => $status,
+                        'duration' => $duration,
+                      ]))) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Clear selection</a>
+                    </div>
+
+                    <p class="text-xs text-slate-500">Edits are logged in <span class="font-semibold">kiosk_shift_changes</span> and marked as <span class="font-semibold">manual_edit</span>.</p>
+                  </form>
+
+                  <!-- Hidden Add Shift form template (UI only for now; posts with mode=add) -->
+                  <form method="post" id="addForm" class="space-y-4 hidden">
+                    <input type="hidden" name="_csrf" value="<?= h(admin_csrf_token()) ?>" />
+                    <input type="hidden" name="mode" value="add" />
+                    <div>
+                      <label class="block text-xs font-semibold text-slate-600">Employee</label>
+                      <select name="employee_id" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm" required>
+                        <option value="">Select…</option>
+                        <?php foreach ($employees as $e): ?>
+                          <option value="<?= (int)$e['id'] ?>"><?= h($displayName($e)) ?><?= ($e['employee_code'] ? ' · ' . h((string)$e['employee_code']) : '') ?></option>
+                        <?php endforeach; ?>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-xs font-semibold text-slate-600">Clock in</label>
+                      <input type="datetime-local" name="clock_in_local" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm" required>
+                    </div>
+                    <div>
+                      <label class="block text-xs font-semibold text-slate-600">Clock out (optional)</label>
+                      <input type="datetime-local" name="clock_out_local" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <input type="checkbox" id="add_is_callout" name="is_callout" value="1" class="h-4 w-4 rounded border-slate-300">
+                      <label for="add_is_callout" class="text-sm text-slate-800 font-semibold">Callout</label>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label class="block text-xs font-semibold text-slate-600">Training minutes</label>
+                        <input type="number" min="0" step="1" name="training_minutes" value="0" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+                      </div>
+                      <div class="sm:col-span-2">
+                        <label class="block text-xs font-semibold text-slate-600">Training note</label>
+                        <input type="text" name="training_note" value="" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm" maxlength="255">
+                      </div>
+                    </div>
+                    <div class="flex flex-wrap gap-2 pt-2">
+                      <button type="submit" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-sky-600 text-white hover:bg-sky-700">Create shift</button>
+                      <button type="button" id="cancelAdd" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Cancel</button>
+                    </div>
+                    <p class="text-xs text-slate-500">Creates a manual shift and logs it in <span class="font-semibold">kiosk_shift_changes</span> with reason <span class="font-semibold">manual_add</span>.</p>
+                  </form>
+
+                <?php else: ?>
+                  <p class="text-sm text-slate-600">No shift selected.</p>
+                <?php endif; ?>
+              </div>
+            </aside>
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Live filter updates (no Apply button)
+  (function() {
+    const form = document.getElementById('filters');
+    if (!form) return;
+    const els = form.querySelectorAll('input,select');
+    els.forEach(el => {
+      el.addEventListener('change', () => form.submit());
+    });
+  })();
+
+  // Row click selects shift
+  (function() {
+    const rows = document.querySelectorAll('tr[data-shift-id]');
+    rows.forEach(r => {
+      r.addEventListener('click', () => {
+        const sid = r.getAttribute('data-shift-id');
+        const url = new URL(window.location.href);
+        url.searchParams.set('shift_id', sid);
+        window.location.href = url.toString();
+      });
+    });
+  })();
+
+  // UI toggle: add shift
+  (function() {
+    const btn = document.getElementById('addShiftBtn');
+    const editForm = document.getElementById('editForm');
+    const addForm = document.getElementById('addForm');
+    const cancel = document.getElementById('cancelAdd');
+    const title = document.getElementById('editorTitle');
+    const sub = document.getElementById('editorSub');
+    if (!btn || !addForm) return;
+    btn.addEventListener('click', () => {
+      if (editForm) editForm.classList.add('hidden');
+      addForm.classList.remove('hidden');
+      if (title) title.textContent = 'Add shift';
+      if (sub) sub.textContent = 'Create a manual shift (training is separate and not part of calculations).';
+    });
+    if (cancel) {
+      cancel.addEventListener('click', () => {
+        addForm.classList.add('hidden');
+        if (editForm) editForm.classList.remove('hidden');
+        if (title) title.textContent = 'Edit shift';
+        if (sub) sub.textContent = 'Select a shift on the left.';
+      });
+    }
+  })();
+</script>
+
+<?php admin_page_end();

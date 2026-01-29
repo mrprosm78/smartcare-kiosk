@@ -364,14 +364,7 @@ $active = admin_url('shifts.php');
                   $qsBase = $_GET;
                   $qsPrev = $qsBase; $qsPrev['week'] = $prev;
                   $qsNext = $qsBase; $qsNext['week'] = $next;
-
-                  // Shift editor link: prefill with this displayed week.
-                  $qsEdit = [
-                    'from' => $weekStartLocal->format('Y-m-d'),
-                    'to'   => $weekStartLocal->modify('+6 days')->format('Y-m-d'),
-                  ];
                 ?>
-                <a href="<?= h(admin_url('shift-editor.php?' . http_build_query($qsEdit))) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-emerald-500/15 border border-emerald-500/30 text-slate-900 hover:bg-emerald-500/20">Edit shifts</a>
                 <a href="<?= h(admin_url('shifts.php?' . http_build_query($qsPrev))) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">← Prev week</a>
                 <a href="<?= h(admin_url('shifts.php?' . http_build_query($qsNext))) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Next week →</a>
               </div>

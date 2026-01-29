@@ -117,10 +117,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           json_encode($newJson),
         ]);
 
-        // Mark shift as manually edited (but do NOT overwrite original punch times).
-        // We keep the manager-provided reason in kiosk_shift_changes, and stamp the shift so UI can show "Manual edited".
-        $upd = $pdo->prepare("UPDATE kiosk_shifts SET last_modified_reason='manual_edit', training_minutes=?, training_note=?, updated_source='admin' WHERE id=?");
+        // Mark shift as modified (but do NOT overwrite original times)
+        $upd = $pdo->prepare("UPDATE kiosk_shifts SET last_modified_reason=?, training_minutes=?, training_note=?, updated_source='admin' WHERE id=?");
         $upd->execute([
+          $reason !== '' ? $reason : 'edit',
           ($newTraining === '') ? (int)($shift['training_minutes'] ?? 0) : max(0, (int)$newTraining),
           $newTrainingNote !== '' ? $newTrainingNote : null,
           $shiftId
@@ -157,11 +157,6 @@ if ((int)($shift['is_agency'] ?? 0) === 1) {
   $lbl = trim((string)($shift['agency_label'] ?? 'Agency'));
   $who = $lbl !== '' ? ($lbl . ' (Agency)') : 'Agency';
 }
-
-$isOpen = empty($eff['clock_out_at']);
-$isApproved = !empty($shift['approved_at']);
-$isAutoclosed = ((int)($shift['is_autoclosed'] ?? 0) === 1);
-$isManuallyEdited = !empty($shift['latest_edit_json']) || ((string)($shift['last_modified_reason'] ?? '') === 'manual_edit');
 ?>
 
 <div class="min-h-dvh">
@@ -176,20 +171,6 @@ $isManuallyEdited = !empty($shift['latest_edit_json']) || ((string)($shift['last
               <div>
                 <h1 class="text-2xl font-semibold">Edit shift</h1>
                 <p class="mt-2 text-sm text-slate-600"><?= h($who) ?> • Shift #<?= (int)$shiftId ?></p>
-                <div class="mt-3 flex flex-wrap items-center gap-2">
-                  <span class="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold <?= $isOpen ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-50 text-slate-700' ?>">
-                    <?= $isOpen ? 'Open shift' : 'Closed shift' ?>
-                  </span>
-                  <?php if ($isApproved): ?>
-                    <span class="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">Approved</span>
-                  <?php endif; ?>
-                  <?php if ($isAutoclosed): ?>
-                    <span class="inline-flex items-center rounded-full border border-rose-300 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800">Autoclosed</span>
-                  <?php endif; ?>
-                  <?php if ($isManuallyEdited): ?>
-                    <span class="inline-flex items-center rounded-full border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800">Manual edited</span>
-                  <?php endif; ?>
-                </div>
               </div>
               <a href="<?= h(admin_url('shifts.php')) ?>" class="rounded-2xl bg-slate-50 border border-slate-200 px-4 py-2 text-sm hover:bg-slate-100">Back</a>
             </div>
