@@ -41,6 +41,50 @@ function s_bool(PDO $pdo, string $key, bool $default): bool {
     return in_array($v, ['1','true','yes','on'], true);
 }
 
+/**
+ * Snap a datetime to nearest rounding boundary (increment minutes) ONLY if within grace minutes.
+ *
+ * - increment: boundary step (e.g. 60 for nearest hour)
+ * - grace: tolerance window (e.g. 5 => within 5 mins of boundary)
+ *
+ * Returns the original datetime string if outside grace.
+ *
+ * IMPORTANT: This is used ONLY for writing kiosk_shifts.clock_in_at / clock_out_at.
+ * kiosk_punch_events remain raw + immutable.
+ */
+function kiosk_round_datetime(?string $dtStr, int $incrementMin, int $graceMin): ?string {
+    if (!$dtStr) return $dtStr;
+    $inc = max(1, (int)$incrementMin);
+    $grace = max(0, (int)$graceMin);
+
+    try {
+        $dt = new DateTime($dtStr, new DateTimeZone('UTC'));
+    } catch (Throwable $e) {
+        return $dtStr;
+    }
+
+    $ts = $dt->getTimestamp();
+    $step = $inc * 60;
+
+    $floor = intdiv($ts, $step) * $step;
+    $ceil  = $floor + $step;
+
+    $dFloor = abs($ts - $floor) / 60;
+    $dCeil  = abs($ceil - $ts) / 60;
+
+    // Snap only if within grace minutes.
+    if ($dFloor <= $grace && $dFloor <= $dCeil) {
+        $dt->setTimestamp($floor);
+        return $dt->format('Y-m-d H:i:s');
+    }
+    if ($dCeil <= $grace) {
+        $dt->setTimestamp($ceil);
+        return $dt->format('Y-m-d H:i:s');
+    }
+
+    return $dtStr;
+}
+
 function column_exists(PDO $pdo, string $table, string $column): bool {
     try {
         $stmt = $pdo->prepare("
@@ -489,6 +533,11 @@ try {
 
     $effectiveTimeSql = dt_sql($effectiveDt);
 
+    // Grace rounding settings (applies to shifts only; punch events remain raw)
+    $roundingEnabled = s_bool($pdo, 'rounding_enabled', false);
+    $roundIncrement  = max(1, s_int($pdo, 'round_increment_minutes', 60));
+    $roundGrace      = max(0, s_int($pdo, 'round_grace_minutes', 5));
+
     // employee lookup
     $allowPlain = setting_bool($pdo,'allow_plain_pin', false);
 
@@ -632,6 +681,9 @@ try {
     // ---- PROCESS ----
     if ($action === 'IN') {
 
+        // Apply grace rounding to shift clock-in (punch event stays raw)
+        $shiftInTimeSql = $roundingEnabled ? (kiosk_round_datetime($effectiveTimeSql, $roundIncrement, $roundGrace) ?? $effectiveTimeSql) : $effectiveTimeSql;
+
         $open = $pdo->prepare("SELECT id FROM kiosk_shifts WHERE employee_id=? AND clock_out_at IS NULL LIMIT 1");
         $open->execute([$employeeId]);
 
@@ -669,7 +721,7 @@ try {
         }
 
         $pdo->prepare("INSERT INTO kiosk_shifts (employee_id, clock_in_at, is_closed) VALUES (?, ?, 0)")
-            ->execute([$employeeId, $effectiveTimeSql]);
+            ->execute([$employeeId, $shiftInTimeSql]);
 
         $shiftId = (int)$pdo->lastInsertId();
 
@@ -692,6 +744,9 @@ try {
 
     if ($action === 'OUT') {
 
+        // Apply grace rounding to shift clock-out (punch event stays raw)
+        $shiftOutTimeSql = $roundingEnabled ? (kiosk_round_datetime($effectiveTimeSql, $roundIncrement, $roundGrace) ?? $effectiveTimeSql) : $effectiveTimeSql;
+
         $shift = $pdo->prepare("
             SELECT id, clock_in_at
             FROM kiosk_shifts
@@ -708,7 +763,7 @@ try {
         }
 
         $minsStmt = $pdo->prepare("SELECT TIMESTAMPDIFF(MINUTE, ?, ?) AS mins");
-        $minsStmt->execute([$s['clock_in_at'], $effectiveTimeSql]);
+        $minsStmt->execute([$s['clock_in_at'], $shiftOutTimeSql]);
         $mins = (int)$minsStmt->fetchColumn();
 
         $breakMins = break_minutes_for_worked($pdo, $mins);
@@ -731,7 +786,7 @@ try {
                 SET clock_out_at=?, is_closed=1, duration_minutes=?, break_minutes=?, paid_minutes=?, close_reason='too_long'
                 WHERE id=?
             ");
-            $upd->execute([$effectiveTimeSql, $mins, $breakMins, $paidMins, (int)$s['id']]);
+            $upd->execute([$shiftOutTimeSql, $mins, $breakMins, $paidMins, (int)$s['id']]);
 
             punch_mark($pdo, $eventUuid, 'processed', 'shift_too_long_flagged', (int)$s['id']);
         } else {
@@ -740,7 +795,7 @@ try {
                 SET clock_out_at=?, is_closed=1, duration_minutes=?, break_minutes=?, paid_minutes=?
                 WHERE id=?
             ");
-            $upd->execute([$effectiveTimeSql, $mins, $breakMins, $paidMins, (int)$s['id']]);
+            $upd->execute([$shiftOutTimeSql, $mins, $breakMins, $paidMins, (int)$s['id']]);
 
             
         // Auto-approve clean shifts (configurable)
