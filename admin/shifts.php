@@ -454,7 +454,7 @@ $active = admin_url('shifts.php');
                   ?>
                     <tr class="align-top">
                       <td class="sticky left-0 z-10 bg-white border-b border-slate-200 p-2 w-[220px]">
-                        <a href="<?= h(admin_url('employee-edit.php')) ?>?id=<?= (int)$empId ?>" class="font-semibold text-slate-900 hover:underline"><?= h($name) ?></a>
+                        <a href="<?= h(admin_url('payroll-calendar-employee.php')) ?>?id=<?= (int)$empId ?>" class="font-semibold text-slate-900 hover:underline"><?= h($name) ?></a>
                         <div class="mt-1 text-[11px] text-slate-600"><?= h($code !== '' ? $code : '—') ?> · <?= h($dept !== '' ? $dept : '—') ?></div>
                       </td>
 
