@@ -21,6 +21,7 @@ $items[] = ['href' => admin_url('index.php'), 'label' => 'Dashboard', 'perm' => 
 $items[] = ['href' => admin_url('employees.php'), 'label' => 'Employees', 'perm' => 'view_employees'];
 $items[] = ['href' => admin_url('punch-details.php'), 'label' => 'Punch Details', 'perm' => 'view_punches'];
 $items[] = ['href' => admin_url('shifts.php'), 'label' => 'Shifts', 'perm' => 'view_shifts'];
+$items[] = ['href' => admin_url('payroll-calendar-employee.php'), 'label' => 'Payroll Monthly Report', 'perm' => 'view_payroll'];
 $items[] = ['href' => admin_url('settings.php'), 'label' => 'Settings', 'perm' => 'manage_settings_basic'];
 
 ?>
