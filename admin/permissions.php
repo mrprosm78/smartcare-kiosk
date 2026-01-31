@@ -80,7 +80,13 @@ function admin_permissions_for_role(string $role): array {
       'view_shifts',
       'edit_shifts',
       'approve_shifts',
+
+      // employees
+      'view_employees',
       'manage_employees',
+      'view_departments',
+
+      // punches (audit)
       'view_punches',
     ];
   }
