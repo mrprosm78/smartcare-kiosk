@@ -78,7 +78,8 @@ $bh = payroll_bank_holidays($pdo, $days[0]['ymd'], $days[6]['ymd']);
 $status = qstr('status', 'active'); // active|inactive|all
 $cat = (int)($_GET['cat'] ?? 0);
 $q = qstr('q', '');
-$hideEmpty = (int)($_GET['hide_empty'] ?? 0) === 1;
+$hideEmpty = !isset($_GET['hide_empty']) || (string)$_GET['hide_empty'] === '1';
+
 
 $cats = $pdo->query("SELECT id, name FROM kiosk_employee_departments ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
@@ -394,9 +395,10 @@ $active = admin_url('shifts.php');
               <div class="md:col-span-1">
                 <label class="block text-xs font-semibold text-slate-600">Hide empty</label>
                 <label class="mt-1 inline-flex items-center gap-2 text-sm">
-                  <input type="checkbox" name="hide_empty" value="1" <?= $hideEmpty ? 'checked' : '' ?> class="h-4 w-4 rounded border-slate-300" />
-                  <span class="text-slate-700">Yes</span>
-                </label>
+  <input type="hidden" name="hide_empty" value="0" />
+  <input type="checkbox" name="hide_empty" value="1" <?= $hideEmpty ? 'checked' : '' ?> class="h-4 w-4 rounded border-slate-300" />
+  <span class="text-slate-700">Yes</span>
+</label>
               </div>
 
               <div class="md:col-span-1 flex items-end">

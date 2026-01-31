@@ -254,7 +254,6 @@ admin_page_start($pdo, 'Payroll Monthly Report');
                     <option value="<?= (int)$e['id'] ?>" <?= ((int)$e['id'] === $employeeId) ? 'selected' : '' ?>><?= h($label) ?></option>
                   <?php endforeach; ?>
                 </select>
-<p class="mt-1 text-xs text-slate-500">Search filters the dropdown locally; it won’t affect results unless you change the selected employee.</p>
               </div>
 
               <div class="min-w-[170px]">
