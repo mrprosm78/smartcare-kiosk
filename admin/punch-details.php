@@ -263,7 +263,7 @@ $active = admin_url('punch-details.php');
               <div class="mt-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-slate-900">Error: <?= h((string)$err) ?></div>
             <?php endif; ?>
 
-            <div class="mt-6 overflow-x-auto">
+            <div class="overflow-x-auto">
               <table class="min-w-full text-sm border border-slate-200 border-collapse">
                 <thead>
                   <tr class="text-left text-xs uppercase tracking-widest text-slate-500">
