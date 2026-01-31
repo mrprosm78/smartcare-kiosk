@@ -299,7 +299,7 @@ $active = admin_url('punch-details.php');
                       $ip = (string)($r['ip_address'] ?? '');
                       $uuid = (string)($r['event_uuid'] ?? '');
                     ?>
-                      <tr class="align-top border-b border-slate-100">
+                      <tr class="border-b border-slate-100">
                         <td class="py-2 px-2 whitespace-nowrap text-slate-900"><?= h($t !== '' ? admin_fmt_dt($t) : '—') ?></td>
                         <td class="py-2 px-2 whitespace-nowrap"><?= h($empLabel) ?></td>
                         <td class="py-2 px-2"><?= $act === 'IN' ? badge('IN','ok') : ($act === 'OUT' ? badge('OUT','warn') : badge('—')) ?></td>
@@ -321,7 +321,7 @@ $active = admin_url('punch-details.php');
                         </td>
                         <td class="py-2 px-2 whitespace-nowrap"><?= h($src !== '' ? $src : '—') ?></td>
                         <td class="py-2 px-2 whitespace-nowrap"><?= h($shiftId !== '' ? $shiftId : '—') ?></td>
-                        <td class="py-2 px-2">
+                        <td class="px-2">
                           <?php if ($photoId > 0): ?>
                             <a href="<?= h(admin_url('punch-photo.php?id=' . $photoId . '&size=full')) ?>" target="_blank" class="inline-block">
                               <img src="<?= h(admin_url('punch-photo.php?id=' . $photoId . '&size=thumb')) ?>" alt="Punch photo" class="h-10 w-10 rounded-lg object-cover border border-slate-200" />
