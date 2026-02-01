@@ -69,7 +69,8 @@ if (!is_ymd($to))   $to   = $defaultTo;
 
 $employeeId = (int)($_GET['employee_id'] ?? 0);
 $deptId = (int)($_GET['dept_id'] ?? 0);
-$status = q('status', 'all'); // all|open|closed
+$status = q('status', 'needs_review'); // needs_review|approved|open|all
+// Keep duration support (legacy/advanced), but do not show by default.
 $duration = q('duration', 'all'); // all|lt1|1_4|4_8|8_12|gt12
 
 $selectedShiftId = (int)($_GET['shift_id'] ?? 0);
@@ -355,10 +356,16 @@ if ($deptId > 0) {
   $where[] = 'e.department_id = ?';
   $params[] = $deptId;
 }
-if ($status === 'open') {
-  $where[] = 's.clock_out_at IS NULL';
-} elseif ($status === 'closed') {
+if ($status === 'needs_review') {
+  // Safe, conservative definition for review inbox.
+  $where[] = '(s.clock_out_at IS NULL OR s.approved_at IS NULL OR s.is_autoclosed = 1)';
+} elseif ($status === 'approved') {
   $where[] = 's.clock_out_at IS NOT NULL';
+  $where[] = 's.approved_at IS NOT NULL';
+} elseif ($status === 'open') {
+  $where[] = 's.clock_out_at IS NULL';
+} else {
+  // all
 }
 
 // Duration band filter (use stored duration_minutes when available; fall back to timestamp diff for open)
@@ -395,6 +402,12 @@ foreach ($shifts as $s) {
 
 admin_page_start($pdo, 'Review & Approvals');
 $active = admin_url('shift-editor.php');
+
+// For "Add shift" convenience: use selected calendar day if user is on a single day,
+// otherwise fall back to the current "from" date.
+$addShiftDate = ($from === $to) ? $from : $from;
+$addShiftQuery = ['date' => $addShiftDate];
+if ($employeeId > 0) $addShiftQuery['employee_id'] = $employeeId;
 ?>
 
 <div class="min-h-dvh">
@@ -450,25 +463,40 @@ $active = admin_url('shift-editor.php');
               <div class="md:col-span-2">
                 <label class="block text-xs font-semibold text-slate-600">Status</label>
                 <select name="status" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+                  <option value="needs_review" <?= $status==='needs_review'?'selected':'' ?>>Needs review</option>
+                  <option value="approved" <?= $status==='approved'?'selected':'' ?>>Approved</option>
+                  <option value="open" <?= $status==='open'?'selected':'' ?>>Open only</option>
                   <option value="all" <?= $status==='all'?'selected':'' ?>>All</option>
-                  <option value="open" <?= $status==='open'?'selected':'' ?>>Open</option>
-                  <option value="closed" <?= $status==='closed'?'selected':'' ?>>Closed</option>
                 </select>
               </div>
-              <div class="md:col-span-1">
-                <label class="block text-xs font-semibold text-slate-600">Hours</label>
-                <select name="duration" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
-                  <option value="all" <?= $duration==='all'?'selected':'' ?>>All</option>
-                  <option value="lt1" <?= $duration==='lt1'?'selected':'' ?>>&lt;1h</option>
-                  <option value="1_4" <?= $duration==='1_4'?'selected':'' ?>>1–4h</option>
-                  <option value="4_8" <?= $duration==='4_8'?'selected':'' ?>>4–8h</option>
-                  <option value="8_12" <?= $duration==='8_12'?'selected':'' ?>>8–12h</option>
-                  <option value="gt12" <?= $duration==='gt12'?'selected':'' ?>>&gt;12h</option>
-                </select>
+
+              <div class="md:col-span-1 flex items-end">
+                <button type="submit" class="w-full rounded-2xl px-4 py-2 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800">Apply</button>
               </div>
               <input type="hidden" name="shift_id" value="<?= (int)$selectedShiftId ?>" />
               <input type="hidden" name="month" value="<?= h($monthParam) ?>" />
+              <?php if ($duration !== 'all'): ?>
+                <input type="hidden" name="duration" value="<?= h($duration) ?>" />
+              <?php endif; ?>
             </form>
+
+            <details class="mt-3">
+              <summary class="cursor-pointer select-none text-xs font-semibold text-slate-600">Advanced filters</summary>
+              <div class="mt-2 grid grid-cols-1 md:grid-cols-12 gap-3">
+                <div class="md:col-span-2">
+                  <label class="block text-xs font-semibold text-slate-600">Hours</label>
+                  <select name="duration" form="filters" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+                    <option value="all" <?= $duration==='all'?'selected':'' ?>>All</option>
+                    <option value="lt1" <?= $duration==='lt1'?'selected':'' ?>>&lt;1h</option>
+                    <option value="1_4" <?= $duration==='1_4'?'selected':'' ?>>1–4h</option>
+                    <option value="4_8" <?= $duration==='4_8'?'selected':'' ?>>4–8h</option>
+                    <option value="8_12" <?= $duration==='8_12'?'selected':'' ?>>8–12h</option>
+                    <option value="gt12" <?= $duration==='gt12'?'selected':'' ?>>&gt;12h</option>
+                  </select>
+                  <div class="mt-1 text-[11px] text-slate-500">Optional: filter by approximate shift duration.</div>
+                </div>
+              </div>
+            </details>
           </header>
 
           <!-- Monthly calendar: highlights days that have shifts needing review/approval -->
@@ -737,15 +765,7 @@ $active = admin_url('shift-editor.php');
 </div>
 
 <script>
-  // Live filter updates (no Apply button)
-  (function() {
-    const form = document.getElementById('filters');
-    if (!form) return;
-    const els = form.querySelectorAll('input,select');
-    els.forEach(el => {
-      el.addEventListener('change', () => form.submit());
-    });
-  })();
+  // Filters submit via the Apply button.
 
   // Row click selects shift
   (function() {
@@ -772,6 +792,25 @@ $active = admin_url('shift-editor.php');
     btn.addEventListener('click', () => {
       if (editForm) editForm.classList.add('hidden');
       addForm.classList.remove('hidden');
+      // Auto-prefill employee/date from current filters/calendar selection.
+      try {
+        const addDate = <?= json_encode($addShiftDate) ?>;
+        const addEmp = <?= (int)$employeeId ?>;
+
+        const empSel = addForm.querySelector('select[name="employee_id"]');
+        if (empSel && addEmp > 0) {
+          empSel.value = String(addEmp);
+        }
+
+        const cin = addForm.querySelector('input[name="clock_in_local"]');
+        if (cin && addDate && /^\d{4}-\d{2}-\d{2}$/.test(addDate)) {
+          // Default time 08:00 (easy to adjust).
+          cin.value = addDate + 'T08:00';
+        }
+
+        const cout = addForm.querySelector('input[name="clock_out_local"]');
+        if (cout) cout.value = '';
+      } catch (e) {}
       if (title) title.textContent = 'Add shift';
       if (sub) sub.textContent = 'Create a manual shift (training is separate and not part of calculations).';
     });

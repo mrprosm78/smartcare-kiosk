@@ -10,10 +10,19 @@ $tzName = (string) setting($pdo, 'payroll_timezone', 'Europe/London');
 $weekStartsOn = payroll_week_starts_on($pdo); // returns UPPERCASE day name
 $tz = new DateTimeZone($tzName);
 
+$mode = (string)($_GET['mode'] ?? 'custom'); // this_month|last_month|custom
 $ym = preg_replace('/[^0-9\-]/', '', (string)($_GET['month'] ?? ''));
-if (!preg_match('/^\d{4}\-\d{2}$/', $ym)) {
-  $now = new DateTimeImmutable('now', $tz);
+
+$now = new DateTimeImmutable('now', $tz);
+if ($mode === 'this_month') {
   $ym = $now->format('Y-m');
+} elseif ($mode === 'last_month') {
+  $ym = $now->modify('first day of last month')->format('Y-m');
+} else {
+  $mode = 'custom';
+  if (!preg_match('/^\d{4}\-\d{2}$/', $ym)) {
+    $ym = $now->format('Y-m');
+  }
 }
 $status = (string)($_GET['status'] ?? 'awaiting'); // all|approved|awaiting|open
 $q = trim((string)($_GET['q'] ?? ''));
@@ -72,6 +81,15 @@ for ($d = $monthStartLocal; $d < $monthEndLocalEx; $d = $d->modify('+1 day')) {
   ];
 }
 
+// Month options for the Custom selector (recent months)
+$monthOptions = [];
+$m0 = $now->modify('first day of this month');
+for ($i = 0; $i < 18; $i++) {
+  $m = $m0->modify("-{$i} months");
+  $k = $m->format('Y-m');
+  $monthOptions[$k] = $m->format('M Y');
+}
+
 // Load profiles for paid break flags + weekly contract hours (for OT threshold)
 $profileRows = $pdo->query("SELECT employee_id, break_is_paid, contract_hours_per_week FROM kiosk_employee_pay_profiles")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 $breakPaidByEmp = [];
@@ -108,7 +126,7 @@ if ($q !== '') {
 $sql = "
   SELECT
     s.id, s.employee_id, s.clock_in_at, s.clock_out_at, s.is_autoclosed, s.approved_at,
-    e.employee_code, e.first_name, e.last_name
+    e.employee_code, e.first_name, e.last_name, e.nickname
   FROM kiosk_shifts s
   JOIN kiosk_employees e ON e.id = s.employee_id
   WHERE " . implode(" AND ", $where) . "
@@ -147,7 +165,7 @@ foreach ($shifts as $s) {
   $entry = [
     'shift_id' => (int)$s['id'],
     'employee_id' => (int)$s['employee_id'],
-    'employee' => trim(($s['first_name']??'').' '.($s['last_name']??'')),
+    'employee' => admin_employee_display_name($s),
     'code' => (string)($s['employee_code'] ?? ''),
     'start' => $inLocal,
     'end' => $outLocal,
@@ -253,8 +271,19 @@ admin_page_start($pdo, 'Payroll Monthly Report (All)');
     </div>
 
     <form method="get" class="flex flex-wrap gap-2 items-end">
+      <label class="text-xs text-slate-500">Range
+        <select name="mode" class="mt-1 w-36 rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm">
+          <option value="this_month" <?= $mode==='this_month'?'selected':'' ?>>This month</option>
+          <option value="last_month" <?= $mode==='last_month'?'selected':'' ?>>Last month</option>
+          <option value="custom" <?= $mode==='custom'?'selected':'' ?>>Custom</option>
+        </select>
+      </label>
       <label class="text-xs text-slate-500">Month
-        <input name="month" value="<?= h($ym) ?>" class="mt-1 w-32 rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm" placeholder="YYYY-MM" />
+        <select name="month" class="mt-1 w-40 rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm <?= $mode!=='custom'?'opacity-50 pointer-events-none':'' ?>">
+          <?php foreach ($monthOptions as $k => $lab): ?>
+            <option value="<?= h($k) ?>" <?= $ym===$k?'selected':'' ?>><?= h($lab) ?></option>
+          <?php endforeach; ?>
+        </select>
       </label>
       <label class="text-xs text-slate-500">Status
         <select name="status" class="mt-1 w-40 rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm">
@@ -374,8 +403,12 @@ admin_page_start($pdo, 'Payroll Monthly Report (All)');
                   <?php foreach ($entries as $it): ?>
                     <tr>
                       <td class="py-2">
-                        <div class="font-semibold"><?= h($it['employee']) ?></div>
-                        <div class="text-xs text-slate-500"><?= h($it['code']) ?></div>
+                        <?php
+                          $code = trim((string)($it['code'] ?? ''));
+                          $name = trim((string)($it['employee'] ?? ''));
+                          $label = $code !== '' ? ($code . ' — ' . $name) : ($name !== '' ? $name : '—');
+                        ?>
+                        <div class="font-semibold"><?= h($label) ?></div>
                       </td>
                       <td class="py-2 text-slate-700"><?= h($it['start']->format('H:i')) ?></td>
                       <td class="py-2 text-slate-700"><?= h($it['end']->format('H:i')) ?></td>

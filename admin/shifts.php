@@ -410,7 +410,7 @@ $active = admin_url('shifts.php');
 
           <section class="mt-5 rounded-3xl border border-slate-200 bg-white p-4">
             <div class="overflow-auto">
-              <table class="min-w-[980px] w-full rounded-3xl border border-slate-200 table-fixed text-sm border-separate border-spacing-0 border border-slate-200">
+              <table class="min-w-[980px] w-full rounded-2xl border border-slate-200 table-fixed text-sm border-separate border-spacing-0 border border-slate-200">
                 <thead>
                   <tr>
                     <th class="sticky left-0 z-10 bg-white border-b border-slate-200 p-2 text-left w-[220px]">Employee</th>

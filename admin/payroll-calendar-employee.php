@@ -38,10 +38,28 @@ function fmt_hm(int $minutes): string {
   return $h . ':' . str_pad((string)$m, 2, '0', STR_PAD_LEFT);
 }
 
-// Month param: YYYY-MM
+// Month selection
+$mode = (string)($_GET['mode'] ?? 'custom'); // this_month|last_month|custom
 $ym = preg_replace('/[^0-9\-]/', '', (string)($_GET['month'] ?? ''));
-if (!preg_match('/^\d{4}\-\d{2}$/', $ym)) {
-  $ym = (new DateTimeImmutable('now', $tz))->format('Y-m');
+$now = new DateTimeImmutable('now', $tz);
+if ($mode === 'this_month') {
+  $ym = $now->format('Y-m');
+} elseif ($mode === 'last_month') {
+  $ym = $now->modify('first day of last month')->format('Y-m');
+} else {
+  $mode = 'custom';
+  if (!preg_match('/^\d{4}\-\d{2}$/', $ym)) {
+    $ym = $now->format('Y-m');
+  }
+}
+
+// Month options for the Custom selector (recent months)
+$monthOptions = [];
+$m0 = $now->modify('first day of this month');
+for ($i = 0; $i < 18; $i++) {
+  $m = $m0->modify("-{$i} months");
+  $k = $m->format('Y-m');
+  $monthOptions[$k] = $m->format('M Y');
 }
 
 $deptId = (int)($_GET['department_id'] ?? 0);
@@ -52,7 +70,7 @@ $status = (string)($_GET['status'] ?? 'all'); // all|approved|awaiting
 $departments = $pdo->query("SELECT id, name FROM kiosk_employee_departments WHERE is_active=1 ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 // Load employees (filtered by department if selected)
-$sqlEmp = "SELECT id, employee_code, first_name, last_name, department_id
+$sqlEmp = "SELECT id, employee_code, first_name, last_name, nickname, department_id
            FROM kiosk_employees
            WHERE is_active=1";
 $paramsEmp = [];
@@ -61,6 +79,15 @@ $sqlEmp .= " ORDER BY last_name, first_name, id";
 $stEmp = $pdo->prepare($sqlEmp);
 $stEmp->execute($paramsEmp);
 $employees = $stEmp->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+// Month options for the Custom selector (recent months)
+$monthOptions = [];
+$m0 = $now->modify('first day of this month');
+for ($i = 0; $i < 18; $i++) {
+  $m = $m0->modify("-{$i} months");
+  $k = $m->format('Y-m');
+  $monthOptions[$k] = $m->format('M Y');
+}
 
 // If selected employee not in list (e.g. dept filter changed), reset
 $employeeIds = array_map(fn($r) => (int)$r['id'], $employees);
@@ -235,9 +262,22 @@ admin_page_start($pdo, 'Payroll Monthly Report');
             </div>
 
             <form id="filters" method="get" class="mt-4 flex flex-wrap items-end gap-3">
-              <div class="min-w-[140px]">
+              <div class="min-w-[160px]">
+                <label class="block text-xs font-semibold text-slate-600">Range</label>
+                <select name="mode" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                  <option value="this_month" <?= $mode==='this_month'?'selected':'' ?>>This month</option>
+                  <option value="last_month" <?= $mode==='last_month'?'selected':'' ?>>Last month</option>
+                  <option value="custom" <?= $mode==='custom'?'selected':'' ?>>Custom</option>
+                </select>
+              </div>
+
+              <div class="min-w-[180px]">
                 <label class="block text-xs font-semibold text-slate-600">Month</label>
-                <input name="month" value="<?= h($ym) ?>" placeholder="YYYY-MM" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" />
+                <select name="month" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm <?= $mode!=='custom'?'opacity-50 pointer-events-none':'' ?>">
+                  <?php foreach ($monthOptions as $k => $lab): ?>
+                    <option value="<?= h($k) ?>" <?= $ym===$k?'selected':'' ?>><?= h($lab) ?></option>
+                  <?php endforeach; ?>
+                </select>
               </div>
 
               <div class="min-w-[200px]">
@@ -255,10 +295,9 @@ admin_page_start($pdo, 'Payroll Monthly Report');
                 <select id="employee_id" name="employee_id" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
                   <?php foreach ($employees as $e): ?>
                     <?php
-                      $name = trim((string)($e['first_name'] ?? '') . ' ' . (string)($e['last_name'] ?? ''));
-                      $code = (string)($e['employee_code'] ?? '');
-                      $label = $name !== '' ? $name : $code;
-                      if ($code !== '') $label .= " ({$code})";
+                      $code = trim((string)($e['employee_code'] ?? ''));
+                      $name = admin_employee_display_name($e);
+                      $label = $code !== '' ? ($code . ' — ' . $name) : $name;
                     ?>
                     <option value="<?= (int)$e['id'] ?>" <?= ((int)$e['id'] === $employeeId) ? 'selected' : '' ?>><?= h($label) ?></option>
                   <?php endforeach; ?>
