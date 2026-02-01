@@ -69,6 +69,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $trainingMinutes = trim((string)($_POST['training_minutes'] ?? ''));
   $trainingNote = trim((string)($_POST['training_note'] ?? ''));
   $note = trim((string)($_POST['note'] ?? ''));
+  $reasonPreset = trim((string)($_POST['reason_preset'] ?? ''));
+  $reasonDetail = trim((string)($_POST['reason_detail'] ?? ''));
+  $reasonText = '';
+  if ($reasonPreset !== '' && $reasonPreset !== 'other') {
+    $reasonText = $reasonPreset;
+    if ($reasonDetail !== '') $reasonText .= ' — ' . $reasonDetail;
+  } elseif ($reasonPreset === 'other') {
+    $reasonText = $reasonDetail;
+  } elseif ($reasonDetail !== '') {
+    $reasonText = $reasonDetail;
+  }
   $approveNow = ((int)($_POST['approve_now'] ?? 0) === 1) ? 1 : 0;
 
   if ($employeeId <= 0) {
@@ -133,6 +144,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $approvedAt = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d H:i:s');
       $approvedBy = (string)($user['username'] ?? '');
       $approvalNote = ($note !== '' ? $note : 'Approved on creation');
+      // Combine reason + notes for audit (keeps history readable)
+      $auditNote = trim(implode(' — ', array_filter([$reasonText, $note])));
+      $auditApproveNote = trim(implode(' — ', array_filter([$reasonText, $approvalNote])));
+
     }
   }
 
@@ -183,7 +198,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ':uid' => (int)($user['user_id'] ?? 0),
         ':uname' => (string)($user['username'] ?? ''),
         ':role' => (string)($user['role'] ?? ''),
-        ':note' => ($note !== '' ? $note : null),
+        ':note' => ($auditNote !== '' ? $auditNote : null),
         ':newj' => json_encode($meta),
       ]);
 
@@ -200,7 +215,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           ':uid' => (int)($user['user_id'] ?? 0),
           ':uname' => (string)($user['username'] ?? ''),
           ':role' => (string)($user['role'] ?? ''),
-          ':note' => ($approvalNote !== '' ? $approvalNote : null),
+          ':note' => ($auditApproveNote !== '' ? $auditApproveNote : null),
           ':newj' => json_encode($meta),
         ]);
       }
@@ -306,6 +321,37 @@ $active = admin_url('shifts.php');
                 <div class="text-xs uppercase tracking-widest text-slate-500">Training note (optional)</div>
                 <input name="training_note" value="<?= h($trainingNote) ?>"
                   class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
+              </label>
+
+              <label class="md:col-span-2">
+                <div class="text-xs uppercase tracking-widest text-slate-500">Reason</div>
+                <div class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <select name="reason_preset"
+                    class="w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                    <?php
+                      $preset = (string)($_POST['reason_preset'] ?? '');
+                      $opts = [
+                        '' => 'Choose a reason…',
+                        'Missed punch' => 'Missed punch',
+                        'Forgot to clock out' => 'Forgot to clock out',
+                        'Forgot to clock in' => 'Forgot to clock in',
+                        'Wrong PIN used' => 'Wrong PIN used',
+                        'Auto-closed shift' => 'Auto-closed shift',
+                        'Manager correction' => 'Manager correction',
+                        'other' => 'Other…',
+                      ];
+                      foreach ($opts as $val => $lab) {
+                        $sel = ($preset === $val) ? 'selected' : '';
+                        echo '<option value="' . h($val) . '" ' . $sel . '>' . h($lab) . '</option>';
+                      }
+                    ?>
+                  </select>
+
+                  <input name="reason_detail" value="<?= h((string)($_POST['reason_detail'] ?? '')) ?>"
+                    placeholder="Optional details"
+                    class="w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
+                </div>
+                <div class="mt-2 text-xs text-slate-500">Saved in the shift audit trail.</div>
               </label>
 
               <label class="md:col-span-2">

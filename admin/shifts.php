@@ -410,7 +410,7 @@ $active = admin_url('shifts.php');
 
           <section class="mt-5 rounded-3xl border border-slate-200 bg-white p-4">
             <div class="overflow-auto">
-              <table class="min-w-[980px] w-full table-fixed text-sm border-separate border-spacing-0 border border-slate-200">
+              <table class="min-w-[980px] w-full rounded-3xl border border-slate-200 table-fixed text-sm border-separate border-spacing-0 border border-slate-200">
                 <thead>
                   <tr>
                     <th class="sticky left-0 z-10 bg-white border-b border-slate-200 p-2 text-left w-[220px]">Employee</th>
@@ -418,7 +418,7 @@ $active = admin_url('shifts.php');
                       $isBH = array_key_exists($d['ymd'], $bh);
                       $thCls = $isBH ? 'bg-amber-50' : 'bg-white';
                     ?>
-                      <th class="border-b border-slate-200 p-2 text-center whitespace-pre-line min-w-[105px] max-w-[120px] <?= $thCls ?>">
+                      <th class="border-b border-slate-200 p-2 text-left min-w-[105px] max-w-[120px] <?= $thCls ?>">
                         <div class="font-semibold"><?= h($d['label']) ?></div>
                         <?php if ($isBH): ?>
                           <div class="mt-1 text-[11px] font-semibold text-amber-800">BH</div>

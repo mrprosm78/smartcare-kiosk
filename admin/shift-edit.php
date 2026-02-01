@@ -69,7 +69,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $newBreak = trim((string)($_POST['break_minutes'] ?? ''));
     $newTraining = trim((string)($_POST['training_minutes'] ?? ''));
     $newTrainingNote = trim((string)($_POST['training_note'] ?? ''));
-    $reason = trim((string)($_POST['reason'] ?? ''));
+    $reasonLegacy = trim((string)($_POST['reason'] ?? ''));
+    $reasonPreset = trim((string)($_POST['reason_preset'] ?? ''));
+    $reasonDetail = trim((string)($_POST['reason_detail'] ?? ''));
+
+    // Build a clear, human reason (keep legacy input working).
+    $reason = $reasonLegacy;
+    if ($reason === '') {
+      if ($reasonPreset !== '' && $reasonPreset !== 'other') {
+        $reason = $reasonPreset;
+        if ($reasonDetail !== '') $reason .= ' — ' . $reasonDetail;
+      } elseif ($reasonPreset === 'other') {
+        $reason = $reasonDetail;
+      } elseif ($reasonDetail !== '') {
+        $reason = $reasonDetail;
+      }
+    }
     $note = trim((string)($_POST['note'] ?? ''));
 
     // normalise to mysql DATETIME
@@ -265,9 +280,35 @@ $isManuallyEdited = !empty($shift['latest_edit_json']) || ((string)($shift['last
 
                   <label class="block md:col-span-2">
                     <div class="text-xs uppercase tracking-widest text-slate-500">Reason</div>
-                    <input name="reason" value="<?= h((string)($_POST['reason'] ?? '')) ?>" placeholder="e.g. Forgot to clock out"
-                      class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                      <?= $isLocked ? 'disabled' : '' ?> />
+                    <div class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <select name="reason_preset"
+                        class="w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                        <?= $isLocked ? 'disabled' : '' ?>>
+                        <?php
+                          $preset = (string)($_POST['reason_preset'] ?? '');
+                          $opts = [
+                            '' => 'Choose a reason…',
+                            'Missed punch' => 'Missed punch',
+                            'Forgot to clock out' => 'Forgot to clock out',
+                            'Forgot to clock in' => 'Forgot to clock in',
+                            'Wrong PIN used' => 'Wrong PIN used',
+                            'Auto-closed shift' => 'Auto-closed shift',
+                            'Manager correction' => 'Manager correction',
+                            'other' => 'Other…',
+                          ];
+                          foreach ($opts as $val => $lab) {
+                            $sel = ($preset === $val) ? 'selected' : '';
+                            echo '<option value="' . h($val) . '" ' . $sel . '>' . h($lab) . '</option>';
+                          }
+                        ?>
+                      </select>
+
+                      <input name="reason_detail" value="<?= h((string)($_POST['reason_detail'] ?? ($_POST['reason'] ?? ''))) ?>"
+                        placeholder="Optional details"
+                        class="w-full rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                        <?= $isLocked ? 'disabled' : '' ?> />
+                    </div>
+                    <div class="mt-2 text-xs text-slate-500">This is recorded in the audit trail. Use details only if needed.</div>
                   </label>
                 </div>
 

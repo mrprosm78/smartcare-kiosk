@@ -74,7 +74,89 @@ $duration = q('duration', 'all'); // all|lt1|1_4|4_8|8_12|gt12
 
 $selectedShiftId = (int)($_GET['shift_id'] ?? 0);
 
+// Month calendar (for review/approval workflow)
+$monthParam = q('month', $todayLocal->format('Y-m')); // YYYY-MM
+if (!preg_match('/^\d{4}-\d{2}$/', $monthParam)) {
+  $monthParam = $todayLocal->format('Y-m');
+}
+
 $flash = '';
+
+// ---------------------------------------------------------------------
+// Calendar: count days that have shifts needing review/approval.
+// Definition (simple + safe): a shift needs review if it is open OR not approved OR autoclosed.
+// Uses your locked anchoring rule: day is the LOCAL date of clock_in_at.
+// ---------------------------------------------------------------------
+$calCounts = []; // [ymd => count]
+try {
+  $calMonthStartLocal = new DateTimeImmutable($monthParam . '-01 00:00:00', $tz);
+  $calMonthEndLocalEx = $calMonthStartLocal->modify('first day of next month');
+  $calMonthStartUtc = $calMonthStartLocal->setTimezone(new DateTimeZone('UTC'));
+  $calMonthEndUtcEx = $calMonthEndLocalEx->setTimezone(new DateTimeZone('UTC'));
+
+  $where = [
+    's.clock_in_at >= ? AND s.clock_in_at < ?',
+    '(s.close_reason IS NULL OR s.close_reason <> \'void\')',
+  ];
+  $params = [
+    $calMonthStartUtc->format('Y-m-d H:i:s'),
+    $calMonthEndUtcEx->format('Y-m-d H:i:s'),
+  ];
+
+  if ($employeeId > 0) {
+    $where[] = 's.employee_id = ?';
+    $params[] = $employeeId;
+  }
+  if ($deptId > 0) {
+    // Join employees for dept filter
+    $where[] = 'e.department_id = ?';
+    $params[] = $deptId;
+  }
+
+  $sql = "SELECT s.clock_in_at, s.clock_out_at, s.approved_at, s.is_autoclosed
+          FROM kiosk_shifts s
+          JOIN kiosk_employees e ON e.id = s.employee_id
+          WHERE " . implode(' AND ', $where);
+
+  $stCal = $pdo->prepare($sql);
+  $stCal->execute($params);
+  $rows = $stCal->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+  foreach ($rows as $r) {
+    $cin = (string)($r['clock_in_at'] ?? '');
+    if ($cin === '') continue;
+    try {
+      $startLocal = (new DateTimeImmutable($cin, new DateTimeZone('UTC')))->setTimezone($tz);
+    } catch (Throwable $e) {
+      continue;
+    }
+    $ymd = $startLocal->format('Y-m-d');
+
+    $needsReview = false;
+    if (empty($r['clock_out_at'])) $needsReview = true; // open
+    if (empty($r['approved_at'])) $needsReview = true; // unapproved
+    if ((int)($r['is_autoclosed'] ?? 0) === 1) $needsReview = true;
+
+    if ($needsReview) {
+      $calCounts[$ymd] = ($calCounts[$ymd] ?? 0) + 1;
+    }
+  }
+} catch (Throwable $e) {
+  // Calendar is a convenience only; never break the editor.
+  $calCounts = [];
+}
+
+// Calendar render helpers
+$calWeekStartsOn = strtoupper(trim(payroll_week_starts_on($pdo)));
+$calWeekStartDow = [
+  'SUNDAY' => 0,
+  'MONDAY' => 1,
+  'TUESDAY' => 2,
+  'WEDNESDAY' => 3,
+  'THURSDAY' => 4,
+  'FRIDAY' => 5,
+  'SATURDAY' => 6,
+][$calWeekStartsOn] ?? 1;
 
 // ---------------------------------------------------------------------
 // Save (POST)
@@ -311,7 +393,7 @@ foreach ($shifts as $s) {
   if ((int)$s['id'] === $selectedShiftId) { $selected = $s; break; }
 }
 
-admin_page_start($pdo, 'Shift Editor');
+admin_page_start($pdo, 'Review & Approvals');
 $active = admin_url('shift-editor.php');
 ?>
 
@@ -325,8 +407,8 @@ $active = admin_url('shift-editor.php');
           <header class="rounded-3xl border border-slate-200 bg-white p-5">
             <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
               <div>
-                <h1 class="text-2xl font-semibold">Shift Editor</h1>
-                <p class="mt-2 text-sm text-slate-600">Find and edit shifts (open + closed). Timezone: <span class="font-semibold"><?= h($tzName) ?></span></p>
+                <h1 class="text-2xl font-semibold">Review &amp; Approvals</h1>
+                <p class="mt-2 text-sm text-slate-600">Review, fix, and approve shifts (open + closed). Timezone: <span class="font-semibold"><?= h($tzName) ?></span></p>
               </div>
               <div class="flex flex-wrap gap-2">
                 <a href="<?= h(admin_url('shift-editor.php')) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Clear</a>
@@ -385,8 +467,92 @@ $active = admin_url('shift-editor.php');
                 </select>
               </div>
               <input type="hidden" name="shift_id" value="<?= (int)$selectedShiftId ?>" />
+              <input type="hidden" name="month" value="<?= h($monthParam) ?>" />
             </form>
           </header>
+
+          <!-- Monthly calendar: highlights days that have shifts needing review/approval -->
+          <?php
+            $calMonthStartLocal2 = new DateTimeImmutable($monthParam . '-01 00:00:00', $tz);
+            $calPrevMonth = $calMonthStartLocal2->modify('-1 month')->format('Y-m');
+            $calNextMonth = $calMonthStartLocal2->modify('+1 month')->format('Y-m');
+            $calDaysInMonth = (int)$calMonthStartLocal2->format('t');
+            $calFirstDow = (int)$calMonthStartLocal2->format('w'); // 0=Sun..6=Sat
+            $calLead = ($calFirstDow - $calWeekStartDow + 7) % 7;
+            $calSelDay = ($from === $to) ? $from : '';
+
+            $calDowLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            // Rotate labels so the calendar starts on the configured week start.
+            $calLabels = [];
+            for ($i = 0; $i < 7; $i++) {
+              $calLabels[] = $calDowLabels[($calWeekStartDow + $i) % 7];
+            }
+
+            $baseQuery = [
+              'employee_id' => $employeeId,
+              'dept_id' => $deptId,
+              'status' => $status,
+              'duration' => $duration,
+            ];
+          ?>
+          <section class="mt-5 rounded-3xl border border-slate-200 bg-white overflow-hidden">
+            <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+              <div>
+                <div class="text-sm font-semibold">Review calendar</div>
+                <div class="mt-1 text-xs text-slate-500">Red days have at least one shift that is open, unapproved, or autoclosed (anchored to clock-in date).</div>
+              </div>
+              <div class="flex items-center gap-2">
+                <a class="rounded-2xl px-3 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+                   href="<?= h(admin_url('shift-editor.php?' . http_build_query(array_merge($baseQuery, ['month' => $calPrevMonth, 'from' => $from, 'to' => $to]))) ) ?>">←</a>
+                <div class="text-sm font-semibold text-slate-900 min-w-[120px] text-center"><?= h($calMonthStartLocal2->format('M Y')) ?></div>
+                <a class="rounded-2xl px-3 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+                   href="<?= h(admin_url('shift-editor.php?' . http_build_query(array_merge($baseQuery, ['month' => $calNextMonth, 'from' => $from, 'to' => $to]))) ) ?>">→</a>
+              </div>
+            </div>
+            <div class="p-5">
+              <div class="grid grid-cols-7 gap-2">
+                <?php foreach ($calLabels as $lbl): ?>
+                  <div class="text-[11px] font-semibold uppercase tracking-widest text-slate-500 text-center"><?= h($lbl) ?></div>
+                <?php endforeach; ?>
+
+                <?php
+                  $cellCount = $calLead + $calDaysInMonth;
+                  // Round up to full weeks.
+                  $totalCells = (int)ceil($cellCount / 7) * 7;
+                  for ($i = 0; $i < $totalCells; $i++):
+                    $dayNum = $i - $calLead + 1;
+                    if ($dayNum < 1 || $dayNum > $calDaysInMonth) {
+                      echo '<div class="h-10 rounded-xl bg-slate-50"></div>';
+                      continue;
+                    }
+                    $ymd = $calMonthStartLocal2->format('Y-m-') . str_pad((string)$dayNum, 2, '0', STR_PAD_LEFT);
+                    $cnt = (int)($calCounts[$ymd] ?? 0);
+                    $isRed = $cnt > 0;
+                    $isSel = ($calSelDay === $ymd);
+                    $cls = 'h-10 rounded-xl border text-sm font-semibold flex items-center justify-center relative transition-colors';
+                    if ($isSel) {
+                      $cls .= ' bg-slate-900 text-white border-slate-900';
+                    } elseif ($isRed) {
+                      $cls .= ' bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100';
+                    } else {
+                      $cls .= ' bg-white text-slate-800 border-slate-200 hover:bg-slate-50';
+                    }
+                    $href = admin_url('shift-editor.php?' . http_build_query(array_merge($baseQuery, [
+                      'month' => $monthParam,
+                      'from' => $ymd,
+                      'to' => $ymd,
+                    ])));
+                ?>
+                  <a href="<?= h($href) ?>" class="<?= h($cls) ?>" title="<?= $isRed ? h($cnt . ' shift(s) need review') : 'No review needed' ?>">
+                    <?= (int)$dayNum ?>
+                    <?php if ($isRed && !$isSel): ?>
+                      <span class="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[10px] leading-[18px] text-center"><?= (int)$cnt ?></span>
+                    <?php endif; ?>
+                  </a>
+                <?php endfor; ?>
+              </div>
+            </div>
+          </section>
 
           <div class="mt-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
             <!-- List -->

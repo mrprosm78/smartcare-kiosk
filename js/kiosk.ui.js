@@ -393,12 +393,17 @@ async function submitPin() {
 
     // Known failures: show message and do NOT keep queued event
     if (!res.ok) {
-      // Cooldown: return a clear message with remaining minutes (do NOT treat as offline)
+      // Special case: cooldown_active should never appear as "offline sync"
       if (res.error === "cooldown_active") {
-        const mins = Number.isFinite(+res.minutes_remaining) ? Math.max(0, parseInt(res.minutes_remaining, 10)) : null;
-        const msg = (mins !== null)
-          ? `Please wait ${mins} minute${mins === 1 ? "" : "s"} before clocking in again.`
-          : "Please wait before clocking in again.";
+        // support multiple backend shapes
+        const minsRaw = (typeof res.minutes_remaining !== "undefined") ? res.minutes_remaining
+          : (typeof res.cooldown_remaining_minutes !== "undefined") ? res.cooldown_remaining_minutes
+          : (res.meta && typeof res.meta.cooldown_remaining_minutes !== "undefined") ? res.meta.cooldown_remaining_minutes
+          : null;
+        const mins = minsRaw === null ? null : Math.max(0, parseInt(minsRaw, 10) || 0);
+        const msg = (mins === null)
+          ? "Too soon to clock in again. Please wait a few minutes and try again."
+          : ("Please wait " + mins + " minute" + (mins === 1 ? "" : "s") + " before clocking in again.");
         try { await deleteEvent(event_uuid); } catch {}
         closePin();
         showThank(currentAction, { offline: false, staffLabel: '', messageOverride: msg });
@@ -407,8 +412,10 @@ async function submitPin() {
 
       const msgMap = {
         invalid_pin: "Invalid PIN. Please try again.",
-        already_clocked_in: "You're already clocked in.",
-        no_open_shift: "No open shift found. Please contact manager.",
+        employee_inactive: "Your account is inactive. Please speak to a manager.",
+        invalid_action: "Invalid action. Please try again.",
+        already_clocked_in: "You are already clocked in. Please clock out instead.",
+        no_open_shift: "No open shift found. Please ask your manager.",
         shift_too_long_needs_review: "Shift needs manager review (missing punch).",
         too_soon: "Please wait a moment and try again.",
         too_many_attempts: "Too many attempts. Please wait and try again.",
