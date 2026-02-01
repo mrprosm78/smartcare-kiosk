@@ -7,17 +7,26 @@ admin_require_perm($user, 'view_payroll');
 $active = admin_url('payroll-calendar-employee.php');
 
 $tzName = (string) setting($pdo, 'payroll_timezone', 'Europe/London');
-$weekStartsOnRaw = (string) setting($pdo, 'payroll_week_starts_on', 'monday'); // stored sometimes as SUNDAY
-$weekStartsOn = strtolower(trim($weekStartsOnRaw));
-if (!in_array($weekStartsOn, ['monday','sunday'], true)) $weekStartsOn = 'monday';
+// Week start is set once at initial setup (stored as e.g. MONDAY, SUNDAY, etc.).
+// Never assume Monday; always respect the configured setting.
+$weekStartsOn = payroll_week_starts_on($pdo); // returns UPPERCASE day name
 
 $tz = new DateTimeZone($tzName);
 $utc = new DateTimeZone('UTC');
 
 /** @return DateTimeImmutable in payroll TZ at 00:00 */
-function week_start_for(DateTimeImmutable $dLocal, string $weekStartsOn): DateTimeImmutable {
+function week_start_for(DateTimeImmutable $dLocal, string $weekStartsOnUpper): DateTimeImmutable {
   $dow = (int)$dLocal->format('N'); // 1..7 (Mon..Sun)
-  $startDow = ($weekStartsOn === 'sunday') ? 7 : 1;
+  $map = [
+    'MONDAY'    => 1,
+    'TUESDAY'   => 2,
+    'WEDNESDAY' => 3,
+    'THURSDAY'  => 4,
+    'FRIDAY'    => 5,
+    'SATURDAY'  => 6,
+    'SUNDAY'    => 7,
+  ];
+  $startDow = $map[strtoupper(trim($weekStartsOnUpper))] ?? 1;
   $delta = $dow - $startDow;
   if ($delta < 0) $delta += 7;
   return $dLocal->setTime(0,0)->modify("-{$delta} days");

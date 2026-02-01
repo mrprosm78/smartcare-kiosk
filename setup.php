@@ -843,7 +843,29 @@ function create_tables(PDO $pdo): void {
   ");
 
 
-  
+
+  // PUNCH PROCESSING STEPS (detailed audit trail: punch -> shift -> photo)
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS kiosk_punch_processing_steps (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      event_uuid CHAR(36) NOT NULL,
+      step VARCHAR(30) NOT NULL,
+      status VARCHAR(20) NOT NULL,
+      code VARCHAR(50) NULL,
+      message VARCHAR(255) NULL,
+      meta_json TEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_event (event_uuid),
+      KEY idx_step (step),
+      KEY idx_created (created_at)
+    ) ENGINE=InnoDB;
+  ");
+
+  // Add status columns to punch photos (safe, non-destructive)
+  add_column_if_missing($pdo, 'kiosk_punch_photos', 'photo_status', "VARCHAR(20) NULL");
+  add_column_if_missing($pdo, 'kiosk_punch_photos', 'photo_error_code', "VARCHAR(50) NULL");
+  add_column_if_missing($pdo, 'kiosk_punch_photos', 'uploaded_at', "DATETIME NULL");
+
 
   // BREAK TIERS (LOCKED payroll rule: tiered by worked minutes)
   $pdo->exec("

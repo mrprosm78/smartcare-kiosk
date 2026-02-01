@@ -113,7 +113,18 @@ async function syncPhotosIfNeeded(force = false) {
       const res = await uploadOnePhoto(it);
 
       if (res.ok && (res.status === 'stored' || res.status === 'duplicate')) {
+        // Server confirmed upload; delete from local queue
         await deletePhoto(it.event_uuid);
+
+        // Optional: ask native shell to delete any on-device cached file (if implemented)
+        try {
+          if (res.delete_local && window.__KIOSK_DEVICE__ && typeof window.__KIOSK_DEVICE__.deleteLocalPhoto === 'function') {
+            await window.__KIOSK_DEVICE__.deleteLocalPhoto(String(it.event_uuid));
+          }
+        } catch (e) {
+          // ignore
+        }
+
         continue;
       }
 

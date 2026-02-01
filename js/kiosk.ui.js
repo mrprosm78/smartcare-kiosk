@@ -393,6 +393,18 @@ async function submitPin() {
 
     // Known failures: show message and do NOT keep queued event
     if (!res.ok) {
+      // Cooldown: return a clear message with remaining minutes (do NOT treat as offline)
+      if (res.error === "cooldown_active") {
+        const mins = Number.isFinite(+res.minutes_remaining) ? Math.max(0, parseInt(res.minutes_remaining, 10)) : null;
+        const msg = (mins !== null)
+          ? `Please wait ${mins} minute${mins === 1 ? "" : "s"} before clocking in again.`
+          : "Please wait before clocking in again.";
+        try { await deleteEvent(event_uuid); } catch {}
+        closePin();
+        showThank(currentAction, { offline: false, staffLabel: '', messageOverride: msg });
+        return;
+      }
+
       const msgMap = {
         invalid_pin: "Invalid PIN. Please try again.",
         already_clocked_in: "You're already clocked in.",

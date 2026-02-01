@@ -24,8 +24,51 @@ $userAgent  = (string)($_SERVER['HTTP_USER_AGENT'] ?? '');
 $tokHash    = $deviceTok !== '' ? hash('sha256', $deviceTok) : null;
 
 function bad(string $error, int $status = 400): void {
-    json_response(['ok' => false, 'error' => $error], $status);
+    global $pdo, $eventUuid, $action;
+    // best-effort step logging
+    if (isset($pdo) && $pdo instanceof PDO) {
+        photo_step($pdo, $eventUuid, 'error', $error);
+        // If the punch exists but photo fails, mark photo as failed for visibility
+        if ($eventUuid !== '' && in_array($action, ['IN','OUT'], true)) {
+            photo_mark_failed($pdo, $eventUuid, $action, $error);
+        }
+    }
+    json_response(['ok' => false, 'error' => $error, 'event_uuid' => $eventUuid], $status);
 }
+
+
+function photo_step(PDO $pdo, string $eventUuid, string $status, ?string $code = null, ?string $message = null, $meta = null): void {
+    if ($eventUuid === '') return;
+    try {
+        $metaJson = null;
+        if ($meta !== null) $metaJson = json_encode($meta, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $st = $pdo->prepare("
+            INSERT INTO kiosk_punch_processing_steps (event_uuid, step, status, code, message, meta_json, created_at)
+            VALUES (?, 'PHOTO', ?, ?, ?, ?, UTC_TIMESTAMP())
+        ");
+        $st->execute([$eventUuid, $status, $code, $message, $metaJson]);
+    } catch (Throwable $e) {
+        // ignore
+    }
+}
+
+function photo_mark_failed(PDO $pdo, string $eventUuid, string $action, string $code): void {
+    if ($eventUuid === '') return;
+    try {
+        // best-effort: keep a row to show failure even if no file stored
+        $st = $pdo->prepare("
+            INSERT INTO kiosk_punch_photos (event_uuid, action, device_id, device_name, photo_path, photo_status, photo_error_code, uploaded_at, created_at)
+            VALUES (?, ?, NULL, NULL, '', 'failed', ?, NULL, UTC_TIMESTAMP())
+            ON DUPLICATE KEY UPDATE
+              photo_status = 'failed',
+              photo_error_code = VALUES(photo_error_code)
+        ");
+        $st->execute([$eventUuid, $action, $code]);
+    } catch (Throwable $e) {
+        // ignore if columns don't exist yet
+    }
+}
+
 
 try {
     // Basic validation
@@ -110,34 +153,67 @@ try {
     }
 
     // Store DB row (idempotent by event_uuid unique)
-    $stmt = $pdo->prepare("
-        INSERT INTO kiosk_punch_photos
-          (event_uuid, action, device_id, device_name, photo_path, created_at)
-        VALUES
-          (?, ?, ?, ?, ?, UTC_TIMESTAMP())
-        ON DUPLICATE KEY UPDATE
-          action = VALUES(action),
-          device_id = VALUES(device_id),
-          device_name = VALUES(device_name),
-          photo_path = VALUES(photo_path)
-    ");
+    // Prefer writing status fields; fall back if schema not migrated yet.
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO kiosk_punch_photos
+              (event_uuid, action, device_id, device_name, photo_path, photo_status, photo_error_code, uploaded_at, created_at)
+            VALUES
+              (?, ?, ?, ?, ?, 'uploaded', NULL, UTC_TIMESTAMP(), UTC_TIMESTAMP())
+            ON DUPLICATE KEY UPDATE
+              action = VALUES(action),
+              device_id = VALUES(device_id),
+              device_name = VALUES(device_name),
+              photo_path = VALUES(photo_path),
+              photo_status = 'uploaded',
+              photo_error_code = NULL,
+              uploaded_at = UTC_TIMESTAMP()
+        ");
+        $stmt->execute([
+            $eventUuid,
+            $action,
+            $deviceIdHdr !== '' ? $deviceIdHdr : null,
+            $deviceNameHdr !== '' ? $deviceNameHdr : null,
+            $relPath,
+        ]);
+    } catch (Throwable $e) {
+        // Legacy schema fallback
+        $stmt = $pdo->prepare("
+            INSERT INTO kiosk_punch_photos
+              (event_uuid, action, device_id, device_name, photo_path, created_at)
+            VALUES
+              (?, ?, ?, ?, ?, UTC_TIMESTAMP())
+            ON DUPLICATE KEY UPDATE
+              action = VALUES(action),
+              device_id = VALUES(device_id),
+              device_name = VALUES(device_name),
+              photo_path = VALUES(photo_path)
+        ");
+        $stmt->execute([
+            $eventUuid,
+            $action,
+            $deviceIdHdr !== '' ? $deviceIdHdr : null,
+            $deviceNameHdr !== '' ? $deviceNameHdr : null,
+            $relPath,
+        ]);
+    }
 
-    $stmt->execute([
-        $eventUuid,
-        $action,
-        $deviceIdHdr !== '' ? $deviceIdHdr : null,
-        $deviceNameHdr !== '' ? $deviceNameHdr : null,
-        $relPath,
-    ]);
+    // Mark as uploaded (best-effort)
+    try {
+        photo_step($pdo, $eventUuid, 'ok', null, null, ['path'=>$relPath]);
+    } catch (Throwable $e) {}
 
     json_response([
         'ok' => true,
         'status' => 'stored',
         'event_uuid' => $eventUuid,
         'path' => $relPath,
+        'delete_local' => true,
     ]);
 
 } catch (Throwable $e) {
+    // best-effort step logging
+    try { photo_step($pdo, $eventUuid, 'error', 'server_error', null, ['exception' => get_class($e)]); } catch (Throwable $ignored) {}
     // Do not leak details
-    json_response(['ok' => false, 'error' => 'server_error'], 500);
+    json_response(['ok' => false, 'error' => 'server_error', 'event_uuid' => $eventUuid], 500);
 }

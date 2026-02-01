@@ -5,8 +5,9 @@ require_once __DIR__ . '/layout.php';
 admin_require_perm($user, 'view_payroll');
 
 $tzName = (string) setting($pdo, 'payroll_timezone', 'Europe/London');
-$weekStartsOn = strtolower(trim((string) setting($pdo, 'payroll_week_starts_on', 'monday'))); // monday|sunday (DB may store uppercase)
-if (!in_array($weekStartsOn, ['monday','sunday'], true)) $weekStartsOn = 'monday';
+// Week start is set once at initial setup (stored as e.g. MONDAY, SUNDAY, etc.).
+// Never assume Monday; always respect the configured setting.
+$weekStartsOn = payroll_week_starts_on($pdo); // returns UPPERCASE day name
 $tz = new DateTimeZone($tzName);
 
 $ym = preg_replace('/[^0-9\-]/', '', (string)($_GET['month'] ?? ''));
@@ -23,9 +24,18 @@ $monthEndLocalEx = $monthStartLocal->modify('first day of next month');
 $monthStartUtc = $monthStartLocal->setTimezone(new DateTimeZone('UTC'));
 $monthEndUtcEx = $monthEndLocalEx->setTimezone(new DateTimeZone('UTC'));
 
-function week_start_for(DateTimeImmutable $d, string $weekStartsOn): DateTimeImmutable {
+function week_start_for(DateTimeImmutable $d, string $weekStartsOnUpper): DateTimeImmutable {
   $dow = (int)$d->format('N'); // 1..7 Mon..Sun
-  $startDow = ($weekStartsOn === 'sunday') ? 7 : 1;
+  $map = [
+    'MONDAY'    => 1,
+    'TUESDAY'   => 2,
+    'WEDNESDAY' => 3,
+    'THURSDAY'  => 4,
+    'FRIDAY'    => 5,
+    'SATURDAY'  => 6,
+    'SUNDAY'    => 7,
+  ];
+  $startDow = $map[strtoupper(trim($weekStartsOnUpper))] ?? 1;
   $delta = $dow - $startDow;
   if ($delta < 0) $delta += 7;
   return $d->setTime(0,0)->modify("-{$delta} days");

@@ -153,7 +153,11 @@ $sql = "
     e.first_name,
     e.last_name,
     e.nickname,
-    pp.id AS photo_id
+    pp.id AS photo_id,
+    pp.photo_path,
+    pp.photo_status,
+    pp.photo_error_code,
+    pp.uploaded_at
   FROM kiosk_punch_events pe
   LEFT JOIN kiosk_employees e ON e.id = pe.employee_id
   LEFT JOIN kiosk_punch_photos pp ON pp.event_uuid = pe.event_uuid AND pp.action = pe.action
@@ -170,6 +174,28 @@ try {
 } catch (Throwable $e) {
   $rows = [];
   $err = $e->getMessage();
+}
+
+
+// Fetch processing steps (best-effort). Group by event_uuid.
+$stepsByUuid = [];
+if (!empty($rows)) {
+  $uuids = array_values(array_unique(array_filter(array_map(fn($r) => (string)($r['event_uuid'] ?? ''), $rows))));
+  if (!empty($uuids)) {
+    $in = implode(',', array_fill(0, count($uuids), '?'));
+    try {
+      $st = $pdo->prepare("SELECT event_uuid, step, status, code, message, meta_json, created_at FROM kiosk_punch_processing_steps WHERE event_uuid IN ($in) ORDER BY id ASC");
+      $st->execute($uuids);
+      while ($r = $st->fetch(PDO::FETCH_ASSOC)) {
+        $u = (string)($r['event_uuid'] ?? '');
+        if ($u === '') continue;
+        if (!isset($stepsByUuid[$u])) $stepsByUuid[$u] = [];
+        $stepsByUuid[$u][] = $r;
+      }
+    } catch (Throwable $e) {
+      $stepsByUuid = [];
+    }
+  }
 }
 
 admin_page_start($pdo, 'Punch Details');
@@ -327,7 +353,25 @@ $active = admin_url('punch-details.php');
                               <img src="<?= h(admin_url('punch-photo.php?id=' . $photoId . '&size=thumb')) ?>" alt="Punch photo" class="h-10 w-10 rounded-lg object-cover border border-slate-200" />
                             </a>
                           <?php else: ?>
-                            <span class="text-slate-400">—</span>
+                            <?php
+                              $pStatus = (string)($r['photo_status'] ?? '');
+                              $pErr    = (string)($r['photo_error_code'] ?? '');
+                              $steps   = $stepsByUuid[$uuid] ?? [];
+                              $photoStep = null;
+                              foreach (array_reverse($steps) as $stp) {
+                                if (($stp['step'] ?? '') === 'PHOTO') { $photoStep = $stp; break; }
+                              }
+                              $derivedStatus = $pStatus !== '' ? $pStatus : (($photoStep && ($photoStep['status'] ?? '') === 'error') ? 'failed' : 'pending');
+                              $derivedCode   = $pErr !== '' ? $pErr : (string)($photoStep['code'] ?? '');
+                            ?>
+                            <?php if ($derivedStatus === 'failed'): ?>
+                              <?= badge('photo failed', 'bad') ?>
+                              <?php if ($derivedCode !== ''): ?><div class="text-[11px] text-slate-600 mt-1"><?= h($derivedCode) ?></div><?php endif; ?>
+                            <?php elseif ($derivedStatus === 'uploaded'): ?>
+                              <?= badge('photo uploaded', 'ok') ?>
+                            <?php else: ?>
+                              <?= badge('photo pending', 'neutral') ?>
+                            <?php endif; ?>
                           <?php endif; ?>
                         </td>
                         <td class="py-2 px-2">
@@ -335,6 +379,28 @@ $active = admin_url('punch-details.php');
                             <summary class="cursor-pointer select-none text-[11px] text-slate-600">View</summary>
                             <div class="mt-1 text-[11px] text-slate-500 space-y-1">
                               <?php if ($uuid !== ''): ?><div><span class="text-slate-400">event_uuid:</span> <?= h($uuid) ?></div><?php endif; ?>
+                              <?php if (!empty($stepsByUuid[$uuid] ?? [])): ?>
+                                <div class="pt-1">
+                                  <div class="text-slate-400">steps:</div>
+                                  <div class="mt-1 space-y-1">
+                                    <?php foreach (($stepsByUuid[$uuid] ?? []) as $stp): ?>
+                                      <?php
+                                        $stStep = (string)($stp['step'] ?? '');
+                                        $stStatus = (string)($stp['status'] ?? '');
+                                        $stCode = (string)($stp['code'] ?? '');
+                                        $stAt = (string)($stp['created_at'] ?? '');
+                                      ?>
+                                      <div class="flex gap-2">
+                                        <span class="text-slate-700"><?= h($stStep) ?></span>
+                                        <span class="text-slate-500"><?= h($stStatus) ?></span>
+                                        <?php if ($stCode !== ''): ?><span class="text-slate-600"><?= h($stCode) ?></span><?php endif; ?>
+                                        <?php if ($stAt !== ''): ?><span class="text-slate-400"><?= h($stAt) ?></span><?php endif; ?>
+                                      </div>
+                                    <?php endforeach; ?>
+                                  </div>
+                                </div>
+                              <?php endif; ?>
+
                               <?php if ($ip !== ''): ?><div><span class="text-slate-400">ip:</span> <?= h($ip) ?></div><?php endif; ?>
                               <?php if ($ua !== ''): ?><div class="break-words"><span class="text-slate-400">ua:</span> <?= h($ua) ?></div><?php endif; ?>
                               <?php if (!empty($r['device_time'])): ?><div><span class="text-slate-400">device:</span> <?= h((string)$r['device_time']) ?></div><?php endif; ?>

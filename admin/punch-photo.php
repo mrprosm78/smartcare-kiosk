@@ -19,7 +19,7 @@ if ($id <= 0) {
 }
 
 try {
-  $st = $pdo->prepare("SELECT id, photo_path FROM kiosk_punch_photos WHERE id = ? LIMIT 1");
+  $st = $pdo->prepare("SELECT id, photo_path, photo_status, photo_error_code FROM kiosk_punch_photos WHERE id = ? LIMIT 1");
   $st->execute([$id]);
   $row = $st->fetch(PDO::FETCH_ASSOC);
   if (!$row) {
@@ -29,9 +29,11 @@ try {
   }
 
   $photoPath = (string)($row['photo_path'] ?? '');
-    if ($photoPath === '') {
+  $pStatus = (string)($row['photo_status'] ?? '');
+  $pErr = (string)($row['photo_error_code'] ?? '');
+  if ($photoPath === '') {
     http_response_code(404);
-    echo 'Not found';
+    echo ($pStatus !== '' ? ('Photo ' . $pStatus . ($pErr !== '' ? (' (' . $pErr . ')') : '')) : 'Not found');
     exit;
   }
 

@@ -246,6 +246,25 @@ function dt_sql(DateTimeImmutable $dt): string {
     return $dt->format('Y-m-d H:i:s');
 }
 
+
+// ---- helper: append detailed processing step (best-effort; never breaks punch) ----
+function punch_step(PDO $pdo, string $eventUuid, string $step, string $status, ?string $code = null, ?string $message = null, $meta = null): void {
+    if ($eventUuid === '') return;
+    try {
+        $metaJson = null;
+        if ($meta !== null) {
+            $metaJson = json_encode($meta, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        }
+        $st = $pdo->prepare("
+            INSERT INTO kiosk_punch_processing_steps (event_uuid, step, status, code, message, meta_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())
+        ");
+        $st->execute([$eventUuid, $step, $status, $code, $message, $metaJson]);
+    } catch (Throwable $e) {
+        // ignore (table may not exist yet or DB error)
+    }
+}
+
 // ---- helper: log punch attempt result (update row) ----
 function punch_mark(PDO $pdo, string $eventUuid, string $status, ?string $errorCode = null, ?int $shiftId = null): void {
     $stmt = $pdo->prepare("
@@ -452,7 +471,7 @@ try {
     }
 
     if ($action !== 'IN' && $action !== 'OUT') {
-        json_response(['ok'=>false,'error'=>'invalid_action'], 400);
+        json_response(['ok'=>false,'error'=>'invalid_action','event_uuid'=>$eventUuid], 400);
     }
 
     // PIN format
@@ -567,6 +586,7 @@ try {
     }
 
     $employeeId = (int)$employee['id'];
+    punch_step($pdo, $eventUuid, 'AUTH', 'ok', null, null, ['employee_id'=>$employeeId,'action'=>$action,'was_offline'=>$wasOfflineIn?1:0]);
 
     // Build display names (nickname support is future-ready)
     $hasNickname  = column_exists($pdo, 'kiosk_employees', 'nickname');
@@ -625,7 +645,8 @@ try {
                 ")->execute([$eventUuid,$employeeId,$action,$deviceTimeSql,$now,$effectiveTimeSql,$source,(int)$wasOffline,$kioskCode,$tokHash,$ipAddress,$userAgent]);
 
                 punch_mark($pdo, $eventUuid, 'rejected', 'too_soon', null);
-                json_response(['ok'=>false,'error'=>'too_soon'], 429);
+                punch_step($pdo, $eventUuid, 'SHIFT', 'error', 'too_soon');
+                json_response(['ok'=>false,'error'=>'too_soon','event_uuid'=>$eventUuid], 429);
             }
         }
     }
@@ -677,6 +698,7 @@ try {
         $ipAddress,
         $userAgent
     ]);
+    punch_step($pdo, $eventUuid, 'EVENT_LOG', 'ok');
 
     // ---- PROCESS ----
     if ($action === 'IN') {
@@ -689,6 +711,7 @@ try {
 
         if ($open->fetchColumn()) {
             punch_mark($pdo, $eventUuid, 'rejected', 'already_clocked_in', null);
+    punch_step($pdo, $eventUuid, 'SHIFT', 'error', 'already_clocked_in');
             json_response(['ok'=>false,'error'=>'already_clocked_in'], 409);
         }
 
@@ -715,6 +738,7 @@ try {
                 if ($diffMin >= 0 && $diffMin < $cooldownMins) {
                     $remain = max(0, $cooldownMins - $diffMin);
                     punch_mark($pdo, $eventUuid, 'rejected', 'cooldown_active', null);
+    punch_step($pdo, $eventUuid, 'SHIFT', 'error', 'cooldown_active');
                     json_response(['ok'=>false,'error'=>'cooldown_active','minutes_remaining'=>$remain], 409);
                 }
             }
@@ -726,6 +750,7 @@ try {
         $shiftId = (int)$pdo->lastInsertId();
 
         punch_mark($pdo, $eventUuid, 'processed', null, $shiftId);
+        punch_step($pdo, $eventUuid, 'SHIFT', 'ok', null, null, ['shift_id'=>$shiftId,'op'=>'create']);
 
         // Optional open shifts list for UI
         $uiShowOpen = s_bool($pdo, 'ui_show_open_shifts', false);
@@ -734,11 +759,18 @@ try {
 
         json_response([
             'ok'             => true,
+            'event_uuid'     => $eventUuid,
             'status'         => 'processed',
             'action'         => 'IN',
+            'shift_id'       => $shiftId,
             'employee_name'  => $employeeName,
             'employee_label' => $employeeLabel,
-            'open_shifts'    => $openList
+            'open_shifts'    => $openList,
+            // structured statuses (punch != photo)
+            'punch'          => ['status' => 'processed', 'code' => null],
+            'shift'          => ['status' => 'created', 'shift_id' => $shiftId, 'code' => null],
+            'photo'          => ['status' => 'pending', 'code' => null],
+            'warnings'       => [],
         ]);
     }
 
@@ -759,6 +791,7 @@ try {
 
         if (!$s) {
             punch_mark($pdo, $eventUuid, 'rejected', 'no_open_shift', null);
+    punch_step($pdo, $eventUuid, 'SHIFT', 'error', 'no_open_shift');
             json_response(['ok'=>false,'error'=>'no_open_shift'], 409);
         }
 
@@ -772,6 +805,7 @@ try {
 
         if ($mins < 0) {
             punch_mark($pdo, $eventUuid, 'rejected', 'invalid_time_order', null);
+    punch_step($pdo, $eventUuid, 'SHIFT', 'error', 'invalid_time_order');
             json_response(['ok'=>false,'error'=>'invalid_time_order'], 409);
         }
 
@@ -789,6 +823,7 @@ try {
             $upd->execute([$shiftOutTimeSql, $mins, $breakMins, $paidMins, (int)$s['id']]);
 
             punch_mark($pdo, $eventUuid, 'processed', 'shift_too_long_flagged', (int)$s['id']);
+            punch_step($pdo, $eventUuid, 'SHIFT', 'warning', 'shift_too_long_flagged', null, ['shift_id'=>(int)$s['id'],'op'=>'close']);
         } else {
             $upd = $pdo->prepare("
                 UPDATE kiosk_shifts
@@ -873,6 +908,7 @@ try {
         }
 
 punch_mark($pdo, $eventUuid, 'processed', null, (int)$s['id']);
+        punch_step($pdo, $eventUuid, 'SHIFT', 'ok', null, null, ['shift_id'=>(int)$s['id'],'op'=>'close']);
         }
 
         // Optional open shifts list for UI (after clock out)
@@ -882,11 +918,18 @@ punch_mark($pdo, $eventUuid, 'processed', null, (int)$s['id']);
 
         $resp = [
             'ok'             => true,
+            'event_uuid'     => $eventUuid,
             'status'         => 'processed',
             'action'         => 'OUT',
+            'shift_id'       => (int)$s['id'],
             'employee_name'  => $employeeName,
             'employee_label' => $employeeLabel,
-            'open_shifts'    => $openList
+            'open_shifts'    => $openList,
+            // structured statuses (punch != photo)
+            'punch'          => ['status' => 'processed', 'code' => null],
+            'shift'          => ['status' => 'closed', 'shift_id' => (int)$s['id'], 'code' => ($tooLong ? 'shift_too_long_flagged' : null)],
+            'photo'          => ['status' => 'pending', 'code' => null],
+            'warnings'       => ($tooLong ? ['shift_too_long_flagged'] : []),
         ];
 
         if ($tooLong) {
@@ -897,9 +940,13 @@ punch_mark($pdo, $eventUuid, 'processed', null, (int)$s['id']);
     }
 
     punch_mark($pdo, $eventUuid, 'rejected', 'invalid_action', null);
-    json_response(['ok'=>false,'error'=>'invalid_action'], 400);
+    punch_step($pdo, $eventUuid, 'VALIDATION', 'error', 'invalid_action');
+    json_response(['ok'=>false,'error'=>'invalid_action','event_uuid'=>$eventUuid], 400);
 
 } catch (Throwable $e) {
-    try { punch_mark($pdo, $eventUuid, 'rejected', 'server_error', null); } catch (Throwable $ignored) {}
-    json_response(['ok'=>false,'error'=>'server_error'], 500);
+    try {
+        punch_mark($pdo, $eventUuid, 'rejected', 'server_error', null);
+        punch_step($pdo, $eventUuid, 'SYSTEM', 'error', 'server_error', null, ['exception' => get_class($e)]);
+    } catch (Throwable $ignored) {}
+    json_response(['ok'=>false,'error'=>'server_error','event_uuid'=>$eventUuid], 500);
 }
