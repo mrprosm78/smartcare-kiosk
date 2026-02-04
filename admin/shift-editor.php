@@ -59,8 +59,8 @@ $tz = new DateTimeZone($tzName);
 
 // Defaults: last 7 days
 $todayLocal = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->setTimezone($tz);
-$defaultTo = $todayLocal->format('Y-m-d');
-$defaultFrom = $todayLocal->modify('-6 days')->format('Y-m-d');
+$defaultFrom = $todayLocal->modify('first day of this month')->format('Y-m-d');
+$defaultTo = $todayLocal->modify('last day of this month')->format('Y-m-d');
 
 $from = q('from', $defaultFrom);
 $to   = q('to', $defaultTo);
@@ -69,7 +69,7 @@ if (!is_ymd($to))   $to   = $defaultTo;
 
 $employeeId = (int)($_GET['employee_id'] ?? 0);
 $deptId = (int)($_GET['dept_id'] ?? 0);
-$status = q('status', 'needs_review'); // needs_review|approved|open|all
+$status = q('status', 'all'); // needs_review(attention)|approved|open|all // needs_review|approved|open|all
 // Keep duration support (legacy/advanced), but do not show by default.
 $duration = q('duration', 'all'); // all|lt1|1_4|4_8|8_12|gt12
 
@@ -84,8 +84,8 @@ if (!preg_match('/^\d{4}-\d{2}$/', $monthParam)) {
 $flash = '';
 
 // ---------------------------------------------------------------------
-// Calendar: count days that have shifts needing review/approval.
-// Definition (simple + safe): a shift needs review if it is open OR not approved OR autoclosed.
+// Calendar: count days that have shifts needing attention.
+// Definition (simple + safe): a shift needs attention if it is open OR autoclosed OR triggers an alert (e.g. long/short).
 // Uses your locked anchoring rule: day is the LOCAL date of clock_in_at.
 // ---------------------------------------------------------------------
 $calCounts = []; // [ymd => count]
@@ -114,7 +114,7 @@ try {
     $params[] = $deptId;
   }
 
-  $sql = "SELECT s.clock_in_at, s.clock_out_at, s.approved_at, s.is_autoclosed
+  $sql = "SELECT s.clock_in_at, s.clock_out_at, s.duration_minutes, s.is_autoclosed
           FROM kiosk_shifts s
           JOIN kiosk_employees e ON e.id = s.employee_id
           WHERE " . implode(' AND ', $where);
@@ -134,9 +134,43 @@ try {
     $ymd = $startLocal->format('Y-m-d');
 
     $needsReview = false;
-    if (empty($r['clock_out_at'])) $needsReview = true; // open
-    if (empty($r['approved_at'])) $needsReview = true; // unapproved
-    if ((int)($r['is_autoclosed'] ?? 0) === 1) $needsReview = true;
+
+// Needs-attention definition (flexible):
+// - Open shifts always need attention
+// - Autoclosed shifts always need attention
+// - Duration alerts: "long" or "short" shifts need attention
+//
+// NOTE: Approval is separate. We do NOT count "unapproved" closed shifts as needing attention.
+
+if (empty($r['clock_out_at'])) $needsReview = true; // open
+if ((int)($r['is_autoclosed'] ?? 0) === 1) $needsReview = true; // autoclosed
+
+// Duration-based alerts (defaults; can be moved to settings later)
+$LONG_MINUTES = 750;  // 12h30m
+$SHORT_MINUTES = 30;  // 30m
+
+$dur = null;
+if (!$needsReview) {
+  // Only compute duration for closed shifts that aren't already open/autoclosed.
+  $cinUtc = (string)($r['clock_in_at'] ?? '');
+  $coutUtc = (string)($r['clock_out_at'] ?? '');
+  $durStored = $r['duration_minutes'] ?? null;
+  if ($durStored !== null && $durStored !== '') {
+    $dur = (int)$durStored;
+  } elseif ($cinUtc !== '' && $coutUtc !== '') {
+    try {
+      $d1 = new DateTimeImmutable($cinUtc, new DateTimeZone('UTC'));
+      $d2 = new DateTimeImmutable($coutUtc, new DateTimeZone('UTC'));
+      $dur = (int)round(($d2->getTimestamp() - $d1->getTimestamp())/60);
+    } catch (Throwable $e) {
+      $dur = null;
+    }
+  }
+  if ($dur !== null) {
+    if ($dur > $LONG_MINUTES) $needsReview = true; // long
+    if ($dur >= 0 && $dur < $SHORT_MINUTES) $needsReview = true; // short
+  }
+}
 
     if ($needsReview) {
       $calCounts[$ymd] = ($calCounts[$ymd] ?? 0) + 1;
@@ -366,11 +400,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // ---------------------------------------------------------------------
 // Data for filters
 // ---------------------------------------------------------------------
-$employees = $pdo->query("SELECT e.id, e.nickname, e.first_name, e.last_name, e.employee_code, e.is_agency, e.agency_label, d.name AS dept
-                          FROM kiosk_employees e
-                          LEFT JOIN kiosk_employee_departments d ON d.id=e.department_id
-                          WHERE e.is_active=1
-                          ORDER BY d.sort_order ASC, d.name ASC, e.nickname ASC, e.first_name ASC, e.last_name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+$employees = $pdo->query(
+  "SELECT e.id, e.nickname, e.first_name, e.last_name, e.employee_code, e.is_agency, e.agency_label, d.name AS dept
+   FROM kiosk_employees e
+   LEFT JOIN kiosk_employee_departments d ON d.id = e.department_id
+   WHERE e.is_active = 1
+   ORDER BY
+     CASE
+       WHEN TRIM(CONCAT(IFNULL(e.first_name,''),' ',IFNULL(e.last_name,''))) <> '' THEN TRIM(CONCAT(IFNULL(e.first_name,''),' ',IFNULL(e.last_name,'')))
+       ELSE TRIM(IFNULL(e.nickname,''))
+     END ASC,
+     e.employee_code ASC"
+)->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 $depts = $pdo->query("SELECT id, name FROM kiosk_employee_departments ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
@@ -414,7 +455,9 @@ if ($deptId > 0) {
 }
 if ($status === 'needs_review') {
   // Safe, conservative definition for review inbox.
-  $where[] = '(s.clock_out_at IS NULL OR s.approved_at IS NULL OR s.is_autoclosed = 1)';
+  // Needs-attention inbox (flexible): open OR autoclosed OR duration alerts (long/short).
+  $expr = "COALESCE(s.duration_minutes, TIMESTAMPDIFF(MINUTE, s.clock_in_at, COALESCE(s.clock_out_at, UTC_TIMESTAMP())))";
+  $where[] = "(s.clock_out_at IS NULL OR s.is_autoclosed = 1 OR $expr > 750 OR (s.clock_out_at IS NOT NULL AND $expr < 30))";
 } elseif ($status === 'approved') {
   $where[] = 's.clock_out_at IS NOT NULL';
   $where[] = 's.approved_at IS NOT NULL';
@@ -513,7 +556,7 @@ if ($addShiftDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $addShiftDate)) {
                 <select name="employee_id" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
                   <option value="0">All</option>
                   <?php foreach ($employees as $e): ?>
-                    <option value="<?= (int)$e['id'] ?>" <?= ((int)$e['id'] === $employeeId) ? 'selected' : '' ?>><?= h($displayName($e)) ?><?= ($e['employee_code'] ? ' · ' . h((string)$e['employee_code']) : '') ?></option>
+                    <option value="<?= (int)$e['id'] ?>" <?= ((int)$e['id'] === $employeeId) ? 'selected' : '' ?>><?= h($displayName($e)) ?><?= ($e['employee_code'] !== null && $e['employee_code'] !== '' ? ' — ' . h(str_pad((string)$e['employee_code'], 4, '0', STR_PAD_LEFT)) : '') ?></option>
                   <?php endforeach; ?>
                 </select>
               </div>
@@ -602,6 +645,14 @@ if ($addShiftDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $addShiftDate)) {
                       $flags = [];
                       if (!empty($s['approved_at'])) $flags[] = 'approved';
                       if ((int)($s['is_autoclosed'] ?? 0) === 1) $flags[] = 'autoclosed';
+
+                      // Duration alert flags (defaults; can be moved to settings later)
+                      if (!empty($s['clock_out_at'])) {
+                        $LONG_MINUTES = 750;  // 12h30m
+                        $SHORT_MINUTES = 30;  // 30m
+                        if ($durMin > $LONG_MINUTES) $flags[] = 'long';
+                        if ($durMin >= 0 && $durMin < $SHORT_MINUTES) $flags[] = 'short';
+                      }
                       if (!empty($s['last_modified_reason'])) $flags[] = (string)$s['last_modified_reason'];
                       if ((int)($s['is_callout'] ?? 0) === 1) $flags[] = 'callout';
                       $flagText = $flags ? implode(', ', $flags) : '—';
@@ -661,8 +712,8 @@ if ($addShiftDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $addShiftDate)) {
               <section class="rounded-3xl border border-slate-200 bg-white overflow-hidden" id="reviewCalendar">
                 <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-3">
                   <div class="min-w-0">
-                    <div class="text-sm font-semibold">Review calendar</div>
-                    <div class="mt-1 text-xs text-slate-500">Red days have at least one shift that is open, unapproved, or autoclosed.</div>
+                    <div class="text-sm font-semibold">Attention calendar</div>
+                    <div class="mt-1 text-xs text-slate-500">Red days have at least one shift that needs attention (open, autoclosed, long, or short).</div>
                   </div>
                   <div class="flex items-center gap-2 shrink-0">
                     <a class="rounded-2xl px-3 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
@@ -707,7 +758,7 @@ if ($addShiftDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $addShiftDate)) {
                           'shift_id' => 0,
                         ])));
                     ?>
-                      <a href="<?= h($href) ?>" class="<?= h($cls) ?>" title="<?= $isRed ? h($cnt . ' shift(s) need review') : 'No review needed' ?>">
+                      <a href="<?= h($href) ?>" class="<?= h($cls) ?>" title="<?= $isRed ? h($cnt . ' shift(s) need attention') : 'No attention needed' ?>">
                         <?= (int)$dayNum ?>
                         <?php if ($isRed && !$isSel): ?>
                           <span class="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[10px] leading-[18px] text-center"><?= (int)$cnt ?></span>
@@ -771,7 +822,7 @@ if ($addShiftDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $addShiftDate)) {
                           <option value="">Select…</option>
                           <?php foreach ($employees as $e): ?>
                             <option value="<?= (int)$e['id'] ?>" <?= ((int)$e['id'] === $uEmployeeId && $uEmployeeId > 0) ? 'selected' : '' ?>>
-                              <?= h($displayName($e)) ?><?= ($e['employee_code'] ? ' · ' . h((string)$e['employee_code']) : '') ?>
+                              <?= h($displayName($e)) ?><?= ($e['employee_code'] !== null && $e['employee_code'] !== '' ? ' — ' . h(str_pad((string)$e['employee_code'], 4, '0', STR_PAD_LEFT)) : '') ?>
                             </option>
                           <?php endforeach; ?>
                         </select>
@@ -887,7 +938,7 @@ if ($addShiftDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $addShiftDate)) {
                         <option value="">Select…</option>
                         <?php foreach ($employees as $e): ?>
                           <option value="<?= (int)$e['id'] ?>" <?= ((int)$e['id'] === $employeeId && $employeeId > 0) ? 'selected' : '' ?>>
-                            <?= h($displayName($e)) ?><?= ($e['employee_code'] ? ' · ' . h((string)$e['employee_code']) : '') ?>
+                            <?= h($displayName($e)) ?><?= ($e['employee_code'] !== null && $e['employee_code'] !== '' ? ' — ' . h(str_pad((string)$e['employee_code'], 4, '0', STR_PAD_LEFT)) : '') ?>
                           </option>
                         <?php endforeach; ?>
                       </select>

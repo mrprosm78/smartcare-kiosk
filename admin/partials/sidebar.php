@@ -25,6 +25,7 @@ $items[] = ['href' => admin_url('shift-editor.php'), 'label' => 'Review & Approv
 $items[] = ['href' => admin_url('payroll-calendar-employee.php'), 'label' => 'Payroll Monthly Report', 'perm' => 'view_payroll'];
 $items[] = ['href' => admin_url('settings.php'), 'label' => 'Settings', 'perm' => 'manage_settings_basic'];
 
+
 ?>
 
 <aside class="w-full lg:w-72 shrink-0 lg:sticky lg:top-6 self-start">

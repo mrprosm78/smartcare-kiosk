@@ -75,7 +75,13 @@ $sqlEmp = "SELECT id, employee_code, first_name, last_name, nickname, department
            WHERE is_active=1";
 $paramsEmp = [];
 if ($deptId > 0) { $sqlEmp .= " AND department_id = ?"; $paramsEmp[] = $deptId; }
-$sqlEmp .= " ORDER BY last_name, first_name, id";
+$sqlEmp .= " ORDER BY (CASE
+             WHEN TRIM(CONCAT(IFNULL(first_name,''), ' ', IFNULL(last_name,''))) <> ''
+               THEN TRIM(CONCAT(IFNULL(first_name,''), ' ', IFNULL(last_name,'')))
+             WHEN TRIM(IFNULL(nickname,'')) <> ''
+               THEN TRIM(IFNULL(nickname,''))
+             ELSE TRIM(IFNULL(employee_code,''))
+           END) ASC, id ASC";
 $stEmp = $pdo->prepare($sqlEmp);
 $stEmp->execute($paramsEmp);
 $employees = $stEmp->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -295,9 +301,13 @@ admin_page_start($pdo, 'Payroll Monthly Report');
                 <select id="employee_id" name="employee_id" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
                   <?php foreach ($employees as $e): ?>
                     <?php
-                      $code = trim((string)($e['employee_code'] ?? ''));
+                      $codeRaw = trim((string)($e['employee_code'] ?? ''));
+                      $code = $codeRaw;
+                      if ($codeRaw !== '' && ctype_digit($codeRaw)) {
+                        $code = str_pad($codeRaw, 4, '0', STR_PAD_LEFT);
+                      }
                       $name = admin_employee_display_name($e);
-                      $label = $code !== '' ? ($code . ' — ' . $name) : $name;
+                      $label = $code !== '' ? ($name . ' — ' . $code) : $name;
                     ?>
                     <option value="<?= (int)$e['id'] ?>" <?= ((int)$e['id'] === $employeeId) ? 'selected' : '' ?>><?= h($label) ?></option>
                   <?php endforeach; ?>

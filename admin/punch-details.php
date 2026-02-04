@@ -99,7 +99,16 @@ if (!in_array($action, ['', 'IN', 'OUT'], true)) $action = '';
 // Fetch employees for filter
 $employees = [];
 try {
-  $st = $pdo->query("SELECT id, employee_code, first_name, last_name, nickname FROM kiosk_employees ORDER BY employee_code ASC");
+  $st = $pdo->query("SELECT id, employee_code, first_name, last_name, nickname
+    FROM kiosk_employees
+    ORDER BY
+      CASE
+        WHEN TRIM(CONCAT_WS(' ', first_name, last_name)) <> '' THEN TRIM(CONCAT_WS(' ', first_name, last_name))
+        WHEN TRIM(IFNULL(nickname,'')) <> '' THEN TRIM(nickname)
+        ELSE TRIM(employee_code)
+      END ASC,
+      employee_code ASC
+  ");
   $employees = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (Throwable $e) {
   $employees = [];
@@ -249,9 +258,14 @@ $active = admin_url('punch-details.php');
                   <?php foreach ($employees as $e):
                     $id = (int)($e['id'] ?? 0);
                     $sel = ($employeeId === $id) ? 'selected' : '';
-                    $label = trim((string)($e['employee_code'] ?? ''));
+                    $codeRaw = trim((string)($e['employee_code'] ?? ''));
+                    $code = $codeRaw;
+                    if ($codeRaw !== '' && ctype_digit($codeRaw)) {
+                      $code = str_pad($codeRaw, 4, '0', STR_PAD_LEFT);
+                    }
                     $name = admin_employee_display_name($e);
-                    $text = $label !== '' ? ($label . ' — ' . $name) : $name;
+                    $text = $name;
+                    if ($code !== '') $text .= ' — ' . $code;
                   ?>
                     <option value="<?= $id ?>" <?= $sel ?>><?= h($text) ?></option>
                   <?php endforeach; ?>
