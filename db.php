@@ -44,7 +44,7 @@ if (!$privateConfigLoaded) {
 $required = ['DB_HOST','DB_NAME','DB_USER','DB_PASS'];
 $missing = [];
 foreach ($required as $c) {
-  if (!defined($c) || (string)constant($c) === '') {
+  if (!defined($c) || (string)constant($c) === ' ') {
     $missing[] = $c;
   }
 }

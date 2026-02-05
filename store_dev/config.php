@@ -16,8 +16,8 @@ define('APP_LOGS_PATH', APP_PRIVATE_ROOT . '/logs');
 
 
 // Database credentials (PRIVATE)
-define('DB_HOST', 'sdb-a.hosting.stackcp.net');
-define('DB_NAME', 'kiosk-tymawr-313637c122');
-define('DB_USER', 'kiosk-tymawr-313637c122');
-define('DB_PASS', '5nfuorvfoa');
+define('DB_HOST', 'localhost');
+define('DB_NAME', 'smartcare_dev');
+define('DB_USER', 'root');
+define('DB_PASS', '');
 define('DB_CHARSET', 'utf8mb4'); 

@@ -656,8 +656,28 @@ if ($addShiftDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $addShiftDate)) {
                       if (!empty($s['last_modified_reason'])) $flags[] = (string)$s['last_modified_reason'];
                       if ((int)($s['is_callout'] ?? 0) === 1) $flags[] = 'callout';
                       $flagText = $flags ? implode(', ', $flags) : '—';
+
+                      // Row highlighting for manager attention (approved stays approved; we only highlight risky shifts).
+                      $isOpen = empty($s['clock_out_at']);
+                      $isAutoclosed = ((int)($s['is_autoclosed'] ?? 0) === 1);
+
+                      // Recompute long/short booleans (to drive highlight). Keep flexible for future alert rules.
+                      $LONG_MINUTES = 750;  // 12h30m (can be moved to settings later)
+                      $SHORT_MINUTES = 30;  // 30m
+                      $isLong = (!$isOpen && $durMin > $LONG_MINUTES);
+                      $isShort = (!$isOpen && $durMin >= 0 && $durMin < $SHORT_MINUTES);
+
+                      $needsAttention = ($isOpen || $isAutoclosed || $isLong || $isShort);
+
+                      $rowBg = 'bg-white';
+                      if ($needsAttention) {
+                        $rowBg = $isOpen ? 'bg-amber-50' : 'bg-rose-50';
+                      }
+                      if ($isSel) {
+                        $rowBg = 'bg-emerald-50';
+                      }
                     ?>
-                    <tr id="shift-row-<?= (int)$s['id'] ?>" class="<?= $isSel ? 'bg-emerald-50' : 'bg-white' ?> hover:bg-slate-50 cursor-pointer" data-shift-id="<?= (int)$s['id'] ?>">
+                    <tr id="shift-row-<?= (int)$s['id'] ?>" class="<?= $rowBg ?> hover:bg-slate-50 cursor-pointer" data-shift-id="<?= (int)$s['id'] ?>">
                       <td class="px-4 py-2">
                         <div class="font-semibold text-slate-900"><?= h($displayName($s)) ?></div>
                         <div class="text-xs text-slate-500">#<?= h((string)$s['employee_code']) ?> · <?= h((string)$inLocal->format('d M Y')) ?></div>
@@ -1045,7 +1065,40 @@ if ($addShiftDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $addShiftDate)) {
   })();
 
   
-  // Filters: auto-submit on change (no Apply button).
+  
+
+  // Remember current calendar/filter position across navigations (e.g., coming back from other pages).
+  (function() {
+    const KEY = 'shift_editor_last_query';
+    try {
+      // Save current query whenever we are on this page.
+      sessionStorage.setItem(KEY, window.location.search.replace(/^\?/, ''));
+    } catch (e) {}
+
+    // If this page is opened without from/to/month params (e.g. deep link with only shift_id),
+    // restore the last known position so the calendar doesn't jump back to default.
+    try {
+      const qs = new URLSearchParams(window.location.search);
+      const hasFrom = qs.has('from');
+      const hasTo = qs.has('to');
+      const hasMonth = qs.has('month');
+      if (!hasFrom || !hasTo || !hasMonth) {
+        const saved = sessionStorage.getItem(KEY) || '';
+        if (saved) {
+          const savedQs = new URLSearchParams(saved);
+          // Keep explicit shift_id if provided on this URL.
+          if (qs.get('shift_id')) savedQs.set('shift_id', qs.get('shift_id'));
+          // Prevent infinite loops: only redirect if we're actually missing params.
+          const target = window.location.pathname + '?' + savedQs.toString();
+          if (target !== window.location.pathname + window.location.search) {
+            window.location.replace(target);
+          }
+        }
+      }
+    } catch (e) {}
+  })();
+
+// Filters: auto-submit on change (no Apply button).
   (function() {
     const form = document.getElementById('filters');
     if (!form) return;

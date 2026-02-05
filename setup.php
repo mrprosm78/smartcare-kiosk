@@ -671,6 +671,26 @@ function create_tables(PDO $pdo): void {
     ) ENGINE=InnoDB;
   ");
 
+  // HR APPLICATIONS (Careers)
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS hr_applications (
+      id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      public_token VARCHAR(64) NOT NULL,
+      status ENUM('draft','submitted','reviewing','rejected','hired','archived') NOT NULL DEFAULT 'draft',
+      job_slug VARCHAR(120) NOT NULL DEFAULT '',
+      applicant_name VARCHAR(160) NOT NULL DEFAULT '',
+      email VARCHAR(190) NOT NULL DEFAULT '',
+      phone VARCHAR(80) NOT NULL DEFAULT '',
+      payload_json LONGTEXT NOT NULL,
+      submitted_at DATETIME NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_hr_app_public_token (public_token),
+      KEY idx_hr_status (status),
+      KEY idx_hr_job (job_slug),
+      KEY idx_hr_email (email)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  ");
 
   // EMPLOYEES
   $pdo->exec("
@@ -1090,6 +1110,7 @@ function drop_all(PDO $pdo): void {
     'kiosk_employee_teams',
     'kiosk_employees',
     'kiosk_settings',
+    'hr_applications',
   ] as $t) {
     $pdo->exec("DROP TABLE IF EXISTS `$t`");
   }
