@@ -73,6 +73,16 @@ function admin_verify_csrf(?string $token): void {
   }
 }
 
+
+function admin_csrf_field(): void {
+  $t = admin_csrf_token();
+  echo '<input type="hidden" name="admin_csrf" value="' . htmlspecialchars($t, ENT_QUOTES, 'UTF-8') . '">';
+}
+
+function admin_csrf_verify(): void {
+  admin_verify_csrf($_POST['admin_csrf'] ?? null);
+}
+
 if (!isset($pdo) || !($pdo instanceof PDO)) {
   http_response_code(500);
   exit('Database connection not available');

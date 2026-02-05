@@ -23,6 +23,13 @@ $items[] = ['href' => admin_url('punch-details.php'), 'label' => 'Punch Details'
 $items[] = ['href' => admin_url('shifts.php'), 'label' => 'Shift Grid', 'perm' => 'view_shifts'];
 $items[] = ['href' => admin_url('shift-editor.php'), 'label' => 'Review & Approvals', 'perm' => 'approve_shifts'];
 $items[] = ['href' => admin_url('payroll-calendar-employee.php'), 'label' => 'Payroll Monthly Report', 'perm' => 'view_payroll'];
+
+// HR
+$items[] = ['href' => admin_url('hr-applications.php'), 'label' => 'HR Applications', 'perm' => 'view_hr_applications'];
+$items[] = ['href' => admin_url('staff-new.php'), 'label' => 'Add Staff', 'perm' => 'manage_staff'];
+
+// Public portal quick link (opens without login)
+$items[] = ['href' => app_url('careers/'), 'label' => 'Careers (Public)', 'perm' => 'view_dashboard'];
 $items[] = ['href' => admin_url('settings.php'), 'label' => 'Settings', 'perm' => 'manage_settings_basic'];
 
 

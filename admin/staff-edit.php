@@ -56,8 +56,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   }
 }
 
-$departments = $pdo->query("SELECT id, name FROM kiosk_employee_departments WHERE archived_at IS NULL ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
-$teams = $pdo->query("SELECT id, name FROM kiosk_employee_teams WHERE archived_at IS NULL ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+// Departments/Teams in SmartCare Kiosk use `is_active` (there is no `archived_at`).
+$departments = $pdo->query("SELECT id, name FROM kiosk_employee_departments WHERE is_active=1 ORDER BY sort_order ASC, name ASC")
+  ->fetchAll(PDO::FETCH_ASSOC);
+$teams = $pdo->query("SELECT id, name FROM kiosk_employee_teams WHERE is_active=1 ORDER BY sort_order ASC, name ASC")
+  ->fetchAll(PDO::FETCH_ASSOC);
 
 admin_page_start($pdo, 'Add Staff');
 ?>

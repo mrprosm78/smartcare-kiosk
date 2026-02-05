@@ -81,7 +81,7 @@ if (!empty($app['payload_json'])) {
   if (is_array($decoded)) $payload = $decoded;
 }
 
-$canManage = admin_has_perm($user, 'manage_hr_applications');
+$canManage = admin_can($user, 'manage_hr_applications');
 
 admin_page_start($pdo, 'HR Application');
 ?>

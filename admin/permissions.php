@@ -33,6 +33,15 @@ function admin_permissions_for_role(string $role): array {
     // punches (audit)
     'view_punches',
 
+    // HR
+    'manage_staff',
+
+    // HR
+    'manage_hr_applications',
+
+    // HR
+    'view_hr_applications',
+
     // org
     'view_employees',
     'manage_employees',
@@ -88,7 +97,12 @@ function admin_permissions_for_role(string $role): array {
 
       // punches (audit)
       'view_punches',
-    ];
+    
+      // HR
+      'view_hr_applications',
+      'manage_hr_applications',
+      'manage_staff',
+];
   }
 
   // Payroll (LOCKED): view punches + shifts + payroll hours (NO contracts, NO run/export)
