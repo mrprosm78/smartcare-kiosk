@@ -333,14 +333,39 @@ Each care home has its own config:
 
 ### Setup Script
 
-- `setup.php?action=install`
-- `setup.php?action=reset&pin=XXXX`
+- `setup.php?action=install` (**Install / Repair**)  
+  Safe to run on live systems. It only creates missing tables/columns and applies small safe repairs.
+  It does **not** wipe live data.
+- `setup.php?action=reset&pin=XXXX` (**Hard Reset**)  
+  **Destructive.** Drops and recreates tables. Use only on dev/test or during a controlled re‑install.
 
-Reset should be used **only** in controlled scenarios.
+**Deprecated table cleanup (Jan 2026):** `kiosk_break_rules` is no longer used.  
+`setup.php?action=install` will automatically drop it if it exists (safe because the app does not read it).
 
 ---
 
-## 14. Known Issues & Planned Improvements
+## 14. HR Careers Module
+
+### Public Careers (no login)
+- Entry point: `/careers/` (jobs list) and `/careers/apply.php`
+- 8‑step wizard (steps 1–8) with `job=...` support
+- Token‑based persistence: if no `token` is present, the system creates a draft `hr_applications` row and redirects with `token=...`
+- Each step saves into `hr_applications.payload_json`
+- Step 8 marks the application as **submitted** (`status='submitted'`, sets `submitted_at`)
+
+### Admin HR Review (login required)
+- Admin list + detail pages show the submitted answers (read‑only)
+- Managers are allowed to update application status for now
+- Later: add a permission table so superadmin can control who can do what
+
+### Applicants vs Staff (LOCKED)
+- Applicants (`hr_applications`) and Staff (`kiosk_employees`) remain separate lifecycles
+- When hired, the manager will create a staff profile from the application (planned feature)
+- Staff later gains contracts and rota/HR attributes without mixing into applicant records
+
+---
+
+## 15. Known Issues & Planned Improvements
 
 - Normalize payroll week‑start casing everywhere
 - Auto‑approve clean shifts
@@ -350,7 +375,7 @@ Reset should be used **only** in controlled scenarios.
 
 ---
 
-## 15. Final Notes
+## 16. Final Notes
 
 - Always preserve raw punch data
 - Corrections must be auditable

@@ -32,6 +32,9 @@ $employee = [
   'is_active' => 1,
 ];
 
+$hasHrProfile = false;
+$fromAppId = (int)($_GET['from_app'] ?? 0);
+
 // agency preset
 if ($isNew && (string)($_GET['agency'] ?? '') === '1') {
   $employee['is_agency'] = 1;
@@ -47,6 +50,27 @@ if (!$isNew) {
     exit('Employee not found');
   }
   $employee = array_merge($employee, $row);
+
+  // Optional: HR profile (created when converting an applicant to staff)
+  try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS hr_staff_profiles (
+      employee_id INT UNSIGNED NOT NULL PRIMARY KEY,
+      application_id INT UNSIGNED NULL,
+      profile_json LONGTEXT NOT NULL,
+      created_by_admin_id INT UNSIGNED NULL,
+      updated_by_admin_id INT UNSIGNED NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_hr_staff_application (application_id),
+      KEY idx_hr_staff_updated (updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+    $chk = $pdo->prepare("SELECT 1 FROM hr_staff_profiles WHERE employee_id=? LIMIT 1");
+    $chk->execute([$id]);
+    $hasHrProfile = (bool)$chk->fetchColumn();
+  } catch (Throwable $e) {
+    $hasHrProfile = false;
+  }
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -158,9 +182,23 @@ admin_page_start($pdo, $isNew ? 'Add Employee' : 'Edit Employee');
                 <h1 class="text-2xl font-semibold"><?= h($isNew ? 'Add employee' : 'Edit employee') ?></h1>
                 <p class="mt-2 text-sm text-slate-600">Basic employee profile (no contract/pay fields). Contract & pay is managed by Admin.</p>
               </div>
-              <a href="<?= h(admin_url('employees.php')) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Back</a>
+              <div class="flex items-center gap-2">
+                <?php if (!$isNew): ?>
+                  <a href="<?= h(admin_url('staff-hr.php?id=' . (int)$id)) ?>"
+                     class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">
+                    <?= $hasHrProfile ? 'HR profile' : 'Add HR profile' ?>
+                  </a>
+                <?php endif; ?>
+                <a href="<?= h(admin_url('employees.php')) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Back</a>
+              </div>
             </div>
           </header>
+
+          <?php if ($fromAppId > 0): ?>
+            <div class="mt-4 rounded-3xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+              Converted from application #<?= (int)$fromAppId ?>. You can review/edit the copied HR details in <a class="underline font-semibold" href="<?= h(admin_url('staff-hr.php?id=' . (int)$id)) ?>">HR profile</a>.
+            </div>
+          <?php endif; ?>
 
           <?php if ($err !== ''): ?>
             <div class="mt-5 rounded-3xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-slate-900"><?= h($err) ?></div>

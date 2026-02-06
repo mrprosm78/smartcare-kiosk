@@ -31,7 +31,7 @@ if ($jobSlug !== '' && !in_array($jobSlug, $allowedJobs, true)) {
 }
 
 // Steps configuration
-$totalSteps = 8;
+$totalSteps = 6;
 $step = isset($_GET['step']) ? (int)$_GET['step'] : 1;
 if ($step < 1) $step = 1;
 if ($step > $totalSteps) $step = $totalSteps;
@@ -118,13 +118,11 @@ if ($savedJob !== '') $jobSlug = $savedJob;
 // Step keys mapping (must match the page names)
 $stepMap = [
   1 => 'personal',
-  2 => 'role',
-  3 => 'work_history',
-  4 => 'education',
-  5 => 'references',
-  6 => 'checks',
-  7 => 'review',
-  8 => 'declaration',
+  2 => 'work_history',
+  3 => 'education',
+  4 => 'references',
+  5 => 'review',
+  6 => 'declaration',
 ];
 
 $currentKey = $stepMap[$step] ?? 'personal';
@@ -155,16 +153,59 @@ sc_csrf_verify($_POST['csrf'] ?? null);
   unset($data['csrf'], $data['token'], $data['job'], $data['step']);
 
   if (!is_array($data)) $data = [];
-  if (!isset($_SESSION['application'][$currentKey]) || !is_array($_SESSION['application'][$currentKey])) {
-    $_SESSION['application'][$currentKey] = [];
-  }
+  // Special: Step 1 is a merged page (personal + role + checks)
+  if ($step === 1) {
+    // Ensure buckets exist
+    foreach (['personal','role','checks'] as $bucket) {
+      if (!isset($_SESSION['application'][$bucket]) || !is_array($_SESSION['application'][$bucket])) {
+        $_SESSION['application'][$bucket] = [];
+      }
+    }
 
-  // Merge posted values for this step
-  foreach ($data as $k => $v) {
-    $_SESSION['application'][$currentKey][$k] = $v;
-  }
+    // Keys from legacy Step 2 (role) - preferred_unit removed
+    $roleKeys = [
+      'position_applied_for',
+      'work_type',
+      'preferred_shift_pattern',
+      'hours_per_week',
+      'earliest_start_date',
+      'notice_period',
+      'heard_about_role',
+      'extra_notes',
+    ];
 
-  // Persist to DB every step (draft save)
+    // Keys from legacy Step 6 (checks)
+    $checksKeys = [
+      'has_right_to_work',
+      'requires_sponsorship',
+      'visa_type',
+      'rtw_notes',
+      'has_current_dbs',
+      'dbs_type',
+      'on_update_service',
+      'dbs_notes',
+      'barred_from_working',
+    ];
+
+    foreach ($data as $k => $v) {
+      if (in_array($k, $roleKeys, true)) {
+        $_SESSION['application']['role'][$k] = $v;
+      } elseif (in_array($k, $checksKeys, true)) {
+        $_SESSION['application']['checks'][$k] = $v;
+      } else {
+        $_SESSION['application']['personal'][$k] = $v;
+      }
+    }
+  } else {
+    if (!isset($_SESSION['application'][$currentKey]) || !is_array($_SESSION['application'][$currentKey])) {
+      $_SESSION['application'][$currentKey] = [];
+    }
+    // Merge posted values for this step
+    foreach ($data as $k => $v) {
+      $_SESSION['application'][$currentKey][$k] = $v;
+    }
+  }
+// Persist to DB every step (draft save)
   try {
     $appData = $_SESSION['application'];
 
@@ -187,8 +228,8 @@ sc_csrf_verify($_POST['csrf'] ?? null);
       LIMIT 1");
     $stmt->execute([$jobSlug, $applicantName, $email, $phone, json_encode($appData, JSON_UNESCAPED_SLASHES), $appId]);
 
-    // Final submit on step 8
-    if ($step === 8) {
+    // Final submit on step 6
+    if ($step === 6) {
       $pdo->prepare("UPDATE hr_applications SET status = 'submitted', submitted_at = NOW(), updated_at = NOW() WHERE id = ? LIMIT 1")
           ->execute([$appId]);
       header('Location: apply.php?' . http_build_query(['token'=>$token, 'job'=>$jobSlug, 'submitted'=>'1']));
@@ -208,6 +249,10 @@ sc_csrf_verify($_POST['csrf'] ?? null);
 
 // Submitted screen
 if (!empty($_GET['submitted'])) {
+  // Force to last step so the Thank You screen renders in layout
+  $step = $totalSteps;
+  $currentTitle = 'Submitted';
+  $currentView = null;
   include __DIR__ . '/includes/apply-layout.php';
   exit;
 }

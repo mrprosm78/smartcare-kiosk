@@ -15,23 +15,48 @@ function admin_nav_item(string $href, string $label, string $active): string {
   return '<a href="' . h($href) . '" class="' . $base . ' bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">' . h($label) . '</a>';
 }
 
-$items = [];
+function admin_nav_child_item(string $href, string $label, string $active): string {
+  $is = ($href === $active);
+  $base = 'flex items-center justify-between rounded-xl px-3 py-2 text-[13px] font-semibold transition-colors';
+  if ($is) {
+    return '<a href="' . h($href) . '" class="' . $base . ' bg-white text-slate-900">' . h($label) . '</a>';
+  }
+  return '<a href="' . h($href) . '" class="' . $base . ' bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">' . h($label) . '</a>';
+}
 
-$items[] = ['href' => admin_url('index.php'), 'label' => 'Dashboard', 'perm' => 'view_dashboard'];
-$items[] = ['href' => admin_url('employees.php'), 'label' => 'Employees', 'perm' => 'view_employees'];
-$items[] = ['href' => admin_url('punch-details.php'), 'label' => 'Punch Details', 'perm' => 'view_punches'];
-$items[] = ['href' => admin_url('shifts.php'), 'label' => 'Shift Grid', 'perm' => 'view_shifts'];
-$items[] = ['href' => admin_url('shift-editor.php'), 'label' => 'Review & Approvals', 'perm' => 'approve_shifts'];
-$items[] = ['href' => admin_url('payroll-calendar-employee.php'), 'label' => 'Payroll Monthly Report', 'perm' => 'view_payroll'];
+$coreItems = [];
+$coreItems[] = ['href' => admin_url('index.php'), 'label' => 'Dashboard', 'perm' => 'view_dashboard'];
+$coreItems[] = ['href' => admin_url('employees.php'), 'label' => 'Employees', 'perm' => 'view_employees'];
+$coreItems[] = ['href' => admin_url('punch-details.php'), 'label' => 'Punch Details', 'perm' => 'view_punches'];
+$coreItems[] = ['href' => admin_url('shifts.php'), 'label' => 'Shift Grid', 'perm' => 'view_shifts'];
+$coreItems[] = ['href' => admin_url('shift-editor.php'), 'label' => 'Review & Approvals', 'perm' => 'approve_shifts'];
+$coreItems[] = ['href' => admin_url('payroll-calendar-employee.php'), 'label' => 'Payroll Monthly Report', 'perm' => 'view_payroll'];
 
-// HR
-$items[] = ['href' => admin_url('hr-applications.php'), 'label' => 'HR Applications', 'perm' => 'view_hr_applications'];
-$items[] = ['href' => admin_url('staff-new.php'), 'label' => 'Add Staff', 'perm' => 'manage_staff'];
+$hrItems = [];
+$hrItems[] = ['href' => admin_url('hr-applications.php'), 'label' => 'Applications', 'perm' => 'view_hr_applications'];
+$hrItems[] = ['href' => admin_url('staff-new.php'), 'label' => 'Add Staff', 'perm' => 'manage_staff'];
+$hrItems[] = ['href' => app_url('careers/'), 'label' => 'Careers (Public)', 'perm' => 'view_dashboard'];
 
-// Public portal quick link (opens without login)
-$items[] = ['href' => app_url('careers/'), 'label' => 'Careers (Public)', 'perm' => 'view_dashboard'];
-$items[] = ['href' => admin_url('settings.php'), 'label' => 'Settings', 'perm' => 'manage_settings_basic'];
+$settingsItems = [];
+$settingsItems[] = ['href' => admin_url('settings.php'), 'label' => 'Settings', 'perm' => 'manage_settings_basic'];
 
+// Should the HR group be open?
+$hrOpen = false;
+foreach ($hrItems as $it) {
+  if ((string)$it['href'] === (string)$active) {
+    $hrOpen = true;
+    break;
+  }
+}
+
+// Check if user can see at least one HR link
+$canSeeHr = false;
+foreach ($hrItems as $it) {
+  if (admin_can($user, (string)$it['perm'])) {
+    $canSeeHr = true;
+    break;
+  }
+}
 
 ?>
 
@@ -48,7 +73,29 @@ $items[] = ['href' => admin_url('settings.php'), 'label' => 'Settings', 'perm' =
     </div>
 
     <div class="mt-4 grid gap-2">
-      <?php foreach ($items as $it): ?>
+      <?php foreach ($coreItems as $it): ?>
+        <?php if (admin_can($user, (string)$it['perm'])): ?>
+          <?= admin_nav_item((string)$it['href'], (string)$it['label'], (string)$active) ?>
+        <?php endif; ?>
+      <?php endforeach; ?>
+
+      <?php if ($canSeeHr): ?>
+        <details class="rounded-2xl" <?= $hrOpen ? 'open' : '' ?>>
+          <summary class="cursor-pointer list-none rounded-2xl px-3 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 flex items-center justify-between">
+            <span>HR</span>
+            <span class="text-slate-400 text-xs">▾</span>
+          </summary>
+          <div class="mt-2 ml-2 grid gap-2">
+            <?php foreach ($hrItems as $it): ?>
+              <?php if (admin_can($user, (string)$it['perm'])): ?>
+                <?= admin_nav_child_item((string)$it['href'], (string)$it['label'], (string)$active) ?>
+              <?php endif; ?>
+            <?php endforeach; ?>
+          </div>
+        </details>
+      <?php endif; ?>
+
+      <?php foreach ($settingsItems as $it): ?>
         <?php if (admin_can($user, (string)$it['perm'])): ?>
           <?= admin_nav_item((string)$it['href'], (string)$it['label'], (string)$active) ?>
         <?php endif; ?>

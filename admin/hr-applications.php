@@ -14,25 +14,27 @@ $params = [];
 $where = [];
 
 if ($status !== '' && in_array($status, ['draft','submitted','reviewing','rejected','hired','archived'], true)) {
-  $where[] = "status = ?";
+  $where[] = "a.status = ?";
   $params[] = $status;
 }
 if ($job !== '') {
-  $where[] = "job_slug = ?";
+  $where[] = "a.job_slug = ?";
   $params[] = $job;
 }
 if ($q !== '') {
-  $where[] = "(applicant_name LIKE ? OR email LIKE ? OR phone LIKE ? OR public_token LIKE ?)";
+  $where[] = "(a.applicant_name LIKE ? OR a.email LIKE ? OR a.phone LIKE ? OR a.public_token LIKE ?)";
   $params[] = "%$q%";
   $params[] = "%$q%";
   $params[] = "%$q%";
   $params[] = "%$q%";
 }
 
-$sql = "SELECT id, status, job_slug, applicant_name, email, phone, submitted_at, updated_at
-        FROM hr_applications";
+$sql = "SELECT a.id, a.status, a.job_slug, a.applicant_name, a.email, a.phone, a.submitted_at, a.updated_at,
+               p.employee_id AS converted_employee_id
+        FROM hr_applications a
+        LEFT JOIN hr_staff_profiles p ON p.application_id = a.id";
 if ($where) $sql .= " WHERE " . implode(" AND ", $where);
-$sql .= " ORDER BY updated_at DESC, id DESC LIMIT 200";
+$sql .= " ORDER BY a.updated_at DESC, a.id DESC LIMIT 200";
 
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
@@ -118,16 +120,31 @@ admin_page_start($pdo, 'HR Applications');
                   </td>
                   <td class="px-3 py-2"><?= h((string)($r['job_slug'] ?: '—')) ?></td>
                   <td class="px-3 py-2">
-                    <span class="inline-flex rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">
-                      <?= h((string)$r['status']) ?>
-                    </span>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="inline-flex rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">
+                        <?= h((string)$r['status']) ?>
+                      </span>
+                      <?php if (!empty($r['converted_employee_id'])): ?>
+                        <span class="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                          Converted
+                        </span>
+                      <?php endif; ?>
+                    </div>
                   </td>
                   <td class="px-3 py-2"><?= h((string)($r['submitted_at'] ?: '—')) ?></td>
                   <td class="px-3 py-2 text-right">
-                    <a class="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold hover:bg-slate-50"
-                       href="<?= h(admin_url('hr-application.php?id=' . (int)$r['id'])) ?>">
-                      View
-                    </a>
+                    <div class="inline-flex items-center gap-2">
+                      <a class="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold hover:bg-slate-50"
+                         href="<?= h(admin_url('hr-application.php?id=' . (int)$r['id'])) ?>">
+                        View
+                      </a>
+                      <?php if (!empty($r['converted_employee_id'])): ?>
+                        <a class="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+                           href="<?= h(admin_url('employee-edit.php?id=' . (int)$r['converted_employee_id'] . '&from_app=' . (int)$r['id'])) ?>">
+                          Staff
+                        </a>
+                      <?php endif; ?>
+                    </div>
                   </td>
                 </tr>
               <?php endforeach; endif; ?>
