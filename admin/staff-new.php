@@ -4,167 +4,165 @@ declare(strict_types=1);
 require_once __DIR__ . '/layout.php';
 admin_require_perm($user, 'manage_staff');
 
-$active = admin_url('employees.php');
+admin_page_start($pdo, 'Add Staff');
+$active = admin_url('staff.php');
+
+function h2(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); }
 
 $errors = [];
 function post_str(string $k): string { return trim((string)($_POST[$k] ?? '')); }
 
+// Ensure table exists (best-effort)
+try {
+  $pdo->exec("CREATE TABLE IF NOT EXISTS hr_staff (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    kiosk_employee_id INT UNSIGNED NULL,
+    application_id INT UNSIGNED NULL,
+    first_name VARCHAR(100) NOT NULL DEFAULT '',
+    last_name VARCHAR(100) NOT NULL DEFAULT '',
+    nickname VARCHAR(100) NULL,
+    email VARCHAR(190) NULL,
+    phone VARCHAR(80) NULL,
+    department_id INT UNSIGNED NULL,
+    team_id INT UNSIGNED NULL,
+    status ENUM('active','inactive','archived') NOT NULL DEFAULT 'active',
+    photo_path VARCHAR(255) NULL,
+    profile_json LONGTEXT NULL,
+    created_by_admin_id INT UNSIGNED NULL,
+    updated_by_admin_id INT UNSIGNED NULL,
+    archived_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_hr_staff_kiosk (kiosk_employee_id),
+    UNIQUE KEY uq_hr_staff_application (application_id),
+    KEY idx_hr_staff_dept (department_id),
+    KEY idx_hr_staff_status (status),
+    KEY idx_hr_staff_updated (updated_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+} catch (Throwable $e) { /* ignore */ }
+
+$depts = $pdo->query("SELECT id, name FROM kiosk_employee_departments ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+$teams = $pdo->query("SELECT id, name FROM kiosk_employee_teams ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+$first = '';
+$last = '';
+$nick = '';
+$email = '';
+$phone = '';
+$dept = 0;
+$team = 0;
+$status = 'active';
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   admin_csrf_verify();
 
-  $employeeCode = post_str('employee_code');
   $first = post_str('first_name');
   $last = post_str('last_name');
   $nick = post_str('nickname');
+  $email = post_str('email');
+  $phone = post_str('phone');
   $dept = (int)($_POST['department_id'] ?? 0);
   $team = (int)($_POST['team_id'] ?? 0);
-  $isAgency = (int)($_POST['is_agency'] ?? 0) ? 1 : 0;
-  $agencyLabel = post_str('agency_label');
-  $isActive = (int)($_POST['is_active'] ?? 1) ? 1 : 0;
+  $status = (string)($_POST['status'] ?? 'active');
 
-  if ($employeeCode === '') $errors[] = 'Employee code is required.';
-  if ($nick === '' && ($first === '' || $last === '')) $errors[] = 'Provide First+Last name or Nickname.';
+  if ($first === '' && $last === '') $errors[] = 'Please enter at least a first name or last name.';
+  if (!in_array($status, ['active','inactive','archived'], true)) $status = 'active';
 
   if (!$errors) {
-    $chk = $pdo->prepare("SELECT id FROM kiosk_employees WHERE employee_code = ? LIMIT 1");
-    $chk->execute([$employeeCode]);
-    if ($chk->fetchColumn()) $errors[] = 'Employee code already exists.';
-  }
-
-  if (!$errors) {
-    $stmt = $pdo->prepare("
-      INSERT INTO kiosk_employees
-        (employee_code, first_name, last_name, nickname, department_id, team_id, is_agency, agency_label, pin_hash, pin_fingerprint, pin_updated_at, archived_at, is_active, created_at, updated_at)
-      VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, NOW(), NOW())
-    ");
-    $stmt->execute([
-      $employeeCode,
-      $first !== '' ? $first : null,
-      $last !== '' ? $last : null,
-      $nick !== '' ? $nick : null,
-      $dept > 0 ? $dept : null,
-      $team > 0 ? $team : null,
-      $isAgency,
-      $isAgency ? ($agencyLabel !== '' ? $agencyLabel : null) : null,
-      $isActive,
-    ]);
-
-    $newId = (int)$pdo->lastInsertId();
-    header('Location: ' . admin_url('employees.php?highlight=' . $newId));
+    $stmt = $pdo->prepare("INSERT INTO hr_staff
+      (first_name,last_name,nickname,email,phone,department_id,team_id,status,created_by_admin_id,updated_by_admin_id)
+      VALUES (?,?,?,?,?,?,?,?,?,?)");
+    $stmt->execute([$first,$last,$nick !== '' ? $nick : null,$email !== '' ? $email : null,$phone !== '' ? $phone : null,
+                    $dept > 0 ? $dept : null,$team > 0 ? $team : null,$status,(int)($user['id'] ?? 0),(int)($user['id'] ?? 0)]);
+    $id = (int)$pdo->lastInsertId();
+    header('Location: ' . admin_url('staff-view.php?id=' . $id));
     exit;
   }
 }
 
-// Departments/Teams in SmartCare Kiosk use `is_active` (there is no `archived_at`).
-$departments = $pdo->query("SELECT id, name FROM kiosk_employee_departments WHERE is_active=1 ORDER BY sort_order ASC, name ASC")
-  ->fetchAll(PDO::FETCH_ASSOC);
-$teams = $pdo->query("SELECT id, name FROM kiosk_employee_teams WHERE is_active=1 ORDER BY sort_order ASC, name ASC")
-  ->fetchAll(PDO::FETCH_ASSOC);
-
-admin_page_start($pdo, 'Add Staff');
 ?>
-<div class="p-6">
-  <div class="max-w-5xl">
-    <div class="grid gap-4 lg:grid-cols-[280px,1fr]">
-      <?php include __DIR__ . '/partials/sidebar.php'; ?>
+<div class="min-h-dvh">
+  <div class="px-4 sm:px-6 pt-6 pb-8">
+    <div class="max-w-7xl mx-auto">
+      <div class="flex flex-col lg:flex-row gap-5">
+        <?php require __DIR__ . '/partials/sidebar.php'; ?>
 
-      <div class="space-y-4">
-        <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <h1 class="text-2xl font-semibold">Add staff</h1>
-              <p class="mt-1 text-sm text-slate-600">Create an employee record for existing staff.</p>
-            </div>
-            <a href="<?= h(admin_url('employees.php')) ?>"
-               class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">← Back</a>
-          </div>
+        <main class="flex-1 min-w-0">
+          <header class="rounded-3xl border border-slate-200 bg-white p-4">
+            <h1 class="text-2xl font-semibold">Add Staff</h1>
+            <p class="mt-1 text-sm text-slate-600">Create the HR staff profile first. Kiosk access (PIN) can be enabled afterwards.</p>
+          </header>
 
           <?php if ($errors): ?>
-            <div class="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
-              <ul class="list-disc pl-5"><?php foreach ($errors as $e): ?><li><?= h($e) ?></li><?php endforeach; ?></ul>
+            <div class="mt-4 rounded-3xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+              <ul class="list-disc pl-5">
+                <?php foreach ($errors as $e): ?><li><?php echo h2($e); ?></li><?php endforeach; ?>
+              </ul>
             </div>
           <?php endif; ?>
 
-          <form method="post" class="mt-5 grid gap-4">
+          <form class="mt-4 rounded-3xl border border-slate-200 bg-white p-4" method="post">
             <?php admin_csrf_field(); ?>
 
-            <div class="grid gap-3 sm:grid-cols-2">
-              <label class="block">
-                <span class="text-xs font-semibold text-slate-600">Employee code *</span>
-                <input name="employee_code" value="<?= h((string)($_POST['employee_code'] ?? '')) ?>"
-                       class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" required>
-              </label>
-
-              <label class="block">
-                <span class="text-xs font-semibold text-slate-600">Status</span>
-                <select name="is_active" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
-                  <option value="1" <?= ((string)($_POST['is_active'] ?? '1') === '1') ? 'selected' : '' ?>>Active</option>
-                  <option value="0" <?= ((string)($_POST['is_active'] ?? '1') === '0') ? 'selected' : '' ?>>Inactive</option>
-                </select>
-              </label>
-
-              <label class="block">
-                <span class="text-xs font-semibold text-slate-600">First name</span>
-                <input name="first_name" value="<?= h((string)($_POST['first_name'] ?? '')) ?>"
-                       class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
-              </label>
-
-              <label class="block">
-                <span class="text-xs font-semibold text-slate-600">Last name</span>
-                <input name="last_name" value="<?= h((string)($_POST['last_name'] ?? '')) ?>"
-                       class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
-              </label>
-
-              <label class="block sm:col-span-2">
-                <span class="text-xs font-semibold text-slate-600">Nickname</span>
-                <input name="nickname" value="<?= h((string)($_POST['nickname'] ?? '')) ?>"
-                       class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
-              </label>
-
-              <label class="block">
-                <span class="text-xs font-semibold text-slate-600">Department</span>
-                <select name="department_id" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
-                  <option value="0">—</option>
-                  <?php foreach ($departments as $d): ?>
-                    <option value="<?= (int)$d['id'] ?>" <?= ((int)($_POST['department_id'] ?? 0) === (int)$d['id']) ? 'selected' : '' ?>><?= h($d['name']) ?></option>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div>
+                <label class="text-sm font-semibold text-slate-700">First name</label>
+                <input name="first_name" value="<?php echo h($first); ?>" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label class="text-sm font-semibold text-slate-700">Last name</label>
+                <input name="last_name" value="<?php echo h($last); ?>" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label class="text-sm font-semibold text-slate-700">Preferred name</label>
+                <input name="nickname" value="<?php echo h($nick); ?>" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label class="text-sm font-semibold text-slate-700">Status</label>
+                <select name="status" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                  <?php foreach (['active'=>'Active','inactive'=>'Inactive','archived'=>'Archived'] as $k=>$lbl): ?>
+                    <option value="<?php echo h($k); ?>"<?php echo ($status===$k)?' selected':''; ?>><?php echo h2($lbl); ?></option>
                   <?php endforeach; ?>
                 </select>
-              </label>
+              </div>
 
-              <label class="block">
-                <span class="text-xs font-semibold text-slate-600">Team</span>
-                <select name="team_id" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+              <div>
+                <label class="text-sm font-semibold text-slate-700">Email</label>
+                <input name="email" value="<?php echo h($email); ?>" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label class="text-sm font-semibold text-slate-700">Phone</label>
+                <input name="phone" value="<?php echo h($phone); ?>" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" />
+              </div>
+
+              <div>
+                <label class="text-sm font-semibold text-slate-700">Department</label>
+                <select name="department_id" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                  <option value="0">—</option>
+                  <?php foreach ($depts as $d): ?>
+                    <option value="<?php echo (int)$d['id']; ?>"<?php echo ($dept===(int)$d['id'])?' selected':''; ?>><?php echo h2((string)$d['name']); ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+
+              <div>
+                <label class="text-sm font-semibold text-slate-700">Team</label>
+                <select name="team_id" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
                   <option value="0">—</option>
                   <?php foreach ($teams as $t): ?>
-                    <option value="<?= (int)$t['id'] ?>" <?= ((int)($_POST['team_id'] ?? 0) === (int)$t['id']) ? 'selected' : '' ?>><?= h($t['name']) ?></option>
+                    <option value="<?php echo (int)$t['id']; ?>"<?php echo ($team===(int)$t['id'])?' selected':''; ?>><?php echo h2((string)$t['name']); ?></option>
                   <?php endforeach; ?>
                 </select>
-              </label>
-
-              <label class="block">
-                <span class="text-xs font-semibold text-slate-600">Employment type</span>
-                <select name="is_agency" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
-                  <option value="0" <?= ((string)($_POST['is_agency'] ?? '0') === '0') ? 'selected' : '' ?>>Permanent / Direct</option>
-                  <option value="1" <?= ((string)($_POST['is_agency'] ?? '0') === '1') ? 'selected' : '' ?>>Agency</option>
-                </select>
-              </label>
-
-              <label class="block">
-                <span class="text-xs font-semibold text-slate-600">Agency label</span>
-                <input name="agency_label" value="<?= h((string)($_POST['agency_label'] ?? '')) ?>"
-                       class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
-              </label>
+              </div>
             </div>
 
-            <div class="flex items-center gap-2">
-              <button type="submit" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">Create staff</button>
-              <span class="text-xs text-slate-500">PIN can be set later.</span>
+            <div class="mt-4 flex gap-2">
+              <button class="rounded-2xl px-4 py-2 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800" type="submit">Create staff</button>
+              <a class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50" href="<?php echo h(admin_url('staff.php')); ?>">Cancel</a>
             </div>
           </form>
-        </div>
+        </main>
       </div>
-
     </div>
   </div>
 </div>

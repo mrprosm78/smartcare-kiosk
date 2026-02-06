@@ -703,7 +703,55 @@ function create_tables(PDO $pdo): void {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   ");
 
-  // HR → STAFF PROFILES
+  
+  // HR STAFF (authoritative staff profiles)
+  // - Separate from kiosk_employees (kiosk identities / PINs)
+  // - Links to kiosk_employees via kiosk_employee_id when kiosk access is enabled.
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS hr_staff (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      kiosk_employee_id INT UNSIGNED NULL,
+      application_id INT UNSIGNED NULL,
+      first_name VARCHAR(100) NOT NULL DEFAULT '',
+      last_name VARCHAR(100) NOT NULL DEFAULT '',
+      nickname VARCHAR(100) NULL,
+      email VARCHAR(190) NULL,
+      phone VARCHAR(80) NULL,
+      department_id INT UNSIGNED NULL,
+      team_id INT UNSIGNED NULL,
+      status ENUM('active','inactive','archived') NOT NULL DEFAULT 'active',
+      photo_path VARCHAR(255) NULL,
+      profile_json LONGTEXT NULL,
+      created_by_admin_id INT UNSIGNED NULL,
+      updated_by_admin_id INT UNSIGNED NULL,
+      archived_at DATETIME NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_hr_staff_kiosk (kiosk_employee_id),
+      UNIQUE KEY uq_hr_staff_application (application_id),
+      KEY idx_hr_staff_dept (department_id),
+      KEY idx_hr_staff_status (status),
+      KEY idx_hr_staff_updated (updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  ");
+
+  // STAFF CONTRACTS (linked to hr_staff, supports effective dating/history)
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS staff_contracts (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      staff_id INT UNSIGNED NOT NULL,
+      effective_from DATE NOT NULL,
+      effective_to DATE NULL,
+      contract_json LONGTEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      KEY idx_staff_contracts_staff (staff_id),
+      KEY idx_staff_contracts_effective (effective_from, effective_to)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  ");
+
+
+// HR → STAFF PROFILES
   // - Keeps applicants (hr_applications) and staff (kiosk_employees) separate.
   // - When an applicant is hired, we convert/copy their application payload into this table.
   // - Staff HR details can then be viewed/edited without changing the original application.

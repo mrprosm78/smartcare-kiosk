@@ -26,7 +26,7 @@ function admin_nav_child_item(string $href, string $label, string $active): stri
 
 $coreItems = [];
 $coreItems[] = ['href' => admin_url('index.php'), 'label' => 'Dashboard', 'perm' => 'view_dashboard'];
-$coreItems[] = ['href' => admin_url('employees.php'), 'label' => 'Employees', 'perm' => 'view_employees'];
+$coreItems[] = ['href' => admin_url('kiosk-ids.php'), 'label' => 'Kiosk IDs', 'perm' => 'view_employees'];
 $coreItems[] = ['href' => admin_url('punch-details.php'), 'label' => 'Punch Details', 'perm' => 'view_punches'];
 $coreItems[] = ['href' => admin_url('shifts.php'), 'label' => 'Shift Grid', 'perm' => 'view_shifts'];
 $coreItems[] = ['href' => admin_url('shift-editor.php'), 'label' => 'Review & Approvals', 'perm' => 'approve_shifts'];
@@ -34,6 +34,7 @@ $coreItems[] = ['href' => admin_url('payroll-calendar-employee.php'), 'label' =>
 
 $hrItems = [];
 $hrItems[] = ['href' => admin_url('hr-applications.php'), 'label' => 'Applications', 'perm' => 'view_hr_applications'];
+$hrItems[] = ['href' => admin_url('staff.php'), 'label' => 'Staff', 'perm' => 'manage_staff'];
 $hrItems[] = ['href' => admin_url('staff-new.php'), 'label' => 'Add Staff', 'perm' => 'manage_staff'];
 $hrItems[] = ['href' => app_url('careers/'), 'label' => 'Careers (Public)', 'perm' => 'view_dashboard'];
 
