@@ -627,8 +627,17 @@ if (!function_exists('sc_brand')) {
             return $brand;
         }
 
-        $file = __DIR__ . '/brand.php';
-        $brand = is_file($file) ? require $file : [];
+        // Branding override order:
+        // 1) brand.local.php (per-install / per-care-home override; not meant to be committed)
+        // 2) brand.php (default branding shipped with the app)
+        $fileLocal = __DIR__ . '/brand.local.php';
+        $fileDefault = __DIR__ . '/brand.php';
+
+        if (is_file($fileLocal)) {
+            $brand = require $fileLocal;
+        } else {
+            $brand = is_file($fileDefault) ? require $fileDefault : [];
+        }
 
         return is_array($brand) ? $brand : [];
     }

@@ -11,18 +11,23 @@ require_once __DIR__ . '/helpers.php';
 
 // These come from apply.php (fallbacks only)
 $step         = $step         ?? 1;
-$totalSteps   = $totalSteps   ?? 8;
+$totalSteps   = $totalSteps   ?? 6;
 $currentView  = $currentView  ?? null;
 $currentTitle = $currentTitle ?? 'Application';
 $token        = $token        ?? '';
 $jobSlug      = $jobSlug      ?? '';
 
 // Build a base-path safe form action URL (token + step always present)
-$formAction = sc_careers_url('apply.php?' . http_build_query([
+$qs = [
   'token' => $token,
-  'job'   => $jobSlug,
   'step'  => $step,
-]));
+];
+if ($jobSlug !== '') {
+  // Optional reporting-only param
+  $qs['job'] = $jobSlug;
+}
+
+$formAction = sc_careers_url('apply.php?' . http_build_query($qs));
 
 // Pull brand config (Option A)
 $brand = function_exists('sc_brand')

@@ -348,10 +348,22 @@ Each care home has its own config:
 
 ### Public Careers (no login)
 - Entry point: `/careers/` (jobs list) and `/careers/apply.php`
-- 8‑step wizard (steps 1–8) with `job=...` support
+- **6-step** public application wizard (Step 1 is a merged page)
+- The application is **not job-specific**. If you pass `?job=...`, it is stored for reporting only.
 - Token‑based persistence: if no `token` is present, the system creates a draft `hr_applications` row and redirects with `token=...`
 - Each step saves into `hr_applications.payload_json`
-- Step 8 marks the application as **submitted** (`status='submitted'`, sets `submitted_at`)
+- Step 6 marks the application as **submitted** (`status='submitted'`, sets `submitted_at`)
+
+### Careers Branding (configurable)
+Careers branding is driven by:
+- Default file: `careers/includes/brand.php`
+- Override file: `careers/includes/brand.local.php` (recommended)
+
+To customise branding per care home:
+1. Copy `careers/includes/brand.local.example.php` to `careers/includes/brand.local.php`
+2. Edit organisation name, logo, contact details, and UI settings.
+
+This keeps upgrades safe because `brand.local.php` overrides the shipped defaults.
 
 ### Admin HR Review (login required)
 - Admin list + detail pages show the submitted answers (read‑only)

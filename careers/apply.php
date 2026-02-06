@@ -20,15 +20,10 @@ if (!function_exists('h')) {
   }
 }
 
-// Preserve job slug with validation
+// Optional job slug (kept for future multi-role journeys), but the application is NOT job-specific.
+// If present, we store it in hr_applications.job_slug for reporting only.
 $jobSlug = isset($_GET['job']) ? (string)$_GET['job'] : '';
 $jobSlug = preg_replace('/[^a-z0-9\-]/', '', strtolower($jobSlug));
-
-// Validate allowed job slugs (edit this list as you add jobs)
-$allowedJobs = ['care-assistant', 'senior-carer'];
-if ($jobSlug !== '' && !in_array($jobSlug, $allowedJobs, true)) {
-  $jobSlug = '';
-}
 
 // Steps configuration
 $totalSteps = 6;
