@@ -10,31 +10,85 @@ $status = strtolower(trim((string)($_GET['status'] ?? '')));
 $job    = trim((string)($_GET['job'] ?? ''));
 $q      = trim((string)($_GET['q'] ?? ''));
 
+// Extra filters
+$converted = strtolower(trim((string)($_GET['converted'] ?? ''))); // '', 'yes', 'no'
+$from = trim((string)($_GET['from'] ?? '')); // YYYY-MM-DD
+$to   = trim((string)($_GET['to'] ?? ''));   // YYYY-MM-DD
+
+/** Check if a column exists (safe across installs). */
+function sc_col_exists(PDO $pdo, string $table, string $col): bool {
+  try {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?");
+    $stmt->execute([$table, $col]);
+    return (int)$stmt->fetchColumn() > 0;
+  } catch (Throwable $e) {
+    return false;
+  }
+}
+
+$hasHiredEmployeeId = sc_col_exists($pdo, 'hr_applications', 'hired_employee_id');
+$hasSubmittedAt     = sc_col_exists($pdo, 'hr_applications', 'submitted_at');
+$hasCreatedAt       = sc_col_exists($pdo, 'hr_applications', 'created_at');
+
+// Choose best date column for filtering
+$dateCol = $hasSubmittedAt ? 'submitted_at' : ($hasCreatedAt ? 'created_at' : '');
+
 $params = [];
 $where = [];
 
 if ($status !== '' && in_array($status, ['draft','submitted','reviewing','rejected','hired','archived'], true)) {
-  $where[] = "a.status = ?";
+  $where[] = "status = ?";
   $params[] = $status;
 }
 if ($job !== '') {
-  $where[] = "a.job_slug = ?";
+  $where[] = "job_slug = ?";
   $params[] = $job;
 }
 if ($q !== '') {
-  $where[] = "(a.applicant_name LIKE ? OR a.email LIKE ? OR a.phone LIKE ? OR a.public_token LIKE ?)";
+  $where[] = "(applicant_name LIKE ? OR email LIKE ? OR phone LIKE ? OR public_token LIKE ?)";
   $params[] = "%$q%";
   $params[] = "%$q%";
   $params[] = "%$q%";
   $params[] = "%$q%";
 }
 
-$sql = "SELECT a.id, a.status, a.job_slug, a.applicant_name, a.email, a.phone, a.submitted_at, a.updated_at,
-               p.employee_id AS converted_employee_id
-        FROM hr_applications a
-        LEFT JOIN hr_staff_profiles p ON p.application_id = a.id";
+// Converted filter
+if ($converted === 'yes') {
+  if ($hasHiredEmployeeId) {
+    $where[] = "hired_employee_id IS NOT NULL";
+  } else {
+    $where[] = "status = 'hired'";
+  }
+} elseif ($converted === 'no') {
+  if ($hasHiredEmployeeId) {
+    $where[] = "hired_employee_id IS NULL";
+  } else {
+    $where[] = "status <> 'hired'";
+  }
+}
+
+// Date range filter (inclusive)
+if ($dateCol !== '') {
+  if ($from !== '') {
+    $where[] = "$dateCol >= ?";
+    $params[] = $from . ' 00:00:00';
+  }
+  if ($to !== '') {
+    $where[] = "$dateCol <= ?";
+    $params[] = $to . ' 23:59:59';
+  }
+}
+
+$sql = "SELECT id, status, job_slug, applicant_name, email, phone, submitted_at, updated_at";
+if ($hasHiredEmployeeId) {
+  $sql .= ", hired_employee_id";
+}
+if ($hasCreatedAt) {
+  $sql .= ", created_at";
+}
+$sql .= "\n        FROM hr_applications";
 if ($where) $sql .= " WHERE " . implode(" AND ", $where);
-$sql .= " ORDER BY a.updated_at DESC, a.id DESC LIMIT 200";
+$sql .= " ORDER BY updated_at DESC, id DESC LIMIT 200";
 
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
@@ -44,6 +98,19 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $jobs = $pdo->query("SELECT DISTINCT job_slug FROM hr_applications WHERE job_slug <> '' ORDER BY job_slug ASC")->fetchAll(PDO::FETCH_COLUMN);
 
 admin_page_start($pdo, 'HR Applications');
+
+function sc_status_badge(string $status): array {
+  $s = strtolower(trim($status));
+  return match ($s) {
+    'submitted' => ['bg' => 'bg-blue-50',   'bd' => 'border-blue-200',  'tx' => 'text-blue-700'],
+    'reviewing' => ['bg' => 'bg-amber-50',  'bd' => 'border-amber-200', 'tx' => 'text-amber-700'],
+    'hired'     => ['bg' => 'bg-green-50',  'bd' => 'border-green-200', 'tx' => 'text-green-700'],
+    'rejected'  => ['bg' => 'bg-red-50',    'bd' => 'border-red-200',   'tx' => 'text-red-700'],
+    'draft'     => ['bg' => 'bg-slate-50',  'bd' => 'border-slate-200', 'tx' => 'text-slate-600'],
+    'archived'  => ['bg' => 'bg-slate-50',  'bd' => 'border-slate-200', 'tx' => 'text-slate-500'],
+    default     => ['bg' => 'bg-white',     'bd' => 'border-slate-200', 'tx' => 'text-slate-700'],
+  };
+}
 ?>
 <div class="p-6">
   <div class="max-w-7xl">
@@ -65,7 +132,7 @@ admin_page_start($pdo, 'HR Applications');
             <?php endif; ?>
           </div>
 
-          <form method="get" class="mt-4 grid gap-3 sm:grid-cols-4">
+          <form method="get" class="mt-4 grid gap-3 sm:grid-cols-6">
             <label class="block">
               <span class="text-xs font-semibold text-slate-600">Status</span>
               <select name="status" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
@@ -91,6 +158,38 @@ admin_page_start($pdo, 'HR Applications');
               <input name="q" value="<?= h($q) ?>" placeholder="Name, email, phone, token…"
                      class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
             </label>
+
+            <label class="block">
+              <span class="text-xs font-semibold text-slate-600">Converted</span>
+              <select name="converted" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                <option value="" <?= $converted === '' ? 'selected' : '' ?>>All</option>
+                <option value="yes" <?= $converted === 'yes' ? 'selected' : '' ?>>Yes</option>
+                <option value="no"  <?= $converted === 'no' ? 'selected' : '' ?>>No</option>
+              </select>
+            </label>
+
+            <label class="block">
+              <span class="text-xs font-semibold text-slate-600">From</span>
+              <input type="date" name="from" value="<?= h($from) ?>"
+                     class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+            </label>
+
+            <label class="block">
+              <span class="text-xs font-semibold text-slate-600">To</span>
+              <input type="date" name="to" value="<?= h($to) ?>"
+                     class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+            </label>
+
+            <div class="flex items-end gap-2 sm:col-span-6">
+              <button type="submit"
+                      class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
+                Apply
+              </button>
+              <a href="<?= h(admin_url('hr-applications.php')) ?>"
+                 class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50">
+                Clear
+              </a>
+            </div>
           </form>
         </div>
 
@@ -104,12 +203,13 @@ admin_page_start($pdo, 'HR Applications');
                 <th class="px-3 py-2 text-left">Job</th>
                 <th class="px-3 py-2 text-left">Status</th>
                 <th class="px-3 py-2 text-left">Submitted</th>
+                <th class="px-3 py-2 text-left">Updated</th>
                 <th class="px-3 py-2 text-right">Action</th>
               </tr>
             </thead>
             <tbody>
               <?php if (!$rows): ?>
-                <tr><td colspan="7" class="px-3 py-6 text-center text-slate-500">No applications found.</td></tr>
+                <tr><td colspan="8" class="px-3 py-6 text-center text-slate-500">No applications found.</td></tr>
               <?php else: foreach ($rows as $r): ?>
                 <tr class="border-t border-slate-100">
                   <td class="px-3 py-2 font-semibold text-slate-900">#<?= (int)$r['id'] ?></td>
@@ -120,31 +220,31 @@ admin_page_start($pdo, 'HR Applications');
                   </td>
                   <td class="px-3 py-2"><?= h((string)($r['job_slug'] ?: '—')) ?></td>
                   <td class="px-3 py-2">
-                    <div class="flex flex-wrap items-center gap-2">
-                      <span class="inline-flex rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">
-                        <?= h((string)$r['status']) ?>
+                    <?php
+                      $st = (string)($r['status'] ?? '');
+                      $b = sc_status_badge($st);
+                      $isConverted = $hasHiredEmployeeId
+                        ? !empty($r['hired_employee_id'])
+                        : (strtolower($st) === 'hired');
+                    ?>
+                    <div class="flex flex-wrap items-center gap-1">
+                      <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold <?= h($b['bd']) ?> <?= h($b['bg']) ?> <?= h($b['tx']) ?>">
+                        <?= h($st) ?>
                       </span>
-                      <?php if (!empty($r['converted_employee_id'])): ?>
-                        <span class="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                      <?php if ($isConverted): ?>
+                        <span class="inline-flex rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600">
                           Converted
                         </span>
                       <?php endif; ?>
                     </div>
                   </td>
                   <td class="px-3 py-2"><?= h((string)($r['submitted_at'] ?: '—')) ?></td>
+                  <td class="px-3 py-2"><?= h((string)($r['updated_at'] ?: '—')) ?></td>
                   <td class="px-3 py-2 text-right">
-                    <div class="inline-flex items-center gap-2">
-                      <a class="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold hover:bg-slate-50"
-                         href="<?= h(admin_url('hr-application.php?id=' . (int)$r['id'])) ?>">
-                        View
-                      </a>
-                      <?php if (!empty($r['converted_employee_id'])): ?>
-                        <a class="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
-                           href="<?= h(admin_url('employee-edit.php?id=' . (int)$r['converted_employee_id'] . '&from_app=' . (int)$r['id'])) ?>">
-                          Staff
-                        </a>
-                      <?php endif; ?>
-                    </div>
+                    <a class="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold hover:bg-slate-50"
+                       href="<?= h(admin_url('hr-application.php?id=' . (int)$r['id'])) ?>">
+                      View
+                    </a>
                   </td>
                 </tr>
               <?php endforeach; endif; ?>

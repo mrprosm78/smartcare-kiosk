@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if (!$errors) {
     $stmt = $pdo->prepare("
       INSERT INTO kiosk_employees
-        (employee_code, first_name, last_name, nickname, category_id, team_id, is_agency, agency_label, pin_hash, pin_fingerprint, pin_updated_at, archived_at, is_active, created_at, updated_at)
+        (employee_code, first_name, last_name, nickname, department_id, team_id, is_agency, agency_label, pin_hash, pin_fingerprint, pin_updated_at, archived_at, is_active, created_at, updated_at)
       VALUES
         (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, NOW(), NOW())
     ");
