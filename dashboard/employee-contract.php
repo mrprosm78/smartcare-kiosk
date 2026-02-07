@@ -148,14 +148,11 @@ $title = 'Employee Contract - ' . admin_employee_display_name($employee);
 admin_page_start($pdo, $title);
 ?>
 
-<div class="min-h-dvh">
-  <div class="px-4 sm:px-6 pt-6 pb-10">
-    <div class="w-full">
-      <div class="flex flex-col lg:flex-row gap-5">
+<div class="min-h-dvh flex flex-col lg:flex-row">
 
         <?php require __DIR__ . '/partials/sidebar.php'; ?>
 
-        <main class="flex-1 min-w-0">
+        <main class="flex-1 min-w-0 px-4 sm:px-6 pt-6 pb-10">
 
           <div class="flex items-start justify-between gap-4 flex-wrap">
             <div>
@@ -239,9 +236,7 @@ admin_page_start($pdo, $title);
           </form>
 
         </main>
-      </div>
-    </div>
-  </div>
+</div>
 </div>
 
 <?php admin_page_end(); ?>

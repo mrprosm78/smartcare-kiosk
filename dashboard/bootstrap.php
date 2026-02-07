@@ -148,7 +148,7 @@ function kiosk_url(string $path = ''): string {
 
 function admin_asset_css(PDO $pdo): string {
   $v = (string)setting($pdo, 'admin_ui_version', (string)setting($pdo, 'ui_version', '1'));
-  return app_url('assets/kiosk.css') . '?v=' . rawurlencode($v);
+  return app_url('assets/app.css') . '?v=' . rawurlencode($v);
 }
 
 

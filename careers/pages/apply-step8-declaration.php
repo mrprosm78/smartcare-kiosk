@@ -136,7 +136,7 @@ $today = date('Y-m-d');
 
         <button
             type="submit"
-            class="inline-flex items-center rounded-md bg-sc-primary px-4 py-2 text-[11px] font-medium text-white hover:bg-blue-600"
+            class="inline-flex items-center rounded-md bg-sc-primary px-4 py-2 text-[11px] font-medium text-white hover:bg-sc-primary-hover"
         >
             Submit application
         </button>

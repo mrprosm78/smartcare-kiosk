@@ -161,13 +161,10 @@ admin_page_start($pdo, 'Settings');
 
 ?>
 
-<div class="min-h-dvh">
-  <div class="px-4 sm:px-6 pt-6 pb-10">
-    <div class="max-w-6xl mx-auto">
-      <div class="flex flex-col lg:flex-row gap-5">
-        <?php require __DIR__ . '/partials/sidebar.php'; ?>
+<div class="min-h-dvh flex flex-col lg:flex-row">
+  <?php require __DIR__ . '/partials/sidebar.php'; ?>
 
-        <main class="flex-1">
+  <main class="flex-1 px-4 sm:px-6 pt-6 pb-10">
           <header class="rounded-3xl border border-slate-200 bg-white p-5">
             <h1 class="text-2xl font-semibold">Settings</h1>
             <p class="mt-2 text-sm text-slate-600">
@@ -360,9 +357,6 @@ admin_page_start($pdo, 'Settings');
             </div>
           </form>
         </main>
-      </div>
-    </div>
-  </div>
 </div>
 
 <?php admin_page_end(); ?>

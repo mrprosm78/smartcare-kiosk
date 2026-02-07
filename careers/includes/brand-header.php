@@ -20,7 +20,8 @@ $orgLocation = $brand['org']['location'] ?? 'United Kingdom';
 $orgPhone = $brand['org']['phone'] ?? '';
 $orgEmail = $brand['org']['email'] ?? '';
 
-// Logo: image first, text fallback
+// Logo: image first, default SmartCare mark fallback.
+// Note: avoid external URLs in shipped configs; prefer sc_asset_url(...) for local assets.
 $logoUrl  = $brand['org']['logo']['url'] ?? '';
 $logoAlt  = $brand['org']['logo']['alt'] ?? $orgName;
 $logoText = $brand['org']['logo_text'] ?? '';
@@ -48,7 +49,11 @@ $mainName = $orgName ?: $productName;
                         loading="lazy"
                     >
                 <?php else: ?>
-                    <span class="text-[12px] font-bold text-sc-primary"><?= sc_e($logoText); ?></span>
+                    <!-- Default mark (used unless a custom logo is provided) -->
+                    <svg viewBox="0 0 24 24" class="h-4 w-4 text-sc-primary" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M12 2l7 4v6c0 5-3 9-7 10-4-1-7-5-7-10V6l7-4z"/>
+                        <path d="M9 12l2 2 4-4"/>
+                    </svg>
                 <?php endif; ?>
             </div>
 

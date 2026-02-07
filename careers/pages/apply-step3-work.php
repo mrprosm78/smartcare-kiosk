@@ -300,7 +300,7 @@ $months = [
 
     <button
       type="submit"
-      class="inline-flex items-center rounded-md bg-sc-primary px-3 py-2 text-[11px] font-medium text-white hover:bg-blue-600"
+      class="inline-flex items-center rounded-md bg-sc-primary px-3 py-2 text-[11px] font-medium text-white hover:bg-sc-primary-hover"
     >
       Save & continue to education →
     </button>

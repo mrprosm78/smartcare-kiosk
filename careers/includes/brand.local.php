@@ -26,14 +26,17 @@ return [
         'location'    => 'United Kingdom',
 
         // Logo + favicon (image-first, text fallback)
+        // Provide a local logo if you have one (recommended): sc_asset_url('brand/logo.svg')
+        // If left empty, the UI will show the default SmartCare mark.
         'logo' => [
-            'url' => 'https://zapsite.co.uk/smartcare-ui/public/assets/logo.svg',
+            'url' => '',
             'alt' => 'Care Home',
         ],
-        'logo_text' => 'W',
+        'logo_text' => '',
 
+        // Optional custom favicon (local recommended). If empty, browser uses default.
         'favicon' => [
-            'url' => 'https://zapsite.co.uk/smartcare-ui/public/assets/favicon.ico',
+            'url' => '',
         ],
 
         'phone'   => '01234 567890',

@@ -53,6 +53,34 @@ These are intentional and must not be violated.
 - Not all staff are users
 - Not all users are staff
 
+**Portal rule (LOCKED):**
+- Admin operator roles (**superadmin**, **manager**, **payroll**) use **`/dashboard`** only.
+- Staff user accounts use a separate portal: **`/staff-portal`**.
+- Staff must never be "squeezed" into the admin dashboard via UI hiding; the separation is intentional to reduce permission complexity.
+
+Routing behaviour (authoritative):
+
+```
+IF user.role ∈ {superadmin, manager, payroll}
+  → /dashboard
+ELSE IF user.role == staff
+  → /staff-portal
+ELSE
+  → access denied
+```
+
+### Dashboard sidebar organisation (current)
+
+The `/dashboard` sidebar is organised as **modules first** (clean + scalable). Current order:
+
+1. **Dashboard**
+2. **HR** → Applicants, Staff
+3. **Rota** (placeholder)
+4. **Timesheets** → Approvals
+5. **Payroll** → Shift Grid, Payroll Monthly Report
+6. **Kiosk** → Kiosk IDs, Punch Details
+7. Other operational links (temporary) and **Settings** at the bottom
+
 ---
 
 ## 3. HR / Careers Flow (Implemented)
@@ -166,9 +194,22 @@ This allows:
 - `/name_kiosk/` → Main care‑home system
 - `/name_kiosk/kiosk/` → Kiosk app
 - `/name_kiosk/dashboard/` → Admin / backoffice
-- `/dashboard` → Redirect stub only
+- `/name_kiosk/staff-portal/` → Staff self‑service portal (separate from admin)
+- `/name_kiosk/admin/` → Legacy stub (redirects → `/dashboard`)
 
-### 6.2 Config‑Driven Paths
+### 6.2 Dashboard navigation (current)
+
+The admin dashboard sidebar is intentionally structured to match delivery phases:
+
+1. **HR**
+   - Applicants
+   - Staff
+2. **Rota** (placeholder)
+3. **Timesheets** (placeholder)
+4. **Payroll**
+5. Existing operational links below (kept minimal; reorganised later)
+
+### 6.3 Config‑Driven Paths
 
 Defined in private config:
 

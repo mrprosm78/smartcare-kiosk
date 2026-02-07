@@ -169,13 +169,10 @@ admin_page_start($pdo, $isNew ? 'Add Employee' : 'Edit Employee');
 
 ?>
 
-<div class="min-h-dvh">
-  <div class="px-4 sm:px-6 pt-6 pb-8">
-    <div class="max-w-6xl mx-auto">
-      <div class="flex flex-col lg:flex-row gap-5">
-        <?php require __DIR__ . '/partials/sidebar.php'; ?>
+<div class="min-h-dvh flex flex-col lg:flex-row">
+  <?php require __DIR__ . '/partials/sidebar.php'; ?>
 
-        <main class="flex-1">
+  <main class="flex-1 px-4 sm:px-6 pt-6 pb-8">
           <header class="rounded-3xl border border-slate-200 bg-white p-5">
             <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
               <div>
@@ -295,9 +292,6 @@ admin_page_start($pdo, $isNew ? 'Add Employee' : 'Edit Employee');
           </form>
 
         </main>
-      </div>
-    </div>
-  </div>
 </div>
 
 <?php admin_page_end(); ?>

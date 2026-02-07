@@ -598,7 +598,10 @@ function seed_admin_users(PDO $pdo): void {
   }
 }
 
-
+/**
+ * PART C — Schema (tables)
+ */
+function create_tables(PDO $pdo): void {
 
   // SETTINGS
   $pdo->exec("

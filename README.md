@@ -42,6 +42,14 @@ Any change that violates `ARCHITECTURE.md` is **almost certainly wrong**.
 
 ## High‑Level System Areas
 
+### Portals (Locked)
+
+SmartCare is intentionally split into separate portals to keep permissions simple and reduce security risk:
+
+- **Kiosk** (`/kiosk`) — shared device clock‑in/clock‑out only
+- **Dashboard** (`/dashboard`) — operator roles only (**superadmin**, **manager**, **payroll**)
+- **Staff Portal** (`/staff-portal`) — staff self‑service (separate UI; staff users never use `/dashboard`)
+
 ### Careers & HR Applications
 - Public careers page
 - Generic job application flow
@@ -57,6 +65,20 @@ Any change that violates `ARCHITECTURE.md` is **almost certainly wrong**.
 - Separate public kiosk app
 - Minimal attack surface
 - PIN‑based clocking only
+
+---
+
+## Dashboard Navigation (Current)
+
+The dashboard sidebar is organised as **modules first** (clean + scalable):
+
+1. **Dashboard**
+2. **HR** → Applicants, Staff
+3. **Rota** (placeholder)
+4. **Timesheets** → Approvals
+5. **Payroll** → Shift Grid, Payroll Monthly Report
+6. **Kiosk** → Kiosk IDs, Punch Details
+7. Other operational links (temporary) and **Settings** at the bottom
 
 ### Future Modules
 - Rota (planned shifts)

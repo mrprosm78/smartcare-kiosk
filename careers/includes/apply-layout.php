@@ -46,7 +46,7 @@ $brandSubtitle = $brand['org']['portal_name'] ?? 'Careers portal';
 // Right-side header actions
 $brandRightHtml = '
   <div class="flex items-center gap-2">
-    <a href="' . sc_e(sc_careers_url()) . '" class="text-[11px] text-sc-primary hover:text-blue-700">← All jobs</a>
+    <a href="' . sc_e(sc_careers_url()) . '" class="text-[11px] text-sc-primary hover:text-sc-primary">← All jobs</a>
     <span class="text-slate-300">·</span>
     <a href="' . sc_e(sc_app_url('admin/')) . '" class="inline-flex items-center rounded-md border border-sc-border bg-white px-2.5 py-1.5 text-[11px] font-medium hover:bg-slate-50">
       Manager sign in
@@ -72,7 +72,7 @@ $pageMetaRightHtml = '
   <meta charset="UTF-8">
   <title><?= sc_e($title); ?></title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="<?= sc_asset_url('kiosk.css'); ?>">
+  <link rel="stylesheet" href="<?= sc_asset_url('app.css'); ?>">
   <link rel="icon" href="<?= sc_asset_url('careers/favicon.ico'); ?>" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="<?= sc_asset_url('careers/icon.png'); ?>">
   <link rel="icon" type="image/png" sizes="16x16" href="<?= sc_asset_url('careers/icon.png'); ?>">
@@ -121,7 +121,7 @@ $pageMetaRightHtml = '
               <a href="<?= sc_careers_url(); ?>" class="inline-flex items-center rounded-md border border-sc-border bg-white px-3 py-2 text-[11px] font-medium text-sc-text-muted hover:bg-slate-50">
                 Back to jobs
               </a>
-              <a href="<?= sc_app_url('admin/'); ?>" class="inline-flex items-center rounded-md bg-sc-primary px-3 py-2 text-[11px] font-medium text-white hover:bg-blue-600">
+              <a href="<?= sc_app_url('admin/'); ?>" class="inline-flex items-center rounded-md bg-sc-primary px-3 py-2 text-[11px] font-medium text-white hover:bg-sc-primary-hover">
                 Manager sign in
               </a>
             </div>

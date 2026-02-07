@@ -149,12 +149,10 @@ if ($empName === '') $empName = 'Employee #' . (int)$employeeId;
 
 admin_page_start($pdo, 'Staff HR Profile');
 ?>
-<div class="p-6">
-  <div class="max-w-7xl">
-    <div class="grid gap-4 lg:grid-cols-[280px,1fr]">
-      <?php include __DIR__ . '/partials/sidebar.php'; ?>
-
-      <div class="space-y-4">
+<div class="min-h-dvh flex">
+  <?php include __DIR__ . '/partials/sidebar.php'; ?>
+  <main class="flex-1 p-8">
+    <div class="space-y-4">
         <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div class="flex items-start justify-between gap-3">
             <div>
@@ -392,9 +390,8 @@ admin_page_start($pdo, 'Staff HR Profile');
             </div>
           </form>
         </div>
-      </div>
     </div>
-  </div>
+  </main>
 </div>
 
 <script>

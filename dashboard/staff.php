@@ -76,11 +76,10 @@ $stmt->execute($params);
 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 ?>
-<div class="min-h-dvh">
-  <div class="px-4 sm:px-6 pt-6 pb-8">
-    <div class="max-w-7xl mx-auto">
-      <div class="flex flex-col lg:flex-row gap-5">
-        <?php require __DIR__ . '/partials/sidebar.php'; ?>
+<div class="min-h-dvh flex flex-col lg:flex-row">
+  <?php require __DIR__ . '/partials/sidebar.php'; ?>
+
+  <main class="flex-1 px-4 sm:px-6 pt-6 pb-8">
 
         <main class="flex-1 min-w-0">
           <header class="rounded-3xl border border-slate-200 bg-white p-4">
@@ -187,8 +186,5 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
           </div>
 
         </main>
-      </div>
-    </div>
-  </div>
 </div>
 <?php admin_page_end(); ?>
