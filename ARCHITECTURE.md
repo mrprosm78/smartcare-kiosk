@@ -81,6 +81,26 @@ The `/dashboard` sidebar is organised as **modules first** (clean + scalable). C
 6. **Kiosk** → Kiosk IDs, Punch Details
 7. Other operational links (temporary) and **Settings** at the bottom
 
+### Dashboard UI reference (LOCKED)
+
+The dashboard UI must follow the styling and layout patterns from `smartcare-ui.zip`.
+
+**Design tokens (reference):**
+- `sc-primary`: **#2563EB**
+- `sc-accent`: **#7C3AED**
+- `sc-bg`: **#F3F4F6**
+- `sc-panel`: **#FFFFFF**
+- `sc-border`: **#E5E7EB**
+- `sc-sidebar`: **#0F172A**
+- `muted`: **#6B7280**
+
+**Layout contract:** fixed sidebar + top header; sidebar nav area and main content area must be scrollable (viewport-height layout).
+
+**Sidebar UX contract:**
+- Two-level navigation with **+ / −** expanders
+- Submenus open/close only when the user clicks **+ / −** (no auto open/close)
+- Clear active state on the current page (highlight + pointer/arrow indicator)
+
 ---
 
 ## 3. HR / Careers Flow (Implemented)
@@ -199,15 +219,15 @@ This allows:
 
 ### 6.2 Dashboard navigation (current)
 
-The admin dashboard sidebar is intentionally structured to match delivery phases:
+The admin dashboard sidebar is organised **modules first** (locked order):
 
-1. **HR**
-   - Applicants
-   - Staff
-2. **Rota** (placeholder)
-3. **Timesheets** (placeholder)
-4. **Payroll**
-5. Existing operational links below (kept minimal; reorganised later)
+1. **Dashboard**
+2. **HR** → Applicants, Staff
+3. **Rota** (placeholder)
+4. **Timesheets** → Approvals
+5. **Payroll** → Shift Grid, Payroll Monthly Report
+6. **Kiosk** → Kiosk IDs, Punch Details
+7. Other operational links (temporary) and **Settings** at the bottom
 
 ### 6.3 Config‑Driven Paths
 
@@ -258,6 +278,55 @@ This is locked and correct.
 ### 8.4 Tickets / Messaging
 - Staff communication
 - Linked to staff_id
+
+---
+
+## 9. UI Polish – Current State & Next UI Work
+
+**Current:** the dashboard sidebar is in the correct module order and uses **+ / −** expand/collapse.
+
+**Keep:** the current sidebar structure and behaviour (no auto-collapse). The remaining UI polish work is:
+- Make the active page state more obvious: stronger highlight and a clear pointer/arrow on the active link.
+- Keep the fixed-sidebar + fixed-header layout with scrollable nav and scrollable main content.
+- Apply the same "SmartCare UI" visual language to the **main content area** (headers, tables, filters) so pages look consistent.
+
+---
+
+## 10. Phased Delivery Plan (Feb 2026)
+
+### Phase 0 — Foundations (DONE)
+- Private storage model (`store_*` outside public web root)
+- Clear boundaries: HR Applications ≠ Staff ≠ Users ≠ Kiosk IDs
+- HR apply wizard + applications admin flow
+- Convert Applicant → Staff flow (with optional kiosk ID)
+- Staff profiles + private documents + photo
+- Kiosk punch system with split punch/photo behaviour
+
+### Phase 1 — Structure & Paths (DONE)
+- Kiosk under `/.../kiosk/`
+- Admin under `/.../dashboard/`
+- Legacy `/.../admin/` redirects to `/dashboard`
+- JS runtime config via `window.SMARTCARE` (no hardcoded paths)
+- CSS split: `kiosk.css` vs `app.css`
+
+### Phase UI — UX Polish (IN PROGRESS)
+- Improve dashboard login UI
+- Sidebar grouping + consistent headers/spacing
+- Careers pages + wizard UI consistency using `app.css`
+
+### Phase 2 — HR & Staff Hardening (NEXT, after UI)
+- Document metadata: expiry/issue dates, verified by/at, notes, badges
+- Application completeness checklist + optional gating before "Convert to staff"
+- Staff status rules (inactive can't clock in; archived read-only)
+
+### Later (Planned)
+- Phase 3 Staff onboarding portal (`/staff-portal`)
+- Phase 4 Staff audit PDF packs
+- Phase 5 Rota (planned ≠ actual)
+- Phase 6 Timesheets (weekly approvals/locking)
+- Phase 7 Payroll exports (approved timesheets only)
+- Phase 8 Tickets/messaging + notifications
+- Phase 9 DB review + installer/migrations (deferred until core modules stable)
 - Attachments stored privately
 
 ### 8.5 Notifications

@@ -80,6 +80,25 @@ The dashboard sidebar is organised as **modules first** (clean + scalable):
 6. **Kiosk** → Kiosk IDs, Punch Details
 7. Other operational links (temporary) and **Settings** at the bottom
 
+---
+
+## UI Reference (Pinned)
+
+The **dashboard UI** should follow the design system in `smartcare-ui.zip`.
+
+**Design tokens (reference):**
+- `sc-primary`: **#2563EB**
+- `sc-accent`: **#7C3AED**
+- `sc-bg`: **#F3F4F6**
+- `sc-panel`: **#FFFFFF**
+- `sc-border`: **#E5E7EB**
+- `sc-sidebar`: **#0F172A**
+- `muted`: **#6B7280**
+
+**Layout contract:** fixed sidebar + top header, with **scrollable nav** and **scrollable main content**. (No hardcoded widths; use responsive flex/grid.)
+
+**Sidebar UX contract:** two-level navigation with **+ / −** expanders. Submenus open/close **only** when clicked (no auto-collapse).
+
 ### Future Modules
 - Rota (planned shifts)
 - Timesheets (approved actuals)
