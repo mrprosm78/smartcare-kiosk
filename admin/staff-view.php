@@ -72,6 +72,25 @@ if (!empty($s['profile_json'])) {
   if (is_array($decoded)) $profile = $decoded;
 }
 
+// Ensure staff documents table exists (best-effort)
+try {
+  $pdo->exec("CREATE TABLE IF NOT EXISTS staff_documents (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    staff_id INT UNSIGNED NOT NULL,
+    doc_type VARCHAR(50) NOT NULL,
+    original_name VARCHAR(255) NOT NULL,
+    stored_path VARCHAR(255) NOT NULL,
+    mime_type VARCHAR(100) NOT NULL,
+    file_size INT UNSIGNED NOT NULL DEFAULT 0,
+    note VARCHAR(255) NULL,
+    uploaded_by_admin_id INT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_staff_docs_staff (staff_id),
+    KEY idx_staff_docs_type (doc_type),
+    KEY idx_staff_docs_created (created_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+} catch (Throwable $e) { /* ignore */ }
+
 // Handle staff photo upload (stored in private uploads path)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'upload_photo') {
   admin_csrf_verify();
@@ -157,6 +176,117 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'uploa
 
             $upd = $pdo->prepare("UPDATE hr_staff SET photo_path=?, updated_by_admin_id=? WHERE id=? LIMIT 1");
             $upd->execute([$rel, (int)($user['id'] ?? 0), $staffId]);
+
+            header('Location: ' . admin_url('staff-view.php?id=' . $staffId));
+            exit;
+          }
+        }
+      }
+    }
+  }
+}
+
+// Handle staff document upload (stored in private uploads path)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'upload_document') {
+  admin_csrf_verify();
+
+  $docType = trim((string)($_POST['doc_type'] ?? ''));
+  $note = trim((string)($_POST['note'] ?? ''));
+
+  $allowedTypes = [
+    'photo_id' => 'Right-to-work / ID',
+    'dbs' => 'DBS',
+    'cv' => 'CV',
+    'training' => 'Training certificate',
+    'reference' => 'Reference',
+    'other' => 'Other',
+  ];
+  if (!isset($allowedTypes[$docType])) {
+    $errors[] = 'Please choose a valid document type.';
+  }
+
+  if (!isset($_FILES['staff_document']) || !is_array($_FILES['staff_document'])) {
+    $errors[] = 'Please choose a document file.';
+  } else {
+    $f = $_FILES['staff_document'];
+    if (($f['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+      $errors[] = 'Upload failed.';
+    } else {
+      $tmp = (string)($f['tmp_name'] ?? '');
+      $size = (int)($f['size'] ?? 0);
+      if ($size <= 0 || $size > 12 * 1024 * 1024) {
+        $errors[] = 'Document must be less than 12MB.';
+      }
+      if (!is_uploaded_file($tmp)) {
+        $errors[] = 'Invalid upload.';
+      }
+
+      $allowedMimes = [
+        'application/pdf' => 'pdf',
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+      ];
+      $mime = '';
+      if (function_exists('finfo_open')) {
+        $fi = finfo_open(FILEINFO_MIME_TYPE);
+        if ($fi) {
+          $m = finfo_file($fi, $tmp);
+          if (is_string($m)) $mime = $m;
+          finfo_close($fi);
+        }
+      }
+      if ($mime === '' && function_exists('mime_content_type')) {
+        $m = mime_content_type($tmp);
+        if (is_string($m)) $mime = $m;
+      }
+      if ($mime === '' || !isset($allowedMimes[$mime])) {
+        $errors[] = 'Document must be a PDF, JPG, PNG, or WEBP.';
+      }
+
+      if (!$errors) {
+        $ext = $allowedMimes[$mime];
+        $origName = (string)($f['name'] ?? 'document.' . $ext);
+        $origName = trim($origName);
+        if ($origName === '') $origName = 'document.' . $ext;
+        if (mb_strlen($origName) > 255) $origName = mb_substr($origName, 0, 250) . '.' . $ext;
+
+        $baseCfg = trim(admin_setting_str($pdo, 'uploads_base_path', 'auto'));
+        $base = resolve_uploads_base_path($baseCfg);
+        $dir = rtrim($base, '/\\') . DIRECTORY_SEPARATOR . 'staff_documents' . DIRECTORY_SEPARATOR . 'staff_' . $staffId;
+        if (!is_dir($dir)) {
+          @mkdir($dir, 0775, true);
+        }
+        if (!is_dir($dir) || !is_writable($dir)) {
+          $errors[] = 'Uploads folder is not writable.';
+        } else {
+          $rand = bin2hex(random_bytes(6));
+          $safeBase = preg_replace('/[^a-zA-Z0-9._-]+/', '_', pathinfo($origName, PATHINFO_FILENAME));
+          $safeBase = trim((string)$safeBase, '._-');
+          if ($safeBase === '') $safeBase = 'document';
+          $fname = $docType . '_' . gmdate('Ymd_His') . '_' . $rand . '_' . $safeBase . '.' . $ext;
+          if (mb_strlen($fname) > 180) {
+            $fname = $docType . '_' . gmdate('Ymd_His') . '_' . $rand . '.' . $ext;
+          }
+          $dest = $dir . DIRECTORY_SEPARATOR . $fname;
+
+          if (!move_uploaded_file($tmp, $dest)) {
+            $errors[] = 'Unable to save document.';
+          } else {
+            $rel = 'staff_documents/staff_' . $staffId . '/' . $fname;
+            $ins = $pdo->prepare("INSERT INTO staff_documents
+              (staff_id, doc_type, original_name, stored_path, mime_type, file_size, note, uploaded_by_admin_id, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+            $ins->execute([
+              $staffId,
+              $docType,
+              $origName,
+              $rel,
+              $mime,
+              $size,
+              $note !== '' ? $note : null,
+              (int)($user['id'] ?? 0),
+            ]);
 
             header('Location: ' . admin_url('staff-view.php?id=' . $staffId));
             exit;
@@ -302,6 +432,92 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'enabl
                     </div>
                     <button class="rounded-2xl px-4 py-2 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800" type="submit">Upload</button>
                   </div>
+                </form>
+              </div>
+
+              <div class="mt-5">
+                <h3 class="text-sm font-semibold text-slate-900">Documents</h3>
+                <p class="mt-1 text-xs text-slate-600">Uploads are stored in the private store_* path and are only downloadable by permitted admin users.</p>
+
+                <?php
+                  $docsStmt = $pdo->prepare("SELECT id, doc_type, original_name, note, created_at
+                    FROM staff_documents
+                    WHERE staff_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT 50");
+                  $docsStmt->execute([$staffId]);
+                  $docs = $docsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+                  $docTypeLabels = [
+                    'photo_id' => 'Right-to-work / ID',
+                    'dbs' => 'DBS',
+                    'cv' => 'CV',
+                    'training' => 'Training certificate',
+                    'reference' => 'Reference',
+                    'other' => 'Other',
+                  ];
+                ?>
+
+                <?php if (!$docs): ?>
+                  <div class="mt-2 text-xs text-slate-600">No documents uploaded yet.</div>
+                <?php else: ?>
+                  <div class="mt-2 space-y-2">
+                    <?php foreach ($docs as $d): ?>
+                      <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                          <div class="min-w-0">
+                            <div class="text-xs text-slate-600">
+                              <?php
+                                $dt = (string)($d['doc_type'] ?? 'other');
+                                echo h2($docTypeLabels[$dt] ?? ucfirst($dt));
+                              ?>
+                              · <span class="text-slate-500"><?php echo h2((string)($d['created_at'] ?? '')); ?></span>
+                            </div>
+                            <div class="mt-0.5 font-semibold text-slate-900 truncate">
+                              <?php echo h2((string)($d['original_name'] ?? 'Document')); ?>
+                            </div>
+                            <?php if (!empty($d['note'])): ?>
+                              <div class="mt-1 text-xs text-slate-700"><?php echo h2((string)$d['note']); ?></div>
+                            <?php endif; ?>
+                          </div>
+                          <div class="shrink-0">
+                            <a class="inline-flex items-center rounded-2xl px-3 py-1.5 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
+                               href="<?php echo h(admin_url('staff-document.php?id=' . (int)$d['id'])); ?>">Download</a>
+                          </div>
+                        </div>
+                      </div>
+                    <?php endforeach; ?>
+                  </div>
+                <?php endif; ?>
+
+                <form class="mt-3" method="post" enctype="multipart/form-data">
+                  <?php admin_csrf_field(); ?>
+                  <input type="hidden" name="action" value="upload_document">
+
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                      <label class="block text-xs font-semibold text-slate-700">Document type</label>
+                      <select name="doc_type" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" required>
+                        <option value="">Choose…</option>
+                        <option value="photo_id">Right-to-work / ID</option>
+                        <option value="dbs">DBS</option>
+                        <option value="cv">CV</option>
+                        <option value="training">Training certificate</option>
+                        <option value="reference">Reference</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                    <div class="sm:col-span-2">
+                      <label class="block text-xs font-semibold text-slate-700">File (PDF/JPG/PNG/WEBP)</label>
+                      <input type="file" name="staff_document" accept="application/pdf,image/jpeg,image/png,image/webp" class="mt-1 block w-full text-sm" required>
+                    </div>
+                    <div class="sm:col-span-3">
+                      <label class="block text-xs font-semibold text-slate-700">Note (optional)</label>
+                      <input name="note" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" placeholder="e.g. Passport (expires 2029)" maxlength="255" />
+                    </div>
+                  </div>
+
+                  <button class="mt-2 rounded-2xl px-4 py-2 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800" type="submit">Upload document</button>
                 </form>
               </div>
 

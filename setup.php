@@ -750,6 +750,25 @@ function create_tables(PDO $pdo): void {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   ");
 
+  // STAFF DOCUMENTS (uploads stored outside webroot in private store_* path)
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS staff_documents (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      staff_id INT UNSIGNED NOT NULL,
+      doc_type VARCHAR(50) NOT NULL,
+      original_name VARCHAR(255) NOT NULL,
+      stored_path VARCHAR(255) NOT NULL,
+      mime_type VARCHAR(100) NOT NULL,
+      file_size INT UNSIGNED NOT NULL DEFAULT 0,
+      note VARCHAR(255) NULL,
+      uploaded_by_admin_id INT UNSIGNED NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_staff_docs_staff (staff_id),
+      KEY idx_staff_docs_type (doc_type),
+      KEY idx_staff_docs_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  ");
+
 
 // HR → STAFF PROFILES
   // - Keeps applicants (hr_applications) and staff (kiosk_employees) separate.
