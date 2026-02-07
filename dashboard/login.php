@@ -86,7 +86,7 @@ $css = admin_asset_css($pdo);
             <div class="text-xs uppercase tracking-widest text-slate-500">SmartCare</div>
             <h1 class="text-2xl font-semibold">Admin login</h1>
           </div>
-          <a href="<?= h(app_url('index.php')) ?>" class="text-sm text-slate-600 hover:text-slate-900">Kiosk</a>
+          <a href="<?= h(kiosk_url()) ?>" class="text-sm text-slate-600 hover:text-slate-900">Kiosk</a>
         </div>
         <p class="mt-2 text-sm text-slate-600">Sign in to continue.</p>
       </div>

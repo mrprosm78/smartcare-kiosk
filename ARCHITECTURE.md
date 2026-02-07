@@ -166,7 +166,7 @@ This allows:
 - `/name_kiosk/` → Main care‑home system
 - `/name_kiosk/kiosk/` → Kiosk app
 - `/name_kiosk/dashboard/` → Admin / backoffice
-- `/admin` → Redirect stub only
+- `/dashboard` → Redirect stub only
 
 ### 6.2 Config‑Driven Paths
 
@@ -246,7 +246,7 @@ This is locked and correct.
 
 **In recommended order:**
 
-1. Finish `/admin` → `/dashboard` rename (config + redirects)
+1. Finish `/dashboard` → `/dashboard` rename (config + redirects)
 2. Centralise URL helpers (`admin_url`, `kiosk_url`)
 3. Staff audit PDF generation
 4. Document expiry tracking (DBS, RTW)

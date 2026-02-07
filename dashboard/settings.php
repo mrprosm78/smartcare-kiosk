@@ -334,7 +334,7 @@ admin_page_start($pdo, 'Settings');
                     <input type="checkbox" name="admin_pairing_mode" class="h-4 w-4 rounded" <?= $vals['admin_pairing_mode'] ? 'checked' : '' ?> />
                     <div>
                       <div class="text-sm font-semibold">Admin pairing mode enabled</div>
-                      <div class="text-xs text-slate-500">When off, /admin/pair.php rejects pairing even if the passcode is known.</div>
+                      <div class="text-xs text-slate-500">When off, /dashboard/pair.php rejects pairing even if the passcode is known.</div>
                     </div>
                   </label>
 

@@ -96,13 +96,30 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 
 /**
  * Compute base path for subfolder installs.
- * Example:
- *  /kiosk-dev/admin/login.php -> admin_base=/kiosk-dev/admin , app_base=/kiosk-dev
+ *
+ * Preferred: configure in private config:
+ *   APP_BASE_PATH  = '/name_kiosk'
+ *   APP_ADMIN_PATH = '/dashboard'
+ *
+ * Fallback: auto-detect from SCRIPT_NAME.
  */
 $__script = (string)($_SERVER['SCRIPT_NAME'] ?? '');
-$admin_base = rtrim(str_replace('\\', '/', dirname($__script)), '/');
-$app_base   = rtrim(str_replace('\\', '/', dirname($admin_base)), '/');
-if ($app_base === '/') $app_base = '';
+$detected_admin_base = rtrim(str_replace('\\', '/', dirname($__script)), '/');
+$detected_app_base   = rtrim(str_replace('\\', '/', dirname($detected_admin_base)), '/');
+if ($detected_app_base === '/') $detected_app_base = '';
+
+$cfg_app_base = '';
+if (defined('APP_BASE_PATH')) {
+  $cfg_app_base = rtrim((string)APP_BASE_PATH, '/');
+}
+if ($cfg_app_base === '/') $cfg_app_base = '';
+
+$cfg_admin_path = defined('APP_ADMIN_PATH') ? rtrim((string)APP_ADMIN_PATH, '/') : '';
+if ($cfg_admin_path === '') $cfg_admin_path = '/dashboard';
+if ($cfg_admin_path[0] !== '/') $cfg_admin_path = '/' . $cfg_admin_path;
+
+$app_base   = ($cfg_app_base !== '') ? $cfg_app_base : $detected_app_base;
+$admin_base = $app_base . $cfg_admin_path;
 
 function admin_url(string $path = ''): string {
   global $admin_base;
@@ -114,6 +131,19 @@ function app_url(string $path = ''): string {
   global $app_base;
   $path = ltrim($path, '/');
   return $app_base . ($path ? '/' . $path : '');
+}
+
+
+function kiosk_url(string $path = ''): string {
+  // Kiosk public UI path (configurable)
+  $kioskPath = defined('APP_KIOSK_PATH') ? rtrim((string)APP_KIOSK_PATH, '/') : '/kiosk';
+  if ($kioskPath === '') $kioskPath = '/kiosk';
+  if ($kioskPath[0] !== '/') $kioskPath = '/' . $kioskPath;
+
+  global $app_base;
+  $path = ltrim($path, '/');
+  $base = $app_base . $kioskPath;
+  return $base . ($path ? '/' . $path : '');
 }
 
 function admin_asset_css(PDO $pdo): string {

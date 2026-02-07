@@ -185,12 +185,12 @@ function seed_settings(PDO $pdo): void {
     ],
     [
       'key' => 'admin_pairing_code', 'value' => '2468', 'group' => 'admin',
-      'label' => 'Admin Pairing Passcode', 'description' => 'Passcode required to authorise a device for /admin (only works if admin_pairing_mode is enabled).',
+      'label' => 'Admin Pairing Passcode', 'description' => 'Passcode required to authorise a device for /dashboard (only works if admin_pairing_mode is enabled).',
       'type' => 'secret', 'editable_by' => 'superadmin', 'sort' => 100, 'secret' => 1,
     ],
     [
       'key' => 'admin_pairing_mode', 'value' => '0', 'group' => 'admin',
-      'label' => 'Admin Pairing Mode Enabled', 'description' => 'When 0, /admin/pair.php rejects pairing even if the passcode is known.',
+      'label' => 'Admin Pairing Mode Enabled', 'description' => 'When 0, /dashboard/pair.php rejects pairing even if the passcode is known.',
       'type' => 'bool', 'editable_by' => 'superadmin', 'sort' => 110, 'secret' => 0,
     ],
     [
@@ -598,17 +598,7 @@ function seed_admin_users(PDO $pdo): void {
   }
 }
 
-/**
- * PART C — Tables
- */
-function create_tables(PDO $pdo): void {
-  // NOTE (Jan 2026): kiosk_break_rules is deprecated and no longer used.
-  // We keep this drop here so older installs get cleaned up safely during "install/repair".
-  try {
-    $pdo->exec("DROP TABLE IF EXISTS `kiosk_break_rules`");
-  } catch (Throwable $e) {
-    // ignore
-  }
+
 
   // SETTINGS
   $pdo->exec("
@@ -1206,7 +1196,6 @@ function drop_all(PDO $pdo): void {
     'kiosk_shift_changes',
     'kiosk_shifts',
     'kiosk_break_tiers',
-    'kiosk_break_rules',
     'kiosk_employee_pay_profiles',
     'kiosk_employee_departments',
     'kiosk_employee_teams',
