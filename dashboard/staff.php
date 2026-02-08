@@ -13,6 +13,43 @@ $status = (string)($_GET['status'] ?? 'active'); // active|inactive|archived|all
 $dept = (int)($_GET['department_id'] ?? 0);
 $q = trim((string)($_GET['q'] ?? ''));
 
+// Sorting (like Applicants)
+$sort = strtolower(trim((string)($_GET['sort'] ?? 'name')));
+$dir  = strtolower(trim((string)($_GET['dir'] ?? 'asc')));
+if (!in_array($dir, ['asc','desc'], true)) $dir = 'asc';
+
+$sortMap = [
+  'name'       => 'name',
+  'department' => 'department',
+  'status'     => 'status',
+  'kiosk'      => 'kiosk',
+  'updated'    => 'updated',
+  'created'    => 'created',
+];
+if (!isset($sortMap[$sort])) $sort = 'name';
+
+function sc_query_staff(array $overrides = []): string {
+  $q = $_GET;
+  foreach ($overrides as $k => $v) {
+    if ($v === null) { unset($q[$k]); continue; }
+    $q[$k] = $v;
+  }
+  foreach ($q as $k => $v) {
+    if ($v === '' || $v === null) unset($q[$k]);
+  }
+  return http_build_query($q);
+}
+
+function sc_sort_link_staff(string $key, string $label, string $currentSort, string $currentDir): string {
+  $is = ($currentSort === $key);
+  $nextDir = $is && $currentDir === 'asc' ? 'desc' : 'asc';
+  $arrow = '';
+  if ($is) $arrow = $currentDir === 'asc' ? ' ▲' : ' ▼';
+  $qs = sc_query_staff(['sort' => $key, 'dir' => $nextDir]);
+  $href = admin_url('staff.php' . ($qs ? ('?' . $qs) : ''));
+  return '<a class="hover:text-slate-900" href="' . h($href) . '">' . h($label) . '</a><span class="text-[11px] text-slate-500">' . h($arrow) . '</span>';
+}
+
 // Ensure HR staff table exists (best-effort on older installs)
 try {
   $pdo->exec("CREATE TABLE IF NOT EXISTS hr_staff (
@@ -61,6 +98,32 @@ if ($q !== '') {
   $params[] = $like; $params[] = $like; $params[] = $like;
 }
 
+
+$dirSql = strtoupper($dir);
+
+// Build ORDER BY from whitelist
+switch ($sort) {
+  case 'department':
+    $orderBy = "department_name {$dirSql}, s.last_name ASC, s.first_name ASC, s.id DESC";
+    break;
+  case 'status':
+    $orderBy = "s.status {$dirSql}, s.last_name ASC, s.first_name ASC, s.id DESC";
+    break;
+  case 'kiosk':
+    $orderBy = "has_kiosk {$dirSql}, s.last_name ASC, s.first_name ASC, s.id DESC";
+    break;
+  case 'updated':
+    $orderBy = "s.updated_at {$dirSql}, s.id DESC";
+    break;
+  case 'created':
+    $orderBy = "s.created_at {$dirSql}, s.id DESC";
+    break;
+  case 'name':
+  default:
+    $orderBy = "s.last_name {$dirSql}, s.first_name {$dirSql}, s.id DESC";
+    break;
+}
+
 $sql = "SELECT
           s.*,
           d.name AS department_name,
@@ -68,7 +131,7 @@ $sql = "SELECT
         FROM hr_staff s
         LEFT JOIN kiosk_employee_departments d ON d.id = s.department_id
         " . ($where ? ('WHERE ' . implode(' AND ', $where)) : '') . "
-        ORDER BY s.last_name ASC, s.first_name ASC, s.id DESC
+        ORDER BY " . $orderBy . "
         LIMIT 500";
 
 $stmt = $pdo->prepare($sql);
@@ -133,10 +196,10 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
               <table class="min-w-full text-sm">
                 <thead class="bg-slate-50 text-slate-700">
                   <tr>
-                    <th class="text-left font-semibold px-4 py-3">Name</th>
-                    <th class="text-left font-semibold px-4 py-3">Department</th>
-                    <th class="text-left font-semibold px-4 py-3">Status</th>
-                    <th class="text-left font-semibold px-4 py-3">Kiosk</th>
+                    <th class="text-left font-semibold px-4 py-3"><?= sc_sort_link_staff('name','Name',$sort,$dir) ?></th>
+                    <th class="text-left font-semibold px-4 py-3"><?= sc_sort_link_staff('department','Department',$sort,$dir) ?></th>
+                    <th class="text-left font-semibold px-4 py-3"><?= sc_sort_link_staff('status','Status',$sort,$dir) ?></th>
+                    <th class="text-left font-semibold px-4 py-3"><?= sc_sort_link_staff('kiosk','Kiosk',$sort,$dir) ?></th>
                     <th class="text-right font-semibold px-4 py-3">Action</th>
                   </tr>
                 </thead>
@@ -175,7 +238,10 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                         <?php endif; ?>
                       </td>
                       <td class="px-4 py-3 text-right">
-                        <a class="rounded-2xl px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50" href="<?php echo h(admin_url('staff-edit.php?id=' . (int)$r['id'])); ?>">Edit</a>
+                        <div class="flex items-center justify-end gap-2">
+                          <a class="rounded-2xl px-3 py-1.5 text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800" href="<?php echo h(admin_url('staff-view.php?id=' . (int)$r['id'])); ?>">View</a>
+                          <a class="rounded-2xl px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50" href="<?php echo h(admin_url('staff-edit.php?id=' . (int)$r['id'])); ?>">Edit</a>
+                        </div>
                       </td>
                     </tr>
                   <?php endforeach; ?>

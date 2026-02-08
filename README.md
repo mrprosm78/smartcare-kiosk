@@ -143,3 +143,12 @@ This README is intentionally **high‑level**.
 For real understanding of how the system works — and how it must evolve —
 **`ARCHITECTURE.md` is required reading.**
 
+
+
+### Architecture Notes (HR & Kiosk)
+- HR data is isolated in `hr_*` tables for future Laravel migration.
+- Kiosk identities (`kiosk_employees`) are linked to HR staff via `hr_staff_id`.
+- Employment contracts belong to HR staff (`hr_staff_contracts`) and support effective‑date history.
+
+Security note:
+Kiosk PINs use bcrypt for verification. To keep punch-in fast, an indexed SHA-256 fingerprint is used to locate the correct employee row first, then bcrypt is verified once. bcrypt remains the authoritative check.

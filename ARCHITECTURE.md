@@ -446,3 +446,113 @@ If a future change violates this document, it is **almost certainly wrong**.
 
 Respect boundaries. Build forward. Keep it boring and reliable.
 
+
+
+---
+
+## HR / Kiosk Linking & Naming Rules (LOCKED – Migration‑Safe)
+
+This section records **critical architectural decisions** that must not be accidentally reversed during ongoing development.
+
+### HR tables naming (MANDATORY)
+All HR‑owned tables **must use the `hr_` prefix** to ensure a clean future migration to Laravel.
+
+Authoritative HR tables:
+- `hr_applications`
+- `hr_staff`
+- `hr_staff_contracts`
+- `hr_staff_documents`
+
+No new HR tables should be created without this prefix.
+
+---
+
+### Kiosk vs HR responsibility (STRICT SEPARATION)
+- `kiosk_employees` exists **only** for kiosk identity and punch operations.
+- HR data **must not** be merged into `kiosk_employees`.
+
+A **single linking column** connects kiosk identities to HR staff:
+- `kiosk_employees.hr_staff_id` (nullable, indexed)
+
+This keeps kiosk punching fast and stable while HR evolves independently.
+
+---
+
+### Contracts belong to HR staff (NOT kiosk IDs)
+Employment contracts are HR‑owned data.
+
+Canonical model:
+- Contracts live in `hr_staff_contracts`
+- Each contract supports effective dates (`effective_from`, `effective_to`)
+
+Payroll and timesheets resolve contracts via:
+1. `kiosk_shifts.employee_id`
+2. `kiosk_employees.hr_staff_id`
+3. Active `hr_staff_contracts` row
+
+Legacy kiosk‑linked contracts may exist temporarily but are transitional only.
+
+---
+
+### Legacy data & cleanup strategy
+`kiosk_employees` currently contains columns that may become irrelevant later.
+
+Rule:
+- Do **not** delete legacy columns early.
+- First migrate reads to HR tables.
+- Remove legacy data only when unused.
+
+This avoids breaking punching, reports, and history.
+
+---
+
+### Staff ↔ Kiosk mapping assumption
+Default assumption:
+- **1 HR staff ↔ 1 kiosk identity**
+
+We may later enforce:
+- `UNIQUE(kiosk_employees.hr_staff_id)`
+
+If multi‑kiosk identities are ever required, this constraint will not be enforced.
+
+---
+
+### Canonical staff model (IMPORTANT)
+The authoritative staff record is:
+- `hr_staff`
+
+We must **not** maintain multiple staff profile systems.
+Any legacy tables (e.g. `hr_staff_profiles`) are transitional and must be deprecated and removed over time.
+
+---
+
+### Migration roadmap (LOCKED ORDER)
+1. Lock `hr_staff` as the single staff source of truth
+2. Add and backfill `kiosk_employees.hr_staff_id`
+3. Introduce and migrate to `hr_staff_contracts`
+4. Update payroll/timesheets to read HR contracts
+5. Remove legacy kiosk‑based contract logic
+6. Remove deprecated tables only when fully unused
+
+---
+### Kiosk PIN verification strategy (LOCKED)
+
+The system intentionally keeps bcrypt for PIN security, but avoids brute-force row scanning.
+
+Approach:
+- Each kiosk employee stores:
+  - `pin_hash` (bcrypt, authoritative)
+  - `pin_fingerprint` (SHA-256, indexed)
+- On punch:
+  1. The entered PIN is SHA-256 hashed.
+  2. The indexed fingerprint is used to locate the candidate row.
+  3. bcrypt verification is run **once** on the matched row.
+
+Benefits:
+- Preserves bcrypt security guarantees.
+- Avoids looping through all employees.
+- Scales safely with large staff counts.
+- Keeps kiosk punching fast on low-power devices.
+
+The fingerprint is used for lookup only.
+bcrypt remains the sole authority for PIN validation.
