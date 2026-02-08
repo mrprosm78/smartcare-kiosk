@@ -63,24 +63,33 @@ function admin_icon(string $name, string $classes = 'h-5 w-5'): string {
   return $open . $path . $close;
 }
 
-function admin_nav_item(string $href, string $label, string $active, string $icon = ''): string {
+function admin_nav_item(string $href, string $label, string $active, string $icon = '', bool $isSub = false): string {
   $is = ($href === $active);
+
+  // Visual difference between top links and sub-links
+  $textSize = $isSub ? 'text-[13px]' : 'text-sm';
+  $padY = $isSub ? 'py-1.5' : 'py-2';
+
   // Icon wrapper: use colour only; sizing comes from the SVG itself.
   $iconHtml = $icon !== ''
-    ? '<span class="text-slate-500 group-hover:text-slate-800 ' . ($is ? 'text-indigo-700' : '') . '">' . $icon . '</span>'
+    ? '<span class="' . ($isSub ? 'text-slate-400' : 'text-slate-500') . ' group-hover:text-slate-800 ' . ($is ? 'text-indigo-700' : '') . '">' . $icon . '</span>'
     : '';
+
+  // Left marker dot so active is instantly obvious.
+  $dot = '<span class="h-2 w-2 rounded-full ' . ($is ? 'bg-slate-900' : 'bg-transparent') . '"></span>';
 
   // Dark triangle indicator for the active item.
   $tri = $is ? '<span class="ml-auto w-0 h-0 border-y-[6px] border-y-transparent border-l-[8px] border-l-slate-900"></span>' : '';
 
   if ($is) {
-    return '<a href="' . h($href) . '" class="group flex items-center gap-3 px-3 py-2 text-sm font-semibold border-l-2 border-indigo-600 bg-indigo-50 text-slate-900 transition-colors">'
-      . $iconHtml . '<span class="flex-1">' . h($label) . '</span>' . $tri . '</a>';
+    return '<a href="' . h($href) . '" class="group flex items-center gap-3 px-3 ' . $padY . ' ' . $textSize . ' font-semibold border-l-4 border-indigo-600 bg-indigo-50 text-slate-900 transition-colors">'
+      . $dot . $iconHtml . '<span class="flex-1">' . h($label) . '</span>' . $tri . '</a>';
   }
 
-  return '<a href="' . h($href) . '" class="group flex items-center gap-3 px-3 py-2 text-sm font-medium border-l-2 border-transparent text-slate-700 hover:bg-indigo-50/40 hover:text-slate-900 hover:border-slate-300 transition-colors">'
-    . $iconHtml . '<span class="flex-1">' . h($label) . '</span></a>';
+  return '<a href="' . h($href) . '" class="group flex items-center gap-3 px-3 ' . $padY . ' ' . $textSize . ' ' . ($isSub ? 'font-medium' : 'font-medium') . ' border-l-4 border-transparent text-slate-700 hover:bg-indigo-50/40 hover:text-slate-900 hover:border-slate-300 transition-colors">'
+    . $dot . $iconHtml . '<span class="flex-1">' . h($label) . '</span></a>';
 }
+
 
 function admin_nav_item_soon(string $href, string $label, string $active, string $icon = ''): string {
   $is = ($href === $active);
@@ -222,7 +231,7 @@ foreach ($kioskItems as $it) {
         <div class="mt-1 ml-8 space-y-1 pb-2">
           <?php foreach ($hrItems as $it): ?>
             <?php if (admin_can($user, (string)$it['perm'])): ?>
-              <?= admin_nav_item((string)$it['href'], (string)$it['label'], (string)$active, admin_icon((string)$it['icon'])) ?>
+              <?= admin_nav_item((string)$it['href'], (string)$it['label'], (string)$active, admin_icon((string)$it['icon'], 'h-4 w-4'), true) ?>
             <?php endif; ?>
           <?php endforeach; ?>
         </div>
@@ -243,7 +252,7 @@ foreach ($kioskItems as $it) {
         <div class="mt-1 ml-8 space-y-1 pb-2">
           <?php foreach ($timesheetItems as $it): ?>
             <?php if (admin_can($user, (string)$it['perm'])): ?>
-              <?= admin_nav_item((string)$it['href'], (string)$it['label'], (string)$active, admin_icon((string)$it['icon'])) ?>
+              <?= admin_nav_item((string)$it['href'], (string)$it['label'], (string)$active, admin_icon((string)$it['icon'], 'h-4 w-4'), true) ?>
             <?php endif; ?>
           <?php endforeach; ?>
         </div>
@@ -256,7 +265,7 @@ foreach ($kioskItems as $it) {
         <div class="mt-1 ml-8 space-y-1 pb-2">
           <?php foreach ($payrollItems as $it): ?>
             <?php if (admin_can($user, (string)$it['perm'])): ?>
-              <?= admin_nav_item((string)$it['href'], (string)$it['label'], (string)$active, admin_icon((string)$it['icon'])) ?>
+              <?= admin_nav_item((string)$it['href'], (string)$it['label'], (string)$active, admin_icon((string)$it['icon'], 'h-4 w-4'), true) ?>
             <?php endif; ?>
           <?php endforeach; ?>
         </div>
@@ -269,7 +278,7 @@ foreach ($kioskItems as $it) {
         <div class="mt-1 ml-8 space-y-1 pb-2">
           <?php foreach ($kioskItems as $it): ?>
             <?php if (admin_can($user, (string)$it['perm'])): ?>
-              <?= admin_nav_item((string)$it['href'], (string)$it['label'], (string)$active, admin_icon((string)$it['icon'])) ?>
+              <?= admin_nav_item((string)$it['href'], (string)$it['label'], (string)$active, admin_icon((string)$it['icon'], 'h-4 w-4'), true) ?>
             <?php endif; ?>
           <?php endforeach; ?>
         </div>
@@ -284,7 +293,7 @@ foreach ($kioskItems as $it) {
         <div class="mt-2 space-y-1">
           <?php foreach ($otherItems as $it): ?>
             <?php if (admin_can($user, (string)$it['perm'])): ?>
-              <?= admin_nav_item((string)$it['href'], (string)$it['label'], (string)$active, admin_icon((string)$it['icon'])) ?>
+              <?= admin_nav_item((string)$it['href'], (string)$it['label'], (string)$active, admin_icon((string)$it['icon'], 'h-4 w-4'), true) ?>
             <?php endif; ?>
           <?php endforeach; ?>
         </div>

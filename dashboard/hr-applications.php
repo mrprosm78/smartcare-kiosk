@@ -10,10 +10,13 @@ $status = strtolower(trim((string)($_GET['status'] ?? '')));
 $job    = trim((string)($_GET['job'] ?? ''));
 $q      = trim((string)($_GET['q'] ?? ''));
 
+// Sorting
+$sort = strtolower(trim((string)($_GET['sort'] ?? 'updated')));
+$dir  = strtolower(trim((string)($_GET['dir'] ?? 'desc')));
+if (!in_array($dir, ['asc','desc'], true)) $dir = 'desc';
+
 // Extra filters
 $converted = strtolower(trim((string)($_GET['converted'] ?? ''))); // '', 'yes', 'no'
-$from = trim((string)($_GET['from'] ?? '')); // YYYY-MM-DD
-$to   = trim((string)($_GET['to'] ?? ''));   // YYYY-MM-DD
 
 /** Check if a column exists (safe across installs). */
 function sc_col_exists(PDO $pdo, string $table, string $col): bool {
@@ -30,8 +33,6 @@ $hasHiredEmployeeId = sc_col_exists($pdo, 'hr_applications', 'hired_employee_id'
 $hasSubmittedAt     = sc_col_exists($pdo, 'hr_applications', 'submitted_at');
 $hasCreatedAt       = sc_col_exists($pdo, 'hr_applications', 'created_at');
 
-// Choose best date column for filtering
-$dateCol = $hasSubmittedAt ? 'submitted_at' : ($hasCreatedAt ? 'created_at' : '');
 
 $params = [];
 $where = [];
@@ -67,18 +68,45 @@ if ($converted === 'yes') {
   }
 }
 
-// Date range filter (inclusive)
-if ($dateCol !== '') {
-  if ($from !== '') {
-    $where[] = "$dateCol >= ?";
-    $params[] = $from . ' 00:00:00';
+
+
+// Sorting whitelist (never trust raw column names from the URL)
+$submittedSortCol = $hasSubmittedAt ? 'submitted_at' : ($hasCreatedAt ? 'created_at' : 'updated_at');
+$sortMap = [
+  'id'        => 'id',
+  'applicant' => 'applicant_name',
+  'email'     => 'email',
+  'job'       => 'job_slug',
+  'status'    => 'status',
+  'submitted' => $submittedSortCol,
+  'updated'   => 'updated_at',
+];
+if (!isset($sortMap[$sort])) $sort = 'updated';
+$orderBy = $sortMap[$sort] . ' ' . strtoupper($dir);
+
+function sc_query(array $overrides = []): string {
+  $q = $_GET;
+  foreach ($overrides as $k => $v) {
+    if ($v === null) { unset($q[$k]); continue; }
+    $q[$k] = $v;
   }
-  if ($to !== '') {
-    $where[] = "$dateCol <= ?";
-    $params[] = $to . ' 23:59:59';
+  // Drop empty values for cleaner URLs
+  foreach ($q as $k => $v) {
+    if ($v === '' || $v === null) unset($q[$k]);
   }
+  return http_build_query($q);
 }
 
+function sc_sort_link(string $key, string $label, string $currentSort, string $currentDir): string {
+  $is = ($currentSort === $key);
+  $nextDir = $is && $currentDir === 'asc' ? 'desc' : 'asc';
+  $arrow = '';
+  if ($is) {
+    $arrow = $currentDir === 'asc' ? ' ▲' : ' ▼';
+  }
+  $href = admin_url('hr-applications.php' . (sc_query(['sort' => $key, 'dir' => $nextDir]) ? ('?' . sc_query(['sort' => $key, 'dir' => $nextDir])) : ''));
+  return '<a class="hover:text-slate-900" href="' . h($href) . '">' . h($label) . '</a><span class="text-[11px] text-slate-500">' . h($arrow) . '</span>';
+}
 $sql = "SELECT id, status, job_slug, applicant_name, email, phone, submitted_at, updated_at";
 if ($hasHiredEmployeeId) {
   $sql .= ", hired_employee_id";
@@ -88,7 +116,7 @@ if ($hasCreatedAt) {
 }
 $sql .= "\n        FROM hr_applications";
 if ($where) $sql .= " WHERE " . implode(" AND ", $where);
-$sql .= " ORDER BY updated_at DESC, id DESC LIMIT 200";
+$sql .= " ORDER BY $orderBy, id DESC LIMIT 200";
 
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
@@ -120,21 +148,14 @@ function sc_status_badge(string $status): array {
           <div class="flex items-start justify-between gap-3">
             <div>
               <h1 class="text-2xl font-semibold">HR Applications</h1>
-              <p class="mt-1 text-sm text-slate-600">View and manage job applications (managers can update status).</p>
-            </div>
-            <?php if (admin_can($user, 'manage_staff')): ?>
-              <a href="<?= h(admin_url('staff-new.php')) ?>"
-                 class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
-                + Add Staff
-              </a>
-            <?php endif; ?>
-          </div>
+              <p class="mt-1 text-sm text-slate-600">View and review job applications.</p>
+            </div>          </div>
 
           <form method="get" class="mt-4 grid gap-3 sm:grid-cols-6">
             <label class="block">
               <span class="text-xs font-semibold text-slate-600">Status</span>
               <select name="status" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
-                <option value="">All</option>
+                <option value="">Any</option>
                 <?php foreach (['draft','submitted','reviewing','rejected','hired','archived'] as $s): ?>
                   <option value="<?= h($s) ?>" <?= $status === $s ? 'selected' : '' ?>><?= h(ucfirst($s)) ?></option>
                 <?php endforeach; ?>
@@ -144,7 +165,7 @@ function sc_status_badge(string $status): array {
             <label class="block">
               <span class="text-xs font-semibold text-slate-600">Job</span>
               <select name="job" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
-                <option value="">All</option>
+                <option value="">Any</option>
                 <?php foreach ($jobs as $j): ?>
                   <option value="<?= h((string)$j) ?>" <?= $job === (string)$j ? 'selected' : '' ?>><?= h((string)$j) ?></option>
                 <?php endforeach; ?>
@@ -160,33 +181,17 @@ function sc_status_badge(string $status): array {
             <label class="block">
               <span class="text-xs font-semibold text-slate-600">Converted</span>
               <select name="converted" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
-                <option value="" <?= $converted === '' ? 'selected' : '' ?>>All</option>
+                <option value="" <?= $converted === '' ? 'selected' : '' ?>>Any</option>
                 <option value="yes" <?= $converted === 'yes' ? 'selected' : '' ?>>Yes</option>
                 <option value="no"  <?= $converted === 'no' ? 'selected' : '' ?>>No</option>
               </select>
             </label>
-
-            <label class="block">
-              <span class="text-xs font-semibold text-slate-600">From</span>
-              <input type="date" name="from" value="<?= h($from) ?>"
-                     class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
-            </label>
-
-            <label class="block">
-              <span class="text-xs font-semibold text-slate-600">To</span>
-              <input type="date" name="to" value="<?= h($to) ?>"
-                     class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
-            </label>
-
             <div class="flex items-end gap-2 sm:col-span-6">
-              <button type="submit"
-                      class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
-                Apply
-              </button>
               <a href="<?= h(admin_url('hr-applications.php')) ?>"
                  class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50">
                 Clear
               </a>
+              <span class="text-xs text-slate-500">Dropdown filters apply instantly. Press Enter to search.</span>
             </div>
           </form>
         </div>
@@ -195,13 +200,13 @@ function sc_status_badge(string $status): array {
           <table class="w-full text-sm">
             <thead class="bg-slate-50 text-slate-600">
               <tr>
-                <th class="px-3 py-2 text-left">ID</th>
-                <th class="px-3 py-2 text-left">Applicant</th>
-                <th class="px-3 py-2 text-left">Contact</th>
-                <th class="px-3 py-2 text-left">Job</th>
-                <th class="px-3 py-2 text-left">Status</th>
-                <th class="px-3 py-2 text-left">Submitted</th>
-                <th class="px-3 py-2 text-left">Updated</th>
+                <th class="px-3 py-2 text-left"><?= sc_sort_link('id','ID',$sort,$dir) ?></th>
+                <th class="px-3 py-2 text-left"><?= sc_sort_link('applicant','Applicant',$sort,$dir) ?></th>
+                <th class="px-3 py-2 text-left"><?= sc_sort_link('email','Contact',$sort,$dir) ?></th>
+                <th class="px-3 py-2 text-left"><?= sc_sort_link('job','Job',$sort,$dir) ?></th>
+                <th class="px-3 py-2 text-left"><?= sc_sort_link('status','Status',$sort,$dir) ?></th>
+                <th class="px-3 py-2 text-left"><?= sc_sort_link('submitted','Submitted',$sort,$dir) ?></th>
+                <th class="px-3 py-2 text-left"><?= sc_sort_link('updated','Updated',$sort,$dir) ?></th>
                 <th class="px-3 py-2 text-right">Action</th>
               </tr>
             </thead>
@@ -253,4 +258,17 @@ function sc_status_badge(string $status): array {
     </div>
   </main>
 </div>
+
+<script>
+  // Auto-apply dropdown filters (Status / Job / Converted) on change.
+  (function(){
+    const form = document.querySelector('form[method="get"]');
+    if (!form) return;
+    const selects = form.querySelectorAll('select[name="status"], select[name="job"], select[name="converted"]');
+    selects.forEach((sel) => {
+      sel.addEventListener('change', () => form.submit());
+    });
+  })();
+</script>
+
 <?php admin_page_end(); ?>
