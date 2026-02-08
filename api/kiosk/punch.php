@@ -560,24 +560,64 @@ try {
     // employee lookup
     $allowPlain = setting_bool($pdo,'allow_plain_pin', false);
 
-    $stmt = $pdo->query("SELECT id, first_name, last_name, pin_hash FROM kiosk_employees WHERE is_active=1");
     $employee = null;
 
-    while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $stored = (string)($r['pin_hash'] ?? '');
-        if ($stored === '') continue;
-
-        $ok = false;
-        if (is_bcrypt($stored)) {
-            $ok = password_verify($pin, $stored);
-        } elseif ($allowPlain) {
-            $ok = hash_equals($stored, $pin);
+    // LOCKED: keep bcrypt, but avoid scanning all employees.
+    // Use an indexed SHA-256 fingerprint to locate the candidate row, then verify bcrypt once.
+    $hasPinFp = column_exists($pdo, 'kiosk_employees', 'pin_fingerprint');
+    if ($hasPinFp) {
+        $pinFp = hash('sha256', $pin);
+        $find = $pdo->prepare("SELECT id, first_name, last_name, pin_hash
+                              FROM kiosk_employees
+                              WHERE is_active = 1 AND archived_at IS NULL AND pin_fingerprint = ?
+                              LIMIT 1");
+        $find->execute([$pinFp]);
+        $r = $find->fetch(PDO::FETCH_ASSOC) ?: null;
+        if ($r) {
+            $stored = (string)($r['pin_hash'] ?? '');
+            if ($stored !== '') {
+                $ok = false;
+                if (is_bcrypt($stored)) {
+                    $ok = password_verify($pin, $stored);
+                } elseif ($allowPlain) {
+                    $ok = hash_equals($stored, $pin);
+                }
+                if ($ok) $employee = $r;
+            }
         }
+    }
 
-        if ($ok) {
-            $employee = $r;
-            break;
+    // Backward-compatible fallback: older rows may have no fingerprint yet.
+    if (!$employee) {
+        $sql = "SELECT id, first_name, last_name, pin_hash FROM kiosk_employees WHERE is_active=1 AND archived_at IS NULL";
+        if ($hasPinFp) $sql .= " AND (pin_fingerprint IS NULL OR pin_fingerprint = '')";
+        $stmt = $pdo->query($sql);
+
+        while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $stored = (string)($r['pin_hash'] ?? '');
+            if ($stored === '') continue;
+
+            $ok = false;
+            if (is_bcrypt($stored)) {
+                $ok = password_verify($pin, $stored);
+            } elseif ($allowPlain) {
+                $ok = hash_equals($stored, $pin);
+            }
+
+            if ($ok) {
+                $employee = $r;
+                break;
+            }
         }
+    }
+
+    // Opportunistic migration: if we authenticated via fallback and fingerprints exist, backfill the fingerprint.
+    if ($employee && $hasPinFp) {
+        try {
+            $pinFp = hash('sha256', $pin);
+            $bf = $pdo->prepare("UPDATE kiosk_employees SET pin_fingerprint = ? WHERE id = ? AND (pin_fingerprint IS NULL OR pin_fingerprint = '') LIMIT 1");
+            $bf->execute([$pinFp, (int)($employee['id'] ?? 0)]);
+        } catch (Throwable $e) { /* ignore */ }
     }
 
     if (!$employee) {

@@ -47,6 +47,10 @@ These are intentional and must not be violated.
 - No HR data
 - Optional (staff may exist without kiosk access)
 
+**Locked linking model:**
+- `kiosk_employees.hr_staff_id` is the *only* link between kiosk identities and HR staff.
+- We do **not** store the reverse link on `hr_staff` (no duplication).
+
 ### 2.4 Users (System Logins)
 - Stored in `users`
 - Authentication + permissions only
@@ -120,8 +124,8 @@ The dashboard UI must follow the styling and layout patterns from `smartcare-ui.
 ### 3.3 Convert Applicant → Staff (LOCKED FLOW)
 When application is marked **Hired**:
 1. Create `hr_staff`
-2. Link application → staff
-3. Optionally create kiosk ID
+2. Link application → staff via `hr_applications.hr_staff_id`
+3. Optionally create/link a kiosk ID via `kiosk_employees.hr_staff_id`
 4. Lock application permanently
 
 ---
@@ -148,7 +152,7 @@ All staff details are visible in **one place**.
 
 ---
 
-### 4.2 Staff Contracts (`staff_contracts`)
+### 4.2 Staff Contracts (`hr_staff_contracts`)
 
 - Contracts belong to staff, not kiosk IDs
 - Supports effective date history
@@ -156,7 +160,7 @@ All staff details are visible in **one place**.
 
 ---
 
-### 4.3 Staff Documents (`staff_documents`)
+### 4.3 Staff Documents (`hr_staff_documents`)
 
 Implemented and working.
 

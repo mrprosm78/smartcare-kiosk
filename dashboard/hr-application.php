@@ -16,11 +16,18 @@ if ($id <= 0) {
   exit('Missing application id');
 }
 
-// This page is read-only for now (no convert, no status updates).
-if ($_SERVER['REQUEST_METHOD'] === "POST") {
-  http_response_code(403);
-  exit("This page is read-only for now.");
+/** Check if a column exists (safe across installs). */
+function sc_col_exists(PDO $pdo, string $table, string $col): bool {
+  try {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?");
+    $stmt->execute([$table, $col]);
+    return (int)$stmt->fetchColumn() > 0;
+  } catch (Throwable $e) {
+    return false;
+  }
 }
+
+$hasHrStaffId = sc_col_exists($pdo, 'hr_applications', 'hr_staff_id');
 
 
 $stmt = $pdo->prepare("SELECT * FROM hr_applications WHERE id = ? LIMIT 1");
@@ -39,13 +46,120 @@ if (!empty($app['payload_json'])) {
 }
 
 
-// If already converted, fetch staff id
-$convertedEmpId = null;
-try {
-  $chk = $pdo->prepare("SELECT employee_id FROM hr_staff_profiles WHERE application_id = ? LIMIT 1");
-  $chk->execute([$id]);
-  $convertedEmpId = $chk->fetchColumn();
-} catch (Throwable $e) { $convertedEmpId = null; }
+$isEdit = ((string)($_GET['edit'] ?? '') === '1');
+
+// Determine if already converted (LOCKED: prefer hr_applications.hr_staff_id)
+$staffId = null;
+if ($hasHrStaffId && !empty($app['hr_staff_id'])) {
+  $staffId = (int)$app['hr_staff_id'];
+} else {
+  // Legacy fallback (do not create new installs with this)
+  try {
+    $chk = $pdo->prepare("SELECT employee_id FROM hr_staff_profiles WHERE application_id = ? LIMIT 1");
+    $chk->execute([$id]);
+    $legacy = $chk->fetchColumn();
+    if ($legacy !== false && $legacy !== null && $legacy !== '') {
+      $staffId = (int)$legacy;
+    }
+  } catch (Throwable $e) {
+    $staffId = null;
+  }
+}
+
+// ===== Actions =====
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  admin_csrf_verify();
+  $action = (string)($_POST['action'] ?? '');
+
+  // Status / details updates are allowed for managers (future: granular permission table)
+  if ($action === 'update_status') {
+    admin_require_perm($user, 'manage_hr_applications');
+
+    $newStatus = strtolower(trim((string)($_POST['status'] ?? '')));
+    $allowed = ['draft','submitted','reviewing','rejected','hired','archived'];
+    if (!in_array($newStatus, $allowed, true)) {
+      http_response_code(400);
+      exit('Invalid status');
+    }
+
+    $upd = $pdo->prepare("UPDATE hr_applications SET status = ? WHERE id = ? LIMIT 1");
+    $upd->execute([$newStatus, $id]);
+
+    header('Location: ' . admin_url('hr-application.php?id=' . $id));
+    exit;
+  }
+
+  if ($action === 'update_details') {
+    admin_require_perm($user, 'manage_hr_applications');
+
+    $name = trim((string)($_POST['applicant_name'] ?? ''));
+    $email = trim((string)($_POST['email'] ?? ''));
+    $phone = trim((string)($_POST['phone'] ?? ''));
+    $jobSlug = trim((string)($_POST['job_slug'] ?? ''));
+
+    // Basic validation (keep lightweight)
+    if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+      http_response_code(400);
+      exit('Invalid email');
+    }
+
+    $upd = $pdo->prepare("UPDATE hr_applications SET applicant_name = ?, email = ?, phone = ?, job_slug = ? WHERE id = ? LIMIT 1");
+    $upd->execute([$name, $email, $phone, $jobSlug, $id]);
+
+    header('Location: ' . admin_url('hr-application.php?id=' . $id));
+    exit;
+  }
+
+  // Convert to staff (enabled only when hired + not already converted)
+  if ($action === 'convert_to_staff') {
+    admin_require_perm($user, 'manage_hr_applications');
+    admin_require_perm($user, 'manage_staff');
+
+    if (!$hasHrStaffId) {
+      http_response_code(500);
+      exit('Database is missing hr_applications.hr_staff_id. Please run setup.php?action=install once.');
+    }
+    if ((string)($app['status'] ?? '') !== 'hired') {
+      http_response_code(400);
+      exit('Only hired applications can be converted to staff.');
+    }
+    if ($staffId !== null && $staffId > 0) {
+      http_response_code(400);
+      exit('This application has already been converted.');
+    }
+
+    try {
+      $pdo->beginTransaction();
+
+      $ins = $pdo->prepare(
+        "INSERT INTO hr_staff (full_name, email, phone, status, created_at, updated_at)
+         VALUES (?, ?, ?, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+      );
+      $ins->execute([
+        (string)($app['applicant_name'] ?? ''),
+        (string)($app['email'] ?? ''),
+        (string)($app['phone'] ?? ''),
+      ]);
+      $newStaffId = (int)$pdo->lastInsertId();
+
+      $link = $pdo->prepare("UPDATE hr_applications SET hr_staff_id = ? WHERE id = ? AND hr_staff_id IS NULL LIMIT 1");
+      $link->execute([$newStaffId, $id]);
+
+      $pdo->commit();
+
+      header('Location: ' . admin_url('staff-view.php?id=' . $newStaffId));
+      exit;
+    } catch (Throwable $e) {
+      if ($pdo->inTransaction()) $pdo->rollBack();
+      http_response_code(500);
+      exit('Conversion failed: ' . $e->getMessage());
+    }
+  }
+
+  http_response_code(400);
+  exit('Unknown action');
+}
+
 
 
 admin_page_start($pdo, 'HR Application');
@@ -60,7 +174,119 @@ admin_page_start($pdo, 'HR Application');
               <h1 class="text-2xl font-semibold">Application #<?= (int)$app['id'] ?></h1>
               <p class="mt-1 text-sm text-slate-600">Read-only view of submitted answers (hire/status actions are disabled for now).</p>
 
+              <div class="mt-3 flex flex-wrap items-center gap-2">
+                <span class="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                  Application #<?= (int)$app['id'] ?>
+                </span>
+
+                <?php if (!empty($app['email'])): ?>
+                  <span class="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                    <?= h((string)$app['email']) ?>
+                  </span>
+                <?php endif; ?>
+
+                <?php if (!empty($app['phone'])): ?>
+                  <span class="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                    <?= h((string)$app['phone']) ?>
+                  </span>
+                <?php endif; ?>
+
+                <form method="post" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1">
+                  <?php admin_csrf_field(); ?>
+                  <input type="hidden" name="action" value="update_status">
+                  <span class="text-xs font-semibold text-slate-600">Status</span>
+                  <select name="status" class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs" onchange="this.form.submit()">
+                    <?php foreach (['draft','submitted','reviewing','rejected','hired','archived'] as $s): ?>
+                      <option value="<?= h($s) ?>" <?= ((string)($app['status'] ?? '') === $s) ? 'selected' : '' ?>><?= h(ucfirst($s)) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </form>
+
+                <?php if (!$isEdit): ?>
+                  <a href="<?= h(admin_url('hr-application.php?id=' . (int)$id . '&edit=1')) ?>"
+                     class="rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-semibold hover:bg-slate-50">
+                    Edit
+                  </a>
+                <?php else: ?>
+                  <a href="<?= h(admin_url('hr-application.php?id=' . (int)$id)) ?>"
+                     class="rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-semibold hover:bg-slate-50">
+                    Cancel edit
+                  </a>
+                <?php endif; ?>
+
+                <?php if ($staffId !== null && $staffId > 0): ?>
+                  <span class="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                    Converted to staff
+                  </span>
+                  <a href="<?= h(admin_url('staff-view.php?id=' . (int)$staffId)) ?>" class="rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-semibold hover:bg-slate-50">View staff</a>
+                <?php elseif ((string)($app['status'] ?? '') === 'hired' && $hasHrStaffId): ?>
+                  <form method="post" class="inline">
+                    <?php admin_csrf_field(); ?>
+                    <input type="hidden" name="action" value="convert_to_staff">
+                    <button class="rounded-xl bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-500" type="submit">
+                      Convert to staff
+                    </button>
+                  </form>
+                <?php endif; ?>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <?php if ($isEdit): ?>
+          <?php if (admin_can($user, 'manage_hr_applications')): ?>
+            <div class="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <div class="text-sm font-semibold text-slate-900">Edit application details</div>
+                  <div class="text-xs text-slate-500">This updates the top-level applicant fields (name, email, phone, job).</div>
+                </div>
+              </div>
+
+              <form method="post" class="mt-3 grid gap-3 sm:grid-cols-2">
+                <?php admin_csrf_field(); ?>
+                <input type="hidden" name="action" value="update_details">
+
+                <label class="block">
+                  <span class="text-xs font-semibold text-slate-600">Applicant name</span>
+                  <input name="applicant_name" value="<?= h((string)($app['applicant_name'] ?? '')) ?>"
+                         class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                </label>
+
+                <label class="block">
+                  <span class="text-xs font-semibold text-slate-600">Job slug</span>
+                  <input name="job_slug" value="<?= h((string)($app['job_slug'] ?? '')) ?>"
+                         class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                </label>
+
+                <label class="block">
+                  <span class="text-xs font-semibold text-slate-600">Email</span>
+                  <input name="email" value="<?= h((string)($app['email'] ?? '')) ?>"
+                         class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                </label>
+
+                <label class="block">
+                  <span class="text-xs font-semibold text-slate-600">Phone</span>
+                  <input name="phone" value="<?= h((string)($app['phone'] ?? '')) ?>"
+                         class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                </label>
+
+                <div class="sm:col-span-2 flex items-center gap-2 pt-2">
+                  <button type="submit" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">Save changes</button>
+                  <a href="<?= h(admin_url('hr-application.php?id=' . (int)$id)) ?>" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50">Cancel</a>
+                </div>
+              </form>
+            </div>
+          <?php else: ?>
+            <div class="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              You don’t have permission to edit applications.
+            </div>
+          <?php endif; ?>
+        <?php endif; ?>
+
         <?php
+
         $sections = [
           'personal'     => 'Step 1 — Personal',
           'role'         => 'Step 2 — Role & availability',

@@ -696,15 +696,20 @@ function create_tables(PDO $pdo): void {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   ");
 
+  // LOCKED LINK: Application → Staff (single conversion, no duplication)
+  // Use hr_applications.hr_staff_id as the authoritative link.
+  // (Legacy conversion columns may still exist; do not drop yet.)
+  add_column_if_missing($pdo, 'hr_applications', 'hr_staff_id', 'INT UNSIGNED NULL');
+  try { $pdo->exec("ALTER TABLE hr_applications ADD KEY idx_hr_staff (hr_staff_id)"); } catch (Throwable $e) { /* ignore */ }
+
   
   // HR STAFF (authoritative staff profiles)
-  // - Separate from kiosk_employees (kiosk identities / PINs)
-  // - Links to kiosk_employees via kiosk_employee_id when kiosk access is enabled.
+  // LOCKED: hr_staff is the master HR record.
+  // LOCKED: Kiosk access is linked only via kiosk_employees.hr_staff_id (no reverse link here).
+  // LOCKED: Application → Staff link lives on hr_applications (hr_applications.hr_staff_id).
   $pdo->exec("
     CREATE TABLE IF NOT EXISTS hr_staff (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-      kiosk_employee_id INT UNSIGNED NULL,
-      application_id INT UNSIGNED NULL,
       first_name VARCHAR(100) NOT NULL DEFAULT '',
       last_name VARCHAR(100) NOT NULL DEFAULT '',
       nickname VARCHAR(100) NULL,
@@ -720,17 +725,16 @@ function create_tables(PDO $pdo): void {
       archived_at DATETIME NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uq_hr_staff_kiosk (kiosk_employee_id),
-      UNIQUE KEY uq_hr_staff_application (application_id),
       KEY idx_hr_staff_dept (department_id),
       KEY idx_hr_staff_status (status),
       KEY idx_hr_staff_updated (updated_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   ");
 
-  // STAFF CONTRACTS (linked to hr_staff, supports effective dating/history)
+  // HR STAFF CONTRACTS (linked to hr_staff, supports effective dating/history)
+  // LOCKED: HR-owned tables use hr_ prefix.
   $pdo->exec("
-    CREATE TABLE IF NOT EXISTS staff_contracts (
+    CREATE TABLE IF NOT EXISTS hr_staff_contracts (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
       staff_id INT UNSIGNED NOT NULL,
       effective_from DATE NOT NULL,
@@ -738,14 +742,15 @@ function create_tables(PDO $pdo): void {
       contract_json LONGTEXT NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      KEY idx_staff_contracts_staff (staff_id),
-      KEY idx_staff_contracts_effective (effective_from, effective_to)
+      KEY idx_hr_staff_contracts_staff (staff_id),
+      KEY idx_hr_staff_contracts_effective (effective_from, effective_to)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   ");
 
-  // STAFF DOCUMENTS (uploads stored outside webroot in private store_* path)
+  // HR STAFF DOCUMENTS (uploads stored outside webroot in private store_* path)
+  // LOCKED: HR-owned tables use hr_ prefix.
   $pdo->exec("
-    CREATE TABLE IF NOT EXISTS staff_documents (
+    CREATE TABLE IF NOT EXISTS hr_staff_documents (
       id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
       staff_id INT UNSIGNED NOT NULL,
       doc_type VARCHAR(50) NOT NULL,
@@ -756,30 +761,15 @@ function create_tables(PDO $pdo): void {
       note VARCHAR(255) NULL,
       uploaded_by_admin_id INT UNSIGNED NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      KEY idx_staff_docs_staff (staff_id),
-      KEY idx_staff_docs_type (doc_type),
-      KEY idx_staff_docs_created (created_at)
+      KEY idx_hr_staff_docs_staff (staff_id),
+      KEY idx_hr_staff_docs_type (doc_type),
+      KEY idx_hr_staff_docs_created (created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   ");
 
-
-// HR → STAFF PROFILES
-  // - Keeps applicants (hr_applications) and staff (kiosk_employees) separate.
-  // - When an applicant is hired, we convert/copy their application payload into this table.
-  // - Staff HR details can then be viewed/edited without changing the original application.
-  $pdo->exec("
-    CREATE TABLE IF NOT EXISTS hr_staff_profiles (
-      employee_id INT UNSIGNED NOT NULL PRIMARY KEY,
-      application_id INT UNSIGNED NULL,
-      profile_json LONGTEXT NOT NULL,
-      created_by_admin_id INT UNSIGNED NULL,
-      updated_by_admin_id INT UNSIGNED NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uq_hr_staff_application (application_id),
-      KEY idx_hr_staff_updated (updated_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-  ");
+  // LEGACY NOTE:
+  // hr_staff_profiles is legacy and will be phased out. Do not create new installs with it.
+  // Do not drop the table here (legacy cleanup is a separate, later phase).
 
   // Track conversion (safe additive columns)
   add_column_if_missing($pdo, 'hr_applications', 'hired_employee_id', 'INT UNSIGNED NULL');
@@ -815,6 +805,9 @@ function create_tables(PDO $pdo): void {
   add_column_if_missing($pdo, 'kiosk_employees', 'department_id', 'INT UNSIGNED NULL');
   add_column_if_missing($pdo, 'kiosk_employees', 'team_id', 'INT UNSIGNED NULL');
   add_column_if_missing($pdo, 'kiosk_employees', 'pin_fingerprint', 'CHAR(64) NULL');
+  // LOCKED LINK: Kiosk identity → HR staff
+  add_column_if_missing($pdo, 'kiosk_employees', 'hr_staff_id', 'BIGINT UNSIGNED NULL');
+  try { $pdo->exec("ALTER TABLE kiosk_employees ADD KEY idx_hr_staff (hr_staff_id)"); } catch (Throwable $e) { /* ignore */ }
   try { $pdo->exec("ALTER TABLE kiosk_employees ADD UNIQUE KEY uq_pin_fp (pin_fingerprint)"); } catch (Throwable $e) { /* ignore */ }
 
   add_column_if_missing($pdo, 'kiosk_employees', 'is_agency', "TINYINT(1) NOT NULL DEFAULT 0");

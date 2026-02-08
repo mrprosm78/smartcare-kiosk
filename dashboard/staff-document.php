@@ -12,7 +12,7 @@ if ($docId <= 0) {
 
 $stmt = $pdo->prepare(
   "SELECT d.id, d.staff_id, d.doc_type, d.original_name, d.stored_path, d.mime_type, d.file_size, d.created_at
-   FROM staff_documents d
+   FROM hr_staff_documents d
    JOIN hr_staff s ON s.id = d.staff_id
    WHERE d.id = ?
    LIMIT 1"

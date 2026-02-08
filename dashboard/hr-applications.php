@@ -29,7 +29,8 @@ function sc_col_exists(PDO $pdo, string $table, string $col): bool {
   }
 }
 
-$hasHiredEmployeeId = sc_col_exists($pdo, 'hr_applications', 'hired_employee_id');
+$hasHrStaffId       = sc_col_exists($pdo, 'hr_applications', 'hr_staff_id');
+$hasHiredEmployeeId = sc_col_exists($pdo, 'hr_applications', 'hired_employee_id'); // legacy
 $hasSubmittedAt     = sc_col_exists($pdo, 'hr_applications', 'submitted_at');
 $hasCreatedAt       = sc_col_exists($pdo, 'hr_applications', 'created_at');
 
@@ -55,13 +56,17 @@ if ($q !== '') {
 
 // Converted filter
 if ($converted === 'yes') {
-  if ($hasHiredEmployeeId) {
+  if ($hasHrStaffId) {
+    $where[] = "hr_staff_id IS NOT NULL";
+  } elseif ($hasHiredEmployeeId) {
     $where[] = "hired_employee_id IS NOT NULL";
   } else {
     $where[] = "status = 'hired'";
   }
 } elseif ($converted === 'no') {
-  if ($hasHiredEmployeeId) {
+  if ($hasHrStaffId) {
+    $where[] = "hr_staff_id IS NULL";
+  } elseif ($hasHiredEmployeeId) {
     $where[] = "hired_employee_id IS NULL";
   } else {
     $where[] = "status <> 'hired'";
@@ -108,6 +113,9 @@ function sc_sort_link(string $key, string $label, string $currentSort, string $c
   return '<a class="hover:text-slate-900" href="' . h($href) . '">' . h($label) . '</a><span class="text-[11px] text-slate-500">' . h($arrow) . '</span>';
 }
 $sql = "SELECT id, status, job_slug, applicant_name, email, phone, submitted_at, updated_at";
+if ($hasHrStaffId) {
+  $sql .= ", hr_staff_id";
+}
 if ($hasHiredEmployeeId) {
   $sql .= ", hired_employee_id";
 }
@@ -151,8 +159,8 @@ function sc_status_badge(string $status): array {
               <p class="mt-1 text-sm text-slate-600">View and review job applications.</p>
             </div>          </div>
 
-          <form method="get" class="mt-4 grid gap-3 sm:grid-cols-6">
-            <label class="block">
+          <form method="get" class="mt-4 flex flex-nowrap items-end gap-3 overflow-x-auto pb-1">
+            <label class="block shrink-0 w-44">
               <span class="text-xs font-semibold text-slate-600">Status</span>
               <select name="status" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
                 <option value="">Any</option>
@@ -162,7 +170,7 @@ function sc_status_badge(string $status): array {
               </select>
             </label>
 
-            <label class="block">
+            <label class="block shrink-0 w-56">
               <span class="text-xs font-semibold text-slate-600">Job</span>
               <select name="job" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
                 <option value="">Any</option>
@@ -172,13 +180,13 @@ function sc_status_badge(string $status): array {
               </select>
             </label>
 
-            <label class="block sm:col-span-2">
+            <label class="block shrink-0 w-72 md:w-96">
               <span class="text-xs font-semibold text-slate-600">Search</span>
               <input name="q" value="<?= h($q) ?>" placeholder="Name, email, phone, token…"
                      class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
             </label>
 
-            <label class="block">
+            <label class="block shrink-0 w-44">
               <span class="text-xs font-semibold text-slate-600">Converted</span>
               <select name="converted" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
                 <option value="" <?= $converted === '' ? 'selected' : '' ?>>Any</option>
@@ -186,13 +194,12 @@ function sc_status_badge(string $status): array {
                 <option value="no"  <?= $converted === 'no' ? 'selected' : '' ?>>No</option>
               </select>
             </label>
-            <div class="flex items-end gap-2 sm:col-span-6">
+            <div class="flex shrink-0 items-end gap-2">
               <a href="<?= h(admin_url('hr-applications.php')) ?>"
                  class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50">
                 Clear
               </a>
-              <span class="text-xs text-slate-500">Dropdown filters apply instantly. Press Enter to search.</span>
-            </div>
+</div>
           </form>
         </div>
 
@@ -226,9 +233,9 @@ function sc_status_badge(string $status): array {
                     <?php
                       $st = (string)($r['status'] ?? '');
                       $b = sc_status_badge($st);
-                      $isConverted = $hasHiredEmployeeId
-                        ? !empty($r['hired_employee_id'])
-                        : (strtolower($st) === 'hired');
+                      $isConverted = $hasHrStaffId
+                        ? !empty($r['hr_staff_id'])
+                        : ($hasHiredEmployeeId ? !empty($r['hired_employee_id']) : (strtolower($st) === 'hired'));
                     ?>
                     <div class="flex flex-wrap items-center gap-1">
                       <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold <?= h($b['bd']) ?> <?= h($b['bg']) ?> <?= h($b['tx']) ?>">

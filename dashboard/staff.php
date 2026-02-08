@@ -54,8 +54,6 @@ function sc_sort_link_staff(string $key, string $label, string $currentSort, str
 try {
   $pdo->exec("CREATE TABLE IF NOT EXISTS hr_staff (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    kiosk_employee_id INT UNSIGNED NULL,
-    application_id INT UNSIGNED NULL,
     first_name VARCHAR(100) NOT NULL DEFAULT '',
     last_name VARCHAR(100) NOT NULL DEFAULT '',
     nickname VARCHAR(100) NULL,
@@ -71,8 +69,6 @@ try {
     archived_at DATETIME NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_hr_staff_kiosk (kiosk_employee_id),
-    UNIQUE KEY uq_hr_staff_application (application_id),
     KEY idx_hr_staff_dept (department_id),
     KEY idx_hr_staff_status (status),
     KEY idx_hr_staff_updated (updated_at)
@@ -127,9 +123,16 @@ switch ($sort) {
 $sql = "SELECT
           s.*,
           d.name AS department_name,
-          (s.kiosk_employee_id IS NOT NULL) AS has_kiosk
+          (ke.id IS NOT NULL) AS has_kiosk,
+          ke.employee_code AS kiosk_employee_code
         FROM hr_staff s
         LEFT JOIN kiosk_employee_departments d ON d.id = s.department_id
+        LEFT JOIN (
+          SELECT hr_staff_id, MAX(id) AS id, MAX(employee_code) AS employee_code
+          FROM kiosk_employees
+          WHERE hr_staff_id IS NOT NULL AND archived_at IS NULL
+          GROUP BY hr_staff_id
+        ) ke ON ke.hr_staff_id = s.id
         " . ($where ? ('WHERE ' . implode(' AND ', $where)) : '') . "
         ORDER BY " . $orderBy . "
         LIMIT 500";
