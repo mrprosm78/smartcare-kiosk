@@ -99,8 +99,16 @@ if (!in_array($action, ['', 'IN', 'OUT'], true)) $action = '';
 // Fetch employees for filter
 $employees = [];
 try {
-  $st = $pdo->query("SELECT id, employee_code, first_name, last_name, nickname
-    FROM kiosk_employees
+  // Prefer HR staff identity when the kiosk ID is linked (kiosk_employees.hr_staff_id).
+  $st = $pdo->query("SELECT e.id,
+      e.employee_code,
+      e.hr_staff_id,
+      s.staff_code AS staff_code,
+      COALESCE(s.first_name, e.first_name) AS first_name,
+      COALESCE(s.last_name,  e.last_name)  AS last_name,
+      e.nickname
+    FROM kiosk_employees e
+    LEFT JOIN hr_staff s ON s.id = e.hr_staff_id
     ORDER BY
       CASE
         WHEN TRIM(CONCAT_WS(' ', first_name, last_name)) <> '' THEN TRIM(CONCAT_WS(' ', first_name, last_name))
@@ -159,8 +167,10 @@ $sql = "
     pe.ip_address,
     pe.user_agent,
     e.employee_code,
-    e.first_name,
-    e.last_name,
+    e.hr_staff_id,
+    s.staff_code AS staff_code,
+    COALESCE(s.first_name, e.first_name) AS first_name,
+    COALESCE(s.last_name,  e.last_name)  AS last_name,
     e.nickname,
     pp.id AS photo_id,
     pp.photo_path,
@@ -169,6 +179,7 @@ $sql = "
     pp.uploaded_at
   FROM kiosk_punch_events pe
   LEFT JOIN kiosk_employees e ON e.id = pe.employee_id
+  LEFT JOIN hr_staff s ON s.id = e.hr_staff_id
   LEFT JOIN kiosk_punch_photos pp ON pp.event_uuid = pe.event_uuid AND pp.action = pe.action
   WHERE " . implode(' AND ', $where) . "
   ORDER BY $timeExpr DESC, pe.id DESC
@@ -255,9 +266,10 @@ $active = admin_url('punch-details.php');
                   <?php foreach ($employees as $e):
                     $id = (int)($e['id'] ?? 0);
                     $sel = ($employeeId === $id) ? 'selected' : '';
+                    $staffCode = trim((string)($e['staff_code'] ?? ''));
                     $codeRaw = trim((string)($e['employee_code'] ?? ''));
-                    $code = $codeRaw;
-                    if ($codeRaw !== '' && ctype_digit($codeRaw)) {
+                    $code = ($staffCode !== '') ? $staffCode : $codeRaw;
+                    if ($staffCode === '' && $codeRaw !== '' && ctype_digit($codeRaw)) {
                       $code = str_pad($codeRaw, 4, '0', STR_PAD_LEFT);
                     }
                     $name = admin_employee_display_name($e);
@@ -322,9 +334,10 @@ $active = admin_url('punch-details.php');
                       $t = (string)($r['effective_time'] ?? '');
                       if ($t === '') $t = (string)($r['received_at'] ?? '');
                       if ($t === '') $t = (string)($r['device_time'] ?? '');
-                      $emp = trim((string)($r['employee_code'] ?? ''));
                       $empName = admin_employee_display_name($r);
-                      $empLabel = $emp !== '' ? ($emp . ' — ' . $empName) : $empName;
+                      $staffCode = trim((string)($r['staff_code'] ?? ''));
+                      $empCode = $staffCode !== '' ? $staffCode : trim((string)($r['employee_code'] ?? ''));
+                      $empLabel = $empCode !== '' ? ($empCode . ' — ' . $empName) : $empName;
                       $act = (string)($r['action'] ?? '');
                       $status = trim((string)($r['result_status'] ?? ''));
                       $offline = ((int)($r['was_offline'] ?? 0) === 1);

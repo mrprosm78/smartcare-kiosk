@@ -34,6 +34,7 @@ $staffOptions = [];
 try {
   $staffOptions = $pdo->query("
     SELECT s.id,
+           s.staff_code,
            s.first_name, s.last_name, s.email,
            s.department_id,
            d.name AS department_name,
@@ -175,6 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
  */
 $rows = $pdo->query("
   SELECT e.id, e.employee_code, e.is_active, e.is_agency, e.agency_label, e.nickname, e.hr_staff_id,
+         s.staff_code AS staff_code,
          s.first_name AS staff_first_name, s.last_name AS staff_last_name, s.email AS staff_email,
          s.department_id AS staff_department_id, d.name AS staff_department_name
   FROM kiosk_employees e
@@ -196,6 +198,7 @@ $selectedId = $selected ? (int)$selected['id'] : 0;
 
 function staff_label(array $st): string {
   $id = (int)($st['id'] ?? 0);
+  $code = trim((string)($st['staff_code'] ?? ''));
   $name = trim((string)($st['first_name'] ?? '') . ' ' . (string)($st['last_name'] ?? ''));
   if ($name === '') $name = 'Staff #' . $id;
   $email = trim((string)($st['email'] ?? ''));
@@ -203,7 +206,7 @@ function staff_label(array $st): string {
   $parts = [$name];
   if ($email !== '') $parts[] = $email;
   if ($dept !== '') $parts[] = $dept;
-  $parts[] = '#' . $id;
+  $parts[] = ($code !== '' ? ('ID ' . $code) : ('#' . $id));
   return implode(' · ', $parts);
 }
 ?>
@@ -273,7 +276,8 @@ function staff_label(array $st): string {
                   if ($linkedStaffId > 0) {
                     $name = full_name((string)$r['staff_first_name'], (string)$r['staff_last_name']);
                     $dept = (string)($r['staff_department_name'] ?? '—');
-                    $staffIdLabel = '#' . $linkedStaffId;
+                    $staffCode = trim((string)($r['staff_code'] ?? ''));
+                    $staffIdLabel = ($staffCode !== '' ? $staffCode : ('#' . $linkedStaffId));
                   } else {
                     $name = trim((string)($r['agency_label'] ?? '')) ?: (trim((string)($r['nickname'] ?? '')) ?: '—');
                     $dept = '—';
