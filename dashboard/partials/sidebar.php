@@ -147,7 +147,7 @@ $dashboardItem = ['href' => admin_url('index.php'), 'label' => 'Dashboard', 'per
 
 $hrItems = [
   ['href' => admin_url('hr-applications.php'), 'label' => 'Applicants', 'perm' => 'view_hr_applications', 'icon' => 'applicants'],
-  ['href' => admin_url('staff.php'), 'label' => 'Staff', 'perm' => 'manage_staff', 'icon' => 'staff'],
+  ['href' => admin_url('hr-staff.php'), 'label' => 'Staff', 'perm' => 'manage_staff', 'icon' => 'staff'],
 ];
 
 $rotaItem = ['href' => admin_url('rota.php'), 'label' => 'Rota', 'perm' => 'view_dashboard', 'soon' => true, 'icon' => 'rota'];

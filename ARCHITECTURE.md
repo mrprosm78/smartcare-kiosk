@@ -128,11 +128,46 @@ When application is marked **Hired**:
 3. Optionally create/link a kiosk ID via `kiosk_employees.hr_staff_id`
 4. Lock application permanently
 
+
+#### Applicant immutability & status updates (LOCKED)
+
+- `hr_applications` is the **immutable submission record** (what the person submitted).
+- Dashboard users may update **status** while reviewing (draft → submitted → reviewing → ...).
+- Once an application is **converted to staff** (`hr_applications.hr_staff_id` set), the application is considered **locked**:
+  - The submitted payload must not be edited.
+  - Status changes should be avoided (or disabled in UI) to preserve audit integrity.
+  - The correct place for ongoing updates is `hr_staff` and HR-owned modules.
+
+#### HR Staff editing (current policy)
+
+For now (pre‑rota), staff identity fields (name/email/phone copied from the application) are treated as **read‑only**.
+HR operators extend staff records through modules (documents, contracts, training, etc.) rather than editing the original applicant submission.
+
+#### Kiosk ↔ Staff linking UI (LOCKED)
+
+There must be **only one authoritative UI** for linking kiosk identities to staff:
+
+- Linking is written only on `kiosk_employees.hr_staff_id`
+- The only page that may write this link is: **`/dashboard/kiosk-ids.php`**
+- HR staff pages are read‑only for this relationship and may only provide a **“Manage kiosk identity”** navigation button.
+
+
 ---
 
 ## 4. Staff Architecture (Implemented)
 
 ### 4.1 Staff Profiles (`hr_staff`)
+
+
+### Staff code / reference (planned, locked intent)
+
+For audits and exports, staff will have a human‑friendly **staff code** generated at conversion time, e.g. `SW0001`.
+
+- Stored on `hr_staff.staff_code` (unique, read‑only)
+- Prefix is configurable in settings (e.g. `SW`)
+- Numeric portion is derived from the staff `id` (e.g. `PREFIX + LPAD(id, 4, '0')`)
+- Staff code is displayed across dashboard and exports; it must not be editable.
+
 
 The **single source of truth** for employees.
 
@@ -560,3 +595,41 @@ Benefits:
 
 The fingerprint is used for lookup only.
 bcrypt remains the sole authority for PIN validation.
+
+
+---
+
+## 10. Legacy cleanup strategy (LOCKED)
+
+We do not delete legacy tables/columns/pages early.
+
+Approach:
+- Migrate reads first
+- Migrate writes second
+- Only remove legacy when nothing references it and data is safe
+
+**File naming convention:** any page renamed to `*-legacy.php` is considered removable once no links reference it.
+
+## 11. Current Focus & Phased Plan (Feb 2026)
+
+### Phase A — Applicants + Staff + Kiosk link (now)
+Goal: make Applicants/Staff/Kiosk linkage rock‑solid before starting Rota.
+
+- Applicants: immutable submissions; status workflow; convert‑once.
+- Staff: read‑only identity + HR modules (documents, contracts, training later).
+- Kiosk link: `kiosk_employees.hr_staff_id` is mandatory for future rota/payroll alignment.
+- Punching performance: bcrypt + indexed SHA‑256 fingerprint lookup (`pin_fingerprint`).
+
+### Phase B — Contracts & Training modules
+- Implement `hr_staff_contracts` screens (effective dates/history).
+- Implement training records (`hr_staff_training`) and reporting.
+
+### Phase C — Rota module (next major)
+- Planned shifts (rota) owned by HR/staff domain.
+- Actual shifts remain kiosk operational.
+- Rota requires kiosk ↔ staff linkage to be stable.
+
+### Phase D — Timesheets & Payroll
+- Weekly approvals, monthly payroll export, audit trails.
+- Continue “reads first, writes second” legacy migration approach.
+

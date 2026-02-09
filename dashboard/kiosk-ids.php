@@ -12,8 +12,18 @@ $active = admin_url('kiosk-ids.php');
 $status = (string)($_GET['status'] ?? 'active'); // active|inactive|all
 $cat = (int)($_GET['cat'] ?? 0);
 $agency = (string)($_GET['agency'] ?? 'all'); // all|agency|staff
+$preselect = (int)($_GET['select'] ?? 0);
 
 $cats = $pdo->query("SELECT id, name FROM kiosk_employee_departments ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+// HR staff list (for linking kiosk identities to staff). Best-effort.
+$staffOptions = [];
+try {
+  $staffOptions = $pdo->query("SELECT id, first_name, last_name, email, status FROM hr_staff WHERE archived_at IS NULL ORDER BY (status='active') DESC, last_name ASC, first_name ASC, id ASC LIMIT 1500")
+    ->fetchAll(PDO::FETCH_ASSOC) ?: [];
+} catch (Throwable $e) {
+  $staffOptions = [];
+}
 
 $where = [];
 $params = [];
@@ -186,6 +196,46 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                       <input name="nickname" id="f_nickname" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm" placeholder="Required for staff">
                     </div>
 
+                    <div class="sm:col-span-2">
+                      <div class="flex items-end justify-between gap-2">
+                        <label class="block text-xs font-semibold text-slate-600">Linked HR staff</label>
+                        <a id="staffLink" href="#" class="text-xs font-semibold text-slate-700 hover:text-slate-900 underline hidden">View staff</a>
+                      </div>
+                      <select name="hr_staff_id" id="f_hr_staff_id" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+                        <option value="0">— Not linked —</option>
+                        <?php foreach ($staffOptions as $st):
+                          $sid = (int)($st['id'] ?? 0);
+                          $sn = trim((string)($st['first_name'] ?? '') . ' ' . (string)($st['last_name'] ?? ''));
+                          if ($sn === '') $sn = 'Staff #' . $sid;
+                          $se = trim((string)($st['email'] ?? ''));
+                          $label = $sn . ($se !== '' ? (' · ' . $se) : '') . ' · #' . $sid;
+                        ?>
+                          <option value="<?= $sid ?>"><?= h($label) ?></option>
+                        <?php endforeach; ?>
+                      </select>
+                      <div class="mt-1 text-xs text-slate-500">Links this kiosk identity to a staff record for payroll/shifts. No HR data is copied into kiosk.</div>
+                    </div>
+
+                    <div class="sm:col-span-2">
+                      <div class="flex items-center justify-between">
+                        <label class="block text-xs font-semibold text-slate-600">Linked HR staff (optional)</label>
+                        <a id="staffLink" href="#" class="text-xs font-semibold text-slate-700 hover:text-slate-900 underline hidden">View</a>
+                      </div>
+                      <select name="hr_staff_id" id="f_hr_staff_id" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+                        <option value="0">— Not linked —</option>
+                        <?php foreach ($staffOptions as $st):
+                          $sid = (int)($st['id'] ?? 0);
+                          $sn = trim((string)($st['first_name'] ?? '') . ' ' . (string)($st['last_name'] ?? ''));
+                          if ($sn === '') $sn = 'Staff #' . $sid;
+                          $sem = trim((string)($st['email'] ?? ''));
+                          $label = $sn . ($sem !== '' ? (' · ' . $sem) : '') . ' (ID ' . $sid . ')';
+                        ?>
+                          <option value="<?= $sid ?>"><?= h($label) ?></option>
+                        <?php endforeach; ?>
+                      </select>
+                      <div class="mt-1 text-xs text-slate-500">Linking enables payroll/shifts to follow: kiosk ID → staff → contract.</div>
+                    </div>
+
                     <div>
                       <label class="block text-xs font-semibold text-slate-600">Employee code</label>
                       <input name="employee_code" id="f_employee_code" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
@@ -276,6 +326,8 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
   }
   const f_id = document.getElementById('f_id');
   const f_nickname = document.getElementById('f_nickname');
+  const f_hr_staff_id = document.getElementById('f_hr_staff_id');
+  const staffLink = document.getElementById('staffLink');
   const f_employee_code = document.getElementById('f_employee_code');
   const f_department_id = document.getElementById('f_department_id');
   const f_is_agency = document.getElementById('f_is_agency');
@@ -303,6 +355,18 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     if (isAgency && !f_agency_label.value.trim()) f_agency_label.value = 'Agency';
   }
 
+  function updateStaffLink(){
+    if (!staffLink || !f_hr_staff_id) return;
+    const v = parseInt(String(f_hr_staff_id.value || '0'), 10) || 0;
+    if (v > 0) {
+      staffLink.href = '<?= h(admin_url('hr-staff-view.php')) ?>?id=' + encodeURIComponent(String(v));
+      staffLink.classList.remove('hidden');
+    } else {
+      staffLink.href = '#';
+      staffLink.classList.add('hidden');
+    }
+  }
+
   async function loadEmployee(id, agencyPreset){
     showError('');
     setLoading(true, 'Loading…');
@@ -323,6 +387,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
     f_id.value = String(selectedId);
     f_nickname.value = e.nickname || '';
+    if (f_hr_staff_id) f_hr_staff_id.value = String(e.hr_staff_id || 0);
     f_employee_code.value = e.employee_code || '';
     f_department_id.value = String(e.department_id || 0);
     f_is_agency.value = String(e.is_agency || 0);
@@ -331,6 +396,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     f_is_active.checked = String(e.is_active || 0) === '1' || e.is_active === 1;
 
     toggleAgency();
+    updateStaffLink();
 
     panelTitle.textContent = selectedId > 0 ? ('#' + selectedId + ' · ' + (e.nickname || e.agency_label || 'Employee')) : (agencyPreset ? 'New agency' : 'New employee');
 
@@ -407,6 +473,13 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
   f_is_agency && f_is_agency.addEventListener('change', toggleAgency);
 
+  // If called with ?select=ID, auto-load that employee.
+  const preselect = <?= (int)$preselect ?>;
+  if (preselect > 0) {
+    loadEmployee(preselect, false);
+  }
+  f_hr_staff_id && f_hr_staff_id.addEventListener('change', updateStaffLink);
+
   form && form.addEventListener('submit', async (e)=>{
     e.preventDefault();
     showError('');
@@ -435,12 +508,17 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     setLoading(false);
   });
 
-  // auto-select first row
-  const first = document.querySelector('tr[data-emp-id]');
-  if (first) {
-    loadEmployee(parseInt(first.getAttribute('data-emp-id'),10)||0, false);
+  // Auto-load selected kiosk ID if provided, else select first row.
+  const preselect = <?= (int)$preselect ?>;
+  if (preselect > 0) {
+    loadEmployee(preselect, false);
   } else {
-    loadEmployee(0,false);
+    const first = document.querySelector('tr[data-emp-id]');
+    if (first) {
+      loadEmployee(parseInt(first.getAttribute('data-emp-id'),10)||0, false);
+    } else {
+      loadEmployee(0,false);
+    }
   }
 })();
 </script>

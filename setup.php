@@ -646,6 +646,7 @@ function create_tables(PDO $pdo): void {
   $pdo->exec("
     CREATE TABLE IF NOT EXISTS kiosk_employee_departments (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      staff_code VARCHAR(20) NULL,
       name VARCHAR(100) NOT NULL,
       slug VARCHAR(120) NOT NULL UNIQUE,
       is_active TINYINT(1) NOT NULL DEFAULT 1,
@@ -661,6 +662,7 @@ function create_tables(PDO $pdo): void {
   $pdo->exec("
     CREATE TABLE IF NOT EXISTS kiosk_employee_teams (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      staff_code VARCHAR(20) NULL,
       name VARCHAR(100) NOT NULL,
       slug VARCHAR(120) NOT NULL UNIQUE,
       is_active TINYINT(1) NOT NULL DEFAULT 1,
@@ -710,6 +712,7 @@ function create_tables(PDO $pdo): void {
   $pdo->exec("
     CREATE TABLE IF NOT EXISTS hr_staff (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      staff_code VARCHAR(20) NULL,
       first_name VARCHAR(100) NOT NULL DEFAULT '',
       last_name VARCHAR(100) NOT NULL DEFAULT '',
       nickname VARCHAR(100) NULL,
@@ -727,7 +730,8 @@ function create_tables(PDO $pdo): void {
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       KEY idx_hr_staff_dept (department_id),
       KEY idx_hr_staff_status (status),
-      KEY idx_hr_staff_updated (updated_at)
+      KEY idx_hr_staff_updated (updated_at),
+      UNIQUE KEY uq_hr_staff_code (staff_code)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   ");
 
@@ -736,6 +740,7 @@ function create_tables(PDO $pdo): void {
   $pdo->exec("
     CREATE TABLE IF NOT EXISTS hr_staff_contracts (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      staff_code VARCHAR(20) NULL,
       staff_id INT UNSIGNED NOT NULL,
       effective_from DATE NOT NULL,
       effective_to DATE NULL,
@@ -780,6 +785,7 @@ function create_tables(PDO $pdo): void {
   $pdo->exec("
     CREATE TABLE IF NOT EXISTS kiosk_employees (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      staff_code VARCHAR(20) NULL,
       employee_code VARCHAR(50) UNIQUE,
       first_name VARCHAR(100),
       last_name VARCHAR(100),

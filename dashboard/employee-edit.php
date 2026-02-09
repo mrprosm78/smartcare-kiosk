@@ -32,7 +32,21 @@ $employee = [
   'is_active' => 1,
 ];
 
-$hasHrProfile = false;
+/** Check if a column exists (safe across installs). */
+function sc_col_exists(PDO $pdo, string $table, string $col): bool {
+  try {
+    $stmt = $pdo->prepare(
+      "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?"
+    );
+    $stmt->execute([$table, $col]);
+    return (int)$stmt->fetchColumn() > 0;
+  } catch (Throwable $e) {
+    return false;
+  }
+}
+
+$hasHrStaffLink = sc_col_exists($pdo, 'kiosk_employees', 'hr_staff_id');
+$linkedStaffId = 0;
 $fromAppId = (int)($_GET['from_app'] ?? 0);
 
 // agency preset
@@ -51,25 +65,9 @@ if (!$isNew) {
   }
   $employee = array_merge($employee, $row);
 
-  // Optional: HR profile (created when converting an applicant to staff)
-  try {
-    $pdo->exec("CREATE TABLE IF NOT EXISTS hr_staff_profiles (
-      employee_id INT UNSIGNED NOT NULL PRIMARY KEY,
-      application_id INT UNSIGNED NULL,
-      profile_json LONGTEXT NOT NULL,
-      created_by_admin_id INT UNSIGNED NULL,
-      updated_by_admin_id INT UNSIGNED NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uq_hr_staff_application (application_id),
-      KEY idx_hr_staff_updated (updated_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
-
-    $chk = $pdo->prepare("SELECT 1 FROM hr_staff_profiles WHERE employee_id=? LIMIT 1");
-    $chk->execute([$id]);
-    $hasHrProfile = (bool)$chk->fetchColumn();
-  } catch (Throwable $e) {
-    $hasHrProfile = false;
+  // Optional: HR staff link (LOCKED)
+  if ($hasHrStaffLink) {
+    $linkedStaffId = (int)($employee['hr_staff_id'] ?? 0);
   }
 }
 
@@ -181,10 +179,14 @@ admin_page_start($pdo, $isNew ? 'Add Employee' : 'Edit Employee');
               </div>
               <div class="flex items-center gap-2">
                 <?php if (!$isNew): ?>
-                  <a href="<?= h(admin_url('staff-hr.php?id=' . (int)$id)) ?>"
-                     class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">
-                    <?= $hasHrProfile ? 'HR profile' : 'Add HR profile' ?>
-                  </a>
+                  <?php if ($linkedStaffId > 0): ?>
+                    <a href="<?= h(admin_url('hr-staff-view.php?id=' . (int)$linkedStaffId)) ?>"
+                       class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">
+                      View linked staff
+                    </a>
+                  <?php elseif ($hasHrStaffLink): ?>
+                    <span class="rounded-2xl px-4 py-2 text-sm font-semibold bg-slate-50 border border-slate-200 text-slate-600">Not linked to staff</span>
+                  <?php endif; ?>
                 <?php endif; ?>
                 <a href="<?= h(admin_url('employees.php')) ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Back</a>
               </div>
@@ -193,7 +195,10 @@ admin_page_start($pdo, $isNew ? 'Add Employee' : 'Edit Employee');
 
           <?php if ($fromAppId > 0): ?>
             <div class="mt-4 rounded-3xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-              Converted from application #<?= (int)$fromAppId ?>. You can review/edit the copied HR details in <a class="underline font-semibold" href="<?= h(admin_url('staff-hr.php?id=' . (int)$id)) ?>">HR profile</a>.
+              Converted from application #<?= (int)$fromAppId ?>.
+              <?php if ($linkedStaffId > 0): ?>
+                You can review the HR staff record in <a class="underline font-semibold" href="<?= h(admin_url('hr-staff-view.php?id=' . (int)$linkedStaffId)) ?>">Staff view</a>.
+              <?php endif; ?>
             </div>
           <?php endif; ?>
 

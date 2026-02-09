@@ -28,6 +28,7 @@ try {
       'first_name' => '',
       'last_name' => '',
       'nickname' => '',
+      'hr_staff_id' => null,
       'department_id' => null,
       'team_id' => null,
       'is_agency' => 0,
@@ -41,7 +42,7 @@ try {
     }
 
     if (!$isNew) {
-      $stmt = $pdo->prepare('SELECT id, employee_code, first_name, last_name, nickname, department_id, team_id, is_agency, agency_label, is_active
+      $stmt = $pdo->prepare('SELECT id, employee_code, first_name, last_name, nickname, hr_staff_id, department_id, team_id, is_agency, agency_label, is_active
                              FROM kiosk_employees WHERE id=? LIMIT 1');
       $stmt->execute([$id]);
       $row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -68,6 +69,8 @@ try {
     $first = trim((string)($_POST['first_name'] ?? ''));
     $last = trim((string)($_POST['last_name'] ?? ''));
     $nick = trim((string)($_POST['nickname'] ?? ''));
+    $hr_staff_id = (int)($_POST['hr_staff_id'] ?? 0);
+    $hr_staff_id = $hr_staff_id > 0 ? $hr_staff_id : null;
     $department_id = (int)($_POST['department_id'] ?? 0);
     $department_id = $department_id > 0 ? $department_id : null;
 
@@ -99,16 +102,27 @@ try {
       }
     }
 
+    // Enforce 1 staff ↔ 1 kiosk identity (default). Can be relaxed later.
+    if ($hr_staff_id !== null) {
+      $chk = $pdo->prepare('SELECT id FROM kiosk_employees WHERE hr_staff_id = ? AND archived_at IS NULL LIMIT 1');
+      $chk->execute([$hr_staff_id]);
+      $existing = (int)($chk->fetchColumn() ?: 0);
+      if ($existing > 0 && ($isNew || $existing !== (int)$id)) {
+        json_out(['ok' => false, 'error' => 'That HR staff record is already linked to another kiosk ID'], 422);
+      }
+    }
+
     if ($isNew) {
       $stmt = $pdo->prepare(
-        'INSERT INTO kiosk_employees (employee_code, first_name, last_name, nickname, department_id, team_id, is_agency, agency_label, pin_hash, pin_fingerprint, pin_updated_at, is_active, created_at, updated_at)
-         VALUES (:code,:first,:last,:nick,:cat,:team,:ag,:al,:pin,:pinfp, UTC_TIMESTAMP, :active, UTC_TIMESTAMP, UTC_TIMESTAMP)'
+        'INSERT INTO kiosk_employees (employee_code, first_name, last_name, nickname, hr_staff_id, department_id, team_id, is_agency, agency_label, pin_hash, pin_fingerprint, pin_updated_at, is_active, created_at, updated_at)
+         VALUES (:code,:first,:last,:nick,:hr_staff_id,:cat,:team,:ag,:al,:pin,:pinfp, UTC_TIMESTAMP, :active, UTC_TIMESTAMP, UTC_TIMESTAMP)'
       );
       $stmt->execute([
         ':code' => $employee_code !== '' ? $employee_code : null,
         ':first' => $first,
         ':last' => $last,
         ':nick' => $nick !== '' ? $nick : null,
+        ':hr_staff_id' => $hr_staff_id,
         ':cat' => $department_id,
         ':team' => null,
         ':ag' => $is_agency,
@@ -123,13 +137,14 @@ try {
       $pdo->prepare('INSERT IGNORE INTO kiosk_employee_pay_profiles (employee_id, created_at, updated_at) VALUES (?, UTC_TIMESTAMP, UTC_TIMESTAMP)')
         ->execute([$id]);
     } else {
-      $sql = 'UPDATE kiosk_employees SET employee_code=:code, first_name=:first, last_name=:last, nickname=:nick, department_id=:cat, team_id=:team, is_agency=:ag, agency_label=:al, is_active=:active, updated_at=UTC_TIMESTAMP';
+      $sql = 'UPDATE kiosk_employees SET employee_code=:code, first_name=:first, last_name=:last, nickname=:nick, hr_staff_id=:hr_staff_id, department_id=:cat, team_id=:team, is_agency=:ag, agency_label=:al, is_active=:active, updated_at=UTC_TIMESTAMP';
       $params = [
         ':team' => null,
         ':code' => $employee_code !== '' ? $employee_code : null,
         ':first' => $first,
         ':last' => $last,
         ':nick' => $nick !== '' ? $nick : null,
+        ':hr_staff_id' => $hr_staff_id,
         ':cat' => $department_id,
         ':ag' => $is_agency,
         ':al' => $agency_label !== '' ? $agency_label : null,

@@ -152,3 +152,27 @@ For real understanding of how the system works — and how it must evolve —
 
 Security note:
 Kiosk PINs use bcrypt for verification. To keep punch-in fast, an indexed SHA-256 fingerprint is used to locate the correct employee row first, then bcrypt is verified once. bcrypt remains the authoritative check.
+
+
+### Locked HR flow (Applicants → Staff)
+
+- Applicants (`hr_applications`) are **immutable submissions** from the public Apply wizard.
+- Dashboard users may update **status** during review.
+- When an applicant is **hired**, the application can be **converted once** into staff:
+  - Create `hr_staff`
+  - Set `hr_applications.hr_staff_id`
+  - After conversion, the application remains read‑only for audit.
+
+### Locked Kiosk ↔ Staff link
+
+Future modules (Rota, Payroll, reporting) require kiosk identities to be linked to staff.
+
+- Link is stored only on `kiosk_employees.hr_staff_id`
+- The only page that may write this link is **`/dashboard/kiosk-ids.php`**
+- HR staff pages display the linked kiosk identity and provide a **Manage kiosk identity** button only.
+
+### Staff code (planned)
+
+Staff will have a human‑friendly code (e.g. `SW0001`) generated from a configurable prefix + the staff numeric id.
+This will be stored on `hr_staff.staff_code` (unique, read‑only) and displayed in exports and the dashboard.
+
