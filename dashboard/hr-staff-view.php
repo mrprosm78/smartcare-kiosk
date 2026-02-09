@@ -12,31 +12,6 @@ function h2(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'
 $staffId = (int)($_GET['id'] ?? 0);
 if ($staffId <= 0) { http_response_code(400); exit('Missing staff id'); }
 
-// Ensure table exists (best-effort)
-try {
-  $pdo->exec("CREATE TABLE IF NOT EXISTS hr_staff (
-    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    first_name VARCHAR(100) NOT NULL DEFAULT '',
-    last_name VARCHAR(100) NOT NULL DEFAULT '',
-    nickname VARCHAR(100) NULL,
-    email VARCHAR(190) NULL,
-    phone VARCHAR(80) NULL,
-    department_id INT UNSIGNED NULL,
-    team_id INT UNSIGNED NULL,
-    status ENUM('active','inactive','archived') NOT NULL DEFAULT 'active',
-    photo_path VARCHAR(255) NULL,
-    profile_json LONGTEXT NULL,
-    created_by_admin_id INT UNSIGNED NULL,
-    updated_by_admin_id INT UNSIGNED NULL,
-    archived_at DATETIME NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    KEY idx_hr_staff_dept (department_id),
-    KEY idx_hr_staff_status (status),
-    KEY idx_hr_staff_updated (updated_at)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
-} catch (Throwable $e) { /* ignore */ }
-
 $stmt = $pdo->prepare("SELECT s.*, d.name AS department_name, t.name AS team_name
   FROM hr_staff s
   LEFT JOIN kiosk_employee_departments d ON d.id = s.department_id
@@ -49,6 +24,9 @@ if (!$s) { http_response_code(404); exit('Staff not found'); }
 
 $name = trim((string)($s['first_name'] ?? '') . ' ' . (string)($s['last_name'] ?? ''));
 if ($name === '') $name = 'Staff #' . $staffId;
+
+$staffCode = trim((string)($s['staff_code'] ?? ''));
+if ($staffCode === '') $staffCode = (string)$staffId;
 
 $kiosk = null;
 try {
@@ -89,25 +67,6 @@ if (!empty($s['profile_json'])) {
   $decoded = json_decode((string)$s['profile_json'], true);
   if (is_array($decoded)) $profile = $decoded;
 }
-
-// Ensure HR staff documents table exists (best-effort)
-try {
-  $pdo->exec("CREATE TABLE IF NOT EXISTS hr_staff_documents (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    staff_id INT UNSIGNED NOT NULL,
-    doc_type VARCHAR(50) NOT NULL,
-    original_name VARCHAR(255) NOT NULL,
-    stored_path VARCHAR(255) NOT NULL,
-    mime_type VARCHAR(100) NOT NULL,
-    file_size INT UNSIGNED NOT NULL DEFAULT 0,
-    note VARCHAR(255) NULL,
-    uploaded_by_admin_id INT UNSIGNED NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    KEY idx_hr_staff_docs_staff (staff_id),
-    KEY idx_hr_staff_docs_type (doc_type),
-    KEY idx_hr_staff_docs_created (created_at)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
-} catch (Throwable $e) { /* ignore */ }
 
 // Handle staff photo upload (stored in private uploads path)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'upload_photo') {
@@ -342,6 +301,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'enabl
                 <div class="min-w-0">
                 <h1 class="text-2xl font-semibold truncate"><?php echo h2($name); ?></h1>
                 <p class="mt-1 text-sm text-slate-600">
+                  Staff ID: <span class="font-semibold text-slate-900"><?php echo h2($staffCode); ?></span>
+                  ·
                   Department: <span class="font-semibold text-slate-900"><?php echo h2((string)($s['department_name'] ?? '—')); ?></span>
                   <?php if (!empty($s['team_name'])): ?>
                     · Team: <span class="font-semibold text-slate-900"><?php echo h2((string)$s['team_name']); ?></span>

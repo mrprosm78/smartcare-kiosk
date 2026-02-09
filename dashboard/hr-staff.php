@@ -50,30 +50,7 @@ function sc_sort_link_staff(string $key, string $label, string $currentSort, str
   return '<a class="hover:text-slate-900" href="' . h($href) . '">' . h($label) . '</a><span class="text-[11px] text-slate-500">' . h($arrow) . '</span>';
 }
 
-// Ensure HR staff table exists (best-effort on older installs)
-try {
-  $pdo->exec("CREATE TABLE IF NOT EXISTS hr_staff (
-    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    first_name VARCHAR(100) NOT NULL DEFAULT '',
-    last_name VARCHAR(100) NOT NULL DEFAULT '',
-    nickname VARCHAR(100) NULL,
-    email VARCHAR(190) NULL,
-    phone VARCHAR(80) NULL,
-    department_id INT UNSIGNED NULL,
-    team_id INT UNSIGNED NULL,
-    status ENUM('active','inactive','archived') NOT NULL DEFAULT 'active',
-    photo_path VARCHAR(255) NULL,
-    profile_json LONGTEXT NULL,
-    created_by_admin_id INT UNSIGNED NULL,
-    updated_by_admin_id INT UNSIGNED NULL,
-    archived_at DATETIME NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    KEY idx_hr_staff_dept (department_id),
-    KEY idx_hr_staff_status (status),
-    KEY idx_hr_staff_updated (updated_at)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
-} catch (Throwable $e) { /* ignore */ }
+// HR tables are created/updated via setup.php (install/migrate).
 
 $depts = $pdo->query("SELECT id, name FROM kiosk_employee_departments ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
@@ -199,6 +176,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
               <table class="min-w-full text-sm">
                 <thead class="bg-slate-50 text-slate-700">
                   <tr>
+                    <th class="text-left font-semibold px-4 py-3">Staff ID</th>
                     <th class="text-left font-semibold px-4 py-3"><?= sc_sort_link_staff('name','Name',$sort,$dir) ?></th>
                     <th class="text-left font-semibold px-4 py-3"><?= sc_sort_link_staff('department','Department',$sort,$dir) ?></th>
                     <th class="text-left font-semibold px-4 py-3"><?= sc_sort_link_staff('status','Status',$sort,$dir) ?></th>
@@ -208,17 +186,20 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                 </thead>
                 <tbody>
                 <?php if (!$rows): ?>
-                  <tr><td class="px-4 py-6 text-slate-600" colspan="5">No staff found.</td></tr>
+                  <tr><td class="px-4 py-6 text-slate-600" colspan="6">No staff found.</td></tr>
                 <?php else: ?>
                   <?php foreach ($rows as $r): ?>
                     <?php
                       $name = trim(($r['first_name'] ?? '') . ' ' . ($r['last_name'] ?? ''));
                       if ($name === '') $name = 'Staff #' . (int)$r['id'];
+                      $staffCode = trim((string)($r['staff_code'] ?? ''));
+                      if ($staffCode === '') $staffCode = (string)(int)$r['id'];
                       $deptName = (string)($r['department_name'] ?? '—');
                       $st = (string)($r['status'] ?? 'active');
                       $hasKiosk = (int)($r['has_kiosk'] ?? 0) === 1;
                     ?>
                     <tr class="border-t border-slate-100">
+                      <td class="px-4 py-3 text-slate-700 font-semibold"><?php echo h2($staffCode); ?></td>
                       <td class="px-4 py-3">
                         <a class="font-semibold text-slate-900 hover:underline" href="<?php echo h(admin_url('hr-staff-view.php?id=' . (int)$r['id'])); ?>">
                           <?php echo h2($name); ?>

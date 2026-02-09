@@ -4,524 +4,452 @@ declare(strict_types=1);
 require_once __DIR__ . '/layout.php';
 admin_require_perm($user, 'view_employees');
 
-$showContract = admin_can($user, 'view_contract');
+$canManage = admin_can($user, 'manage_employees');
 
-admin_page_start($pdo, 'Kiosk IDs');
 $active = admin_url('kiosk-ids.php');
+admin_page_start($pdo, 'Kiosk IDs');
 
-$status = (string)($_GET['status'] ?? 'active'); // active|inactive|all
-$cat = (int)($_GET['cat'] ?? 0);
-$agency = (string)($_GET['agency'] ?? 'all'); // all|agency|staff
-$preselect = (int)($_GET['select'] ?? 0);
+/**
+ * SHA-256 fingerprint for fast indexed lookup; bcrypt remains authoritative.
+ */
+function pin_fingerprint(string $pin): string {
+  return hash('sha256', $pin);
+}
 
-$cats = $pdo->query("SELECT id, name FROM kiosk_employee_departments ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+function full_name(?string $first, ?string $last): string {
+  $n = trim((string)$first . ' ' . (string)$last);
+  return $n !== '' ? $n : '—';
+}
 
-// HR staff list (for linking kiosk identities to staff). Best-effort.
+$errors = [];
+$success = (string)($_GET['ok'] ?? '');
+
+$selectId = (int)($_GET['select'] ?? 0);
+
+/**
+ * Load staff options for dropdown (name + dept).
+ * dept comes from kiosk_employee_departments (current schema).
+ */
 $staffOptions = [];
 try {
-  $staffOptions = $pdo->query("SELECT id, first_name, last_name, email, status FROM hr_staff WHERE archived_at IS NULL ORDER BY (status='active') DESC, last_name ASC, first_name ASC, id ASC LIMIT 1500")
-    ->fetchAll(PDO::FETCH_ASSOC) ?: [];
+  $staffOptions = $pdo->query("
+    SELECT s.id,
+           s.first_name, s.last_name, s.email,
+           s.department_id,
+           d.name AS department_name,
+           s.status
+    FROM hr_staff s
+    LEFT JOIN kiosk_employee_departments d ON d.id = s.department_id
+    WHERE s.archived_at IS NULL
+    ORDER BY (s.status='active') DESC, s.last_name ASC, s.first_name ASC, s.id ASC
+    LIMIT 3000
+  ")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (Throwable $e) {
   $staffOptions = [];
 }
 
-$where = [];
-$params = [];
+/**
+ * Handle POST (add/edit).
+ */
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  // Dashboard uses admin_csrf token helpers (see dashboard/bootstrap.php)
+  admin_csrf_verify();
 
-if ($status === 'active') {
-  $where[] = 'e.is_active = 1';
-} elseif ($status === 'inactive') {
-  $where[] = 'e.is_active = 0';
+  if (!$canManage) {
+    http_response_code(403);
+    exit('Forbidden');
+  }
+
+  $action = (string)($_POST['action'] ?? '');
+
+  if ($action === 'save') {
+    $id = (int)($_POST['id'] ?? 0);
+    $employeeCode = trim((string)($_POST['employee_code'] ?? ''));
+    $hrStaffId = (int)($_POST['hr_staff_id'] ?? 0);
+    $isActive = (int)($_POST['is_active'] ?? 0) === 1 ? 1 : 0;
+    $newPin = trim((string)($_POST['new_pin'] ?? ''));
+
+    if ($id <= 0) $errors[] = 'Missing kiosk id.';
+    if ($employeeCode === '') $errors[] = 'Kiosk Employee Code is required.';
+
+    // Optional: enforce 1 staff <-> 1 kiosk identity (recommended default)
+    if ($hrStaffId > 0) {
+      $stmt = $pdo->prepare("SELECT id FROM kiosk_employees WHERE hr_staff_id = ? AND id <> ? LIMIT 1");
+      $stmt->execute([$hrStaffId, $id]);
+      if ($stmt->fetchColumn()) {
+        $errors[] = 'That staff record is already linked to another kiosk ID.';
+      }
+    }
+
+    if (!$errors) {
+      $pdo->beginTransaction();
+      try {
+        $fields = [
+          'employee_code' => $employeeCode,
+          'hr_staff_id' => ($hrStaffId > 0 ? $hrStaffId : null),
+          'is_active' => $isActive,
+        ];
+
+        // PIN update (optional)
+        if ($newPin !== '') {
+          if (!preg_match('/^\d{4,10}$/', $newPin)) {
+            throw new RuntimeException('PIN must be 4–10 digits.');
+          }
+          $fields['pin_hash'] = password_hash($newPin, PASSWORD_BCRYPT);
+          $fields['pin_fingerprint'] = pin_fingerprint($newPin);
+          $fields['pin_updated_at'] = gmdate('Y-m-d H:i:s');
+        }
+
+        // Build update query
+        $set = [];
+        $params = [];
+        foreach ($fields as $k => $v) {
+          $set[] = "`$k` = ?";
+          $params[] = $v;
+        }
+        $params[] = $id;
+
+        $sql = "UPDATE kiosk_employees SET " . implode(', ', $set) . " WHERE id = ? LIMIT 1";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+
+        $pdo->commit();
+        header('Location: ' . admin_url('kiosk-ids.php?ok=saved&select=' . $id));
+        exit;
+      } catch (Throwable $e) {
+        $pdo->rollBack();
+        $errors[] = $e->getMessage();
+      }
+    }
+  }
+
+  if ($action === 'add') {
+    $employeeCode = trim((string)($_POST['employee_code'] ?? ''));
+    $hrStaffId = (int)($_POST['hr_staff_id'] ?? 0);
+    $pin = trim((string)($_POST['pin'] ?? ''));
+    $isActive = 1;
+
+    if ($employeeCode === '') $errors[] = 'Kiosk Employee Code is required.';
+    if ($hrStaffId <= 0) $errors[] = 'Please select a staff record.';
+    if ($pin === '') $errors[] = 'PIN is required.';
+    if ($pin !== '' && !preg_match('/^\d{4,10}$/', $pin)) $errors[] = 'PIN must be 4–10 digits.';
+
+    // enforce 1 staff <-> 1 kiosk id
+    if ($hrStaffId > 0) {
+      $stmt = $pdo->prepare("SELECT id FROM kiosk_employees WHERE hr_staff_id = ? LIMIT 1");
+      $stmt->execute([$hrStaffId]);
+      if ($stmt->fetchColumn()) {
+        $errors[] = 'That staff record is already linked to another kiosk ID.';
+      }
+    }
+
+    if (!$errors) {
+      try {
+        $stmt = $pdo->prepare("
+          INSERT INTO kiosk_employees
+            (employee_code, hr_staff_id, is_active, is_agency, pin_hash, pin_fingerprint, pin_updated_at, created_at, updated_at)
+          VALUES
+            (?, ?, ?, 0, ?, ?, ?, NOW(), NOW())
+        ");
+        $stmt->execute([
+          $employeeCode,
+          $hrStaffId,
+          $isActive,
+          password_hash($pin, PASSWORD_BCRYPT),
+          pin_fingerprint($pin),
+          gmdate('Y-m-d H:i:s'),
+        ]);
+        $newId = (int)$pdo->lastInsertId();
+        header('Location: ' . admin_url('kiosk-ids.php?ok=added&select=' . $newId));
+        exit;
+      } catch (Throwable $e) {
+        $errors[] = $e->getMessage();
+      }
+    }
+  }
 }
 
-if ($cat > 0) {
-  $where[] = 'e.department_id = ?';
-  $params[] = $cat;
+/**
+ * Load kiosk identities list.
+ * Name/Department come from linked hr_staff.
+ */
+$rows = $pdo->query("
+  SELECT e.id, e.employee_code, e.is_active, e.is_agency, e.agency_label, e.nickname, e.hr_staff_id,
+         s.first_name AS staff_first_name, s.last_name AS staff_last_name, s.email AS staff_email,
+         s.department_id AS staff_department_id, d.name AS staff_department_name
+  FROM kiosk_employees e
+  LEFT JOIN hr_staff s ON s.id = e.hr_staff_id
+  LEFT JOIN kiosk_employee_departments d ON d.id = s.department_id
+  WHERE e.archived_at IS NULL
+  ORDER BY e.is_active DESC, e.id DESC
+  LIMIT 1000
+")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+$selected = null;
+if ($selectId > 0) {
+  foreach ($rows as $r) {
+    if ((int)$r['id'] === $selectId) { $selected = $r; break; }
+  }
 }
+if (!$selected && $rows) $selected = $rows[0];
+$selectedId = $selected ? (int)$selected['id'] : 0;
 
-if ($agency === 'agency') {
-  $where[] = 'e.is_agency = 1';
-} elseif ($agency === 'staff') {
-  $where[] = 'e.is_agency = 0';
+function staff_label(array $st): string {
+  $id = (int)($st['id'] ?? 0);
+  $name = trim((string)($st['first_name'] ?? '') . ' ' . (string)($st['last_name'] ?? ''));
+  if ($name === '') $name = 'Staff #' . $id;
+  $email = trim((string)($st['email'] ?? ''));
+  $dept = trim((string)($st['department_name'] ?? ''));
+  $parts = [$name];
+  if ($email !== '') $parts[] = $email;
+  if ($dept !== '') $parts[] = $dept;
+  $parts[] = '#' . $id;
+  return implode(' · ', $parts);
 }
-
-// Search removed by design (filters only).
-
-$sql = "SELECT e.*, c.name AS department_name, t.name AS team_name,
-               p.contract_hours_per_week, p.break_is_paid, p.rules_json
-        FROM kiosk_employees e
-        LEFT JOIN kiosk_employee_departments c ON c.id = e.department_id
-   LEFT JOIN kiosk_employee_teams t ON t.id = e.team_id
-        LEFT JOIN kiosk_employee_pay_profiles p ON p.employee_id = e.id";
-if ($where) {
-  $sql .= ' WHERE ' . implode(' AND ', $where);
-}
- $sql .= " ORDER BY e.is_active DESC, c.sort_order ASC, c.name ASC, e.is_agency ASC, COALESCE(NULLIF(e.nickname,''), e.first_name, '') ASC, e.last_name ASC LIMIT 500";
-
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 ?>
 <div class="min-h-dvh flex flex-col lg:flex-row">
   <?php require __DIR__ . '/partials/sidebar.php'; ?>
 
   <main class="flex-1 px-4 sm:px-6 pt-6 pb-8">
+    <header class="rounded-3xl border border-slate-200 bg-white p-4">
+      <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div>
+          <h1 class="text-2xl font-semibold">Kiosk IDs</h1>
+          <p class="mt-1 text-sm text-slate-600">
+            Operational kiosk identities. Name/Department come from linked HR Staff (no HR data stored in kiosk).
+          </p>
+        </div>
 
-        <main class="flex-1 min-w-0">
-          <header class="rounded-3xl border border-slate-200 bg-white p-4">
-            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-              <div>
-                <h1 class="text-2xl font-semibold">Kiosk IDs</h1>
-                <p class="mt-1 text-sm text-slate-600">Click a kiosk identity to edit on the right. No page reload.</p>
+        <?php if ($canManage): ?>
+          <button type="button" id="btnAdd" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-emerald-500/15 border border-emerald-500/30 text-slate-900 hover:bg-emerald-500/20">
+            Add kiosk ID
+          </button>
+        <?php endif; ?>
+      </div>
+
+      <?php if ($success): ?>
+        <div class="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+          Saved.
+        </div>
+      <?php endif; ?>
+
+      <?php if ($errors): ?>
+        <div class="mt-3 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+          <div class="font-semibold">Please fix:</div>
+          <ul class="list-disc ml-5 mt-1">
+            <?php foreach ($errors as $e): ?>
+              <li><?= h((string)$e) ?></li>
+            <?php endforeach; ?>
+          </ul>
+        </div>
+      <?php endif; ?>
+    </header>
+
+    <div class="mt-5 grid grid-cols-1 xl:grid-cols-12 gap-5">
+      <!-- List -->
+      <section class="xl:col-span-7 min-w-0">
+        <div class="rounded-3xl border border-slate-200 bg-white overflow-hidden">
+          <div class="p-3 flex items-center justify-between">
+            <div class="text-sm text-slate-600"><span class="font-semibold text-slate-900"><?= count($rows) ?></span> kiosk IDs</div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-sm border border-slate-200 border-collapse">
+              <thead class="bg-slate-50 text-slate-600">
+                <tr>
+                  <th class="text-left font-semibold px-3 py-2">Kiosk ID</th>
+                  <th class="text-left font-semibold px-3 py-2">Name</th>
+                  <th class="text-left font-semibold px-3 py-2">Department</th>
+                  <th class="text-left font-semibold px-3 py-2">Staff ID</th>
+                  <th class="text-left font-semibold px-3 py-2">Active</th>
+                  <th class="text-right font-semibold px-3 py-2">Action</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200">
+                <?php foreach ($rows as $r):
+                  $kid = (int)$r['id'];
+                  $linkedStaffId = (int)($r['hr_staff_id'] ?? 0);
+
+                  if ($linkedStaffId > 0) {
+                    $name = full_name((string)$r['staff_first_name'], (string)$r['staff_last_name']);
+                    $dept = (string)($r['staff_department_name'] ?? '—');
+                    $staffIdLabel = '#' . $linkedStaffId;
+                  } else {
+                    $name = trim((string)($r['agency_label'] ?? '')) ?: (trim((string)($r['nickname'] ?? '')) ?: '—');
+                    $dept = '—';
+                    $staffIdLabel = '—';
+                  }
+
+                  $isActive = (int)($r['is_active'] ?? 0) === 1;
+                ?>
+                  <tr class="<?= $kid === $selectedId ? 'bg-slate-50' : 'hover:bg-slate-50' ?>">
+                    <td class="px-3 py-2 font-semibold text-slate-900"><?= h((string)($r['employee_code'] ?? '')) ?></td>
+                    <td class="px-3 py-2 text-slate-700"><?= h($name) ?></td>
+                    <td class="px-3 py-2 text-slate-700"><?= h($dept !== '' ? $dept : '—') ?></td>
+                    <td class="px-3 py-2 text-slate-700"><?= h($staffIdLabel) ?></td>
+                    <td class="px-3 py-2">
+                      <?php if ($isActive): ?>
+                        <span class="inline-flex items-center rounded-full bg-emerald-500/10 text-emerald-700 px-2 py-0.5 text-xs font-semibold border border-emerald-500/20">Active</span>
+                      <?php else: ?>
+                        <span class="inline-flex items-center rounded-full bg-slate-500/10 text-slate-700 px-2 py-0.5 text-xs font-semibold border border-slate-500/20">Inactive</span>
+                      <?php endif; ?>
+                    </td>
+                    <td class="px-3 py-2 text-right">
+                      <a class="rounded-xl px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+                         href="<?= h(admin_url('kiosk-ids.php?select=' . $kid)) ?>">
+                        Edit
+                      </a>
+                    </td>
+                  </tr>
+                <?php endforeach; ?>
+                <?php if (!$rows): ?>
+                  <tr><td colspan="6" class="px-3 py-6 text-center text-slate-500">No kiosk IDs found.</td></tr>
+                <?php endif; ?>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right panel -->
+      <aside class="xl:col-span-5">
+        <div class="rounded-3xl border border-slate-200 bg-white p-4 sticky top-5">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-xs font-semibold text-slate-600">Details</div>
+              <div class="text-lg font-semibold text-slate-900">
+                <?= $selected ? 'Kiosk ID: ' . h((string)($selected['employee_code'] ?? '')) : 'Select a kiosk ID' ?>
               </div>
-              <?php if (admin_can($user, 'manage_employees')): ?>
-                <div class="flex flex-wrap gap-2">
-                  <button type="button" id="btnAddStaff" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-emerald-500/15 border border-emerald-500/30 text-slate-900 hover:bg-emerald-500/20">Add kiosk ID</button>
-                  <button type="button" id="btnAddAgency" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-sky-500/15 border border-sky-500/30 text-slate-900 hover:bg-sky-500/20">Add agency ID</button>
-                </div>
-              <?php endif; ?>
             </div>
+          </div>
 
-            <form method="get" id="filters" class="mt-3 grid grid-cols-1 md:grid-cols-12 gap-3">
-              <div class="md:col-span-5">
-                <label class="block text-xs font-semibold text-slate-600">Department</label>
-                <select name="cat" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
-                  <option value="0">All</option>
-                  <?php foreach ($cats as $c): ?>
-                    <option value="<?= (int)$c['id'] ?>" <?= ((int)$c['id'] === $cat) ? 'selected' : '' ?>><?= h((string)$c['name']) ?></option>
+          <?php if ($selected && $canManage): ?>
+            <form method="post" class="mt-4 space-y-3">
+              <?php admin_csrf_field(); ?>
+              <input type="hidden" name="action" value="save">
+              <input type="hidden" name="id" value="<?= (int)$selected['id'] ?>">
+
+              <div>
+                <label class="block text-xs font-semibold text-slate-600">Kiosk Employee Code</label>
+                <input name="employee_code" value="<?= h((string)($selected['employee_code'] ?? '')) ?>"
+                       class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-slate-600">Linked Staff</label>
+                <select name="hr_staff_id" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+                  <option value="0">— Not linked —</option>
+                  <?php foreach ($staffOptions as $st): ?>
+                    <?php $sid = (int)$st['id']; ?>
+                    <option value="<?= $sid ?>" <?= ((int)($selected['hr_staff_id'] ?? 0) === $sid) ? 'selected' : '' ?>>
+                      <?= h(staff_label($st)) ?>
+                    </option>
                   <?php endforeach; ?>
                 </select>
+                <div class="mt-1 text-xs text-slate-500">
+                  This is the only place to link kiosk identities to staff (writes kiosk_employees.hr_staff_id).
+                </div>
               </div>
 
-              <div class="md:col-span-3">
-                <label class="block text-xs font-semibold text-slate-600">Status</label>
-                <select name="status" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
-                  <option value="active" <?= $status==='active'?'selected':'' ?>>Active</option>
-                  <option value="inactive" <?= $status==='inactive'?'selected':'' ?>>Inactive</option>
-                  <option value="all" <?= $status==='all'?'selected':'' ?>>All</option>
-                </select>
+              <?php if ((int)($selected['hr_staff_id'] ?? 0) > 0): ?>
+                <a class="inline-block text-xs font-semibold text-slate-700 hover:text-slate-900 underline"
+                   href="<?= h(admin_url('hr-staff-view.php?id=' . (int)$selected['hr_staff_id'])) ?>">
+                  View staff
+                </a>
+              <?php endif; ?>
+
+              <div class="flex items-center gap-3">
+                <label class="inline-flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="is_active" value="1" <?= ((int)($selected['is_active'] ?? 0) === 1) ? 'checked' : '' ?>>
+                  Active
+                </label>
               </div>
 
-              <div class="md:col-span-3">
-                <label class="block text-xs font-semibold text-slate-600">Type</label>
-                <select name="agency" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
-                  <option value="all" <?= $agency==='all'?'selected':'' ?>>All</option>
-                  <option value="staff" <?= $agency==='staff'?'selected':'' ?>>Staff</option>
-                  <option value="agency" <?= $agency==='agency'?'selected':'' ?>>Agency</option>
-                </select>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600">Set / reset PIN (optional)</label>
+                <input name="new_pin" inputmode="numeric" pattern="\d{4,10}"
+                       class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm"
+                       placeholder="Leave blank to keep current PIN">
+                <div class="mt-1 text-xs text-slate-500">
+                  Stores bcrypt hash + indexed SHA-256 fingerprint (fast lookup; bcrypt remains authoritative).
+                </div>
               </div>
 
-              <div class="md:col-span-1 flex items-end">
-                <a href="<?= h(admin_url('employees.php')) ?>" class="w-full text-center rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Clear</a>
+              <div class="pt-2 flex gap-2">
+                <button class="rounded-2xl px-4 py-2 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800">
+                  Save
+                </button>
               </div>
             </form>
-          </header>
+          <?php elseif ($selected): ?>
+            <div class="mt-4 text-sm text-slate-600">You don’t have permission to edit kiosk IDs.</div>
+          <?php endif; ?>
 
-          <div class="mt-5 grid grid-cols-1 xl:grid-cols-12 gap-5">
-            <!-- List -->
-            <section class="xl:col-span-7 min-w-0">
-              <div class="rounded-3xl border border-slate-200 bg-white overflow-hidden">
-                <div class="p-3 flex items-center justify-between">
-                  <div class="text-sm text-slate-600"><span class="font-semibold text-slate-900"><?= count($rows) ?></span> results</div>
-                  <div class="text-xs text-slate-500">Tip: click a row to edit</div>
+          <!-- Add form (hidden; toggled by button) -->
+          <?php if ($canManage): ?>
+            <div id="addPanel" class="mt-6 hidden">
+              <div class="text-xs font-semibold text-slate-600">Add kiosk ID</div>
+
+              <form method="post" class="mt-3 space-y-3">
+                <?php admin_csrf_field(); ?>
+                <input type="hidden" name="action" value="add">
+
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600">Select Staff</label>
+                  <select name="hr_staff_id" id="add_staff_id" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
+                    <option value="0">— Select staff —</option>
+                    <?php foreach ($staffOptions as $st): ?>
+                      <?php $sid = (int)$st['id']; ?>
+                      <option value="<?= $sid ?>" data-dept="<?= h((string)($st['department_name'] ?? '')) ?>">
+                        <?= h(staff_label($st)) ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
                 </div>
 
-                <div class="overflow-x-auto">
-                  <table class="min-w-full text-sm border border-slate-200 border-collapse">
-                    <thead class="bg-slate-50 text-slate-600">
-                      <tr>
-                        <th class="text-left font-semibold px-3 py-2">Name</th>
-                        <th class="text-left font-semibold px-3 py-2">Emp ID</th>
-                        <th class="text-left font-semibold px-3 py-2">Type</th>
-                        <th class="text-left font-semibold px-3 py-2">Department</th>
-                        <th class="text-left font-semibold px-3 py-2">Status</th>
-                        <th class="text-right font-semibold px-3 py-2">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-200" id="empTbody">
-                      <?php foreach ($rows as $r):
-                        $displayName = trim(((string)$r['first_name'] . ' ' . (string)$r['last_name']));
-                        $nick = trim((string)($r['nickname'] ?? ''));
-                        if ($nick !== '') $displayName = trim($nick);
-                        if ((int)$r['is_agency'] === 1) {
-                          $displayName = trim((string)($r['agency_label'] ?? 'Agency'));
-                        }
-                        $type = ((int)$r['is_agency'] === 1) ? 'Agency' : 'Staff';
-                        $deptName = (string)($r['department_name'] ?? '—');
-                        $isActive = (int)($r['is_active'] ?? 0) === 1;
-                      ?>
-                      <tr data-emp-id="<?= (int)$r['id'] ?>" class="hover:bg-slate-50 cursor-pointer">
-                        <td class="px-3 py-2 font-semibold text-slate-900 emp-name"><?= h($displayName) ?></td>
-                        <td class="px-3 py-2 text-slate-700 emp-code"><?= h((string)($r['employee_code'] ?? '')) ?></td>
-                        <td class="px-3 py-2 text-slate-700 emp-type"><?= h($type) ?></td>
-                        <td class="px-3 py-2 text-slate-700 emp-dept"><?= h($deptName !== '' ? $deptName : '—') ?></td>
-                        <td class="px-3 py-2 text-slate-700 emp-status">
-                          <?php if ($isActive): ?>
-                            <span class="inline-flex items-center rounded-full bg-emerald-500/10 text-emerald-700 px-2 py-0.5 text-xs font-semibold border border-emerald-500/20">Active</span>
-                          <?php else: ?>
-                            <span class="inline-flex items-center rounded-full bg-slate-500/10 text-slate-700 px-2 py-0.5 text-xs font-semibold border border-slate-500/20">Inactive</span>
-                          <?php endif; ?>
-                        </td>
-                        <td class="px-3 py-2 text-right">
-                          <button type="button" class="rounded-xl px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 btn-edit" data-emp-id="<?= (int)$r['id'] ?>">Edit</button>
-                        </td>
-                      </tr>
-                      <?php endforeach; ?>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </section>
-
-            <!-- Side panel (always visible) -->
-            <aside class="xl:col-span-5">
-              <div class="rounded-3xl border border-slate-200 bg-white p-4 sticky top-5">
-                <div class="flex items-center justify-between">
-                  <div>
-                    <div class="text-xs font-semibold text-slate-600">Edit employee</div>
-                    <div class="text-lg font-semibold text-slate-900" id="panelTitle">Select an employee</div>
-                  </div>
-                  <div class="text-xs text-slate-500" id="panelState">—</div>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600">Kiosk Employee Code</label>
+                  <input name="employee_code" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm"
+                         placeholder="e.g. 115">
                 </div>
 
-                <div class="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 hidden" id="panelError"></div>
-
-                <form id="empForm" class="mt-4 space-y-3">
-                  <input type="hidden" name="csrf" value="<?= h(admin_csrf_token()) ?>">
-                  <input type="hidden" name="id" id="f_id" value="0">
-
-                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div class="sm:col-span-2">
-                      <label class="block text-xs font-semibold text-slate-600">Nickname (display name)</label>
-                      <input name="nickname" id="f_nickname" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm" placeholder="Required for staff">
-                    </div>
-
-                    <div class="sm:col-span-2">
-                      <div class="flex items-end justify-between gap-2">
-                        <label class="block text-xs font-semibold text-slate-600">Linked HR staff</label>
-                        <a id="staffLink" href="#" class="text-xs font-semibold text-slate-700 hover:text-slate-900 underline hidden">View staff</a>
-                      </div>
-                      <select name="hr_staff_id" id="f_hr_staff_id" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
-                        <option value="0">— Not linked —</option>
-                        <?php foreach ($staffOptions as $st):
-                          $sid = (int)($st['id'] ?? 0);
-                          $sn = trim((string)($st['first_name'] ?? '') . ' ' . (string)($st['last_name'] ?? ''));
-                          if ($sn === '') $sn = 'Staff #' . $sid;
-                          $se = trim((string)($st['email'] ?? ''));
-                          $label = $sn . ($se !== '' ? (' · ' . $se) : '') . ' · #' . $sid;
-                        ?>
-                          <option value="<?= $sid ?>"><?= h($label) ?></option>
-                        <?php endforeach; ?>
-                      </select>
-                      <div class="mt-1 text-xs text-slate-500">Links this kiosk identity to a staff record for payroll/shifts. No HR data is copied into kiosk.</div>
-                    </div>
-
-                    <div class="sm:col-span-2">
-                      <div class="flex items-center justify-between">
-                        <label class="block text-xs font-semibold text-slate-600">Linked HR staff (optional)</label>
-                        <a id="staffLink" href="#" class="text-xs font-semibold text-slate-700 hover:text-slate-900 underline hidden">View</a>
-                      </div>
-                      <select name="hr_staff_id" id="f_hr_staff_id" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
-                        <option value="0">— Not linked —</option>
-                        <?php foreach ($staffOptions as $st):
-                          $sid = (int)($st['id'] ?? 0);
-                          $sn = trim((string)($st['first_name'] ?? '') . ' ' . (string)($st['last_name'] ?? ''));
-                          if ($sn === '') $sn = 'Staff #' . $sid;
-                          $sem = trim((string)($st['email'] ?? ''));
-                          $label = $sn . ($sem !== '' ? (' · ' . $sem) : '') . ' (ID ' . $sid . ')';
-                        ?>
-                          <option value="<?= $sid ?>"><?= h($label) ?></option>
-                        <?php endforeach; ?>
-                      </select>
-                      <div class="mt-1 text-xs text-slate-500">Linking enables payroll/shifts to follow: kiosk ID → staff → contract.</div>
-                    </div>
-
-                    <div>
-                      <label class="block text-xs font-semibold text-slate-600">Employee code</label>
-                      <input name="employee_code" id="f_employee_code" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
-                    </div>
-
-                    <div>
-                      <label class="block text-xs font-semibold text-slate-600">Department</label>
-                      <select name="department_id" id="f_department_id" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
-                        <option value="0">—</option>
-                        <?php foreach ($cats as $c): ?>
-                          <option value="<?= (int)$c['id'] ?>"><?= h((string)$c['name']) ?></option>
-                        <?php endforeach; ?>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label class="block text-xs font-semibold text-slate-600">Type</label>
-                      <select name="is_agency" id="f_is_agency" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm">
-                        <option value="0">Staff</option>
-                        <option value="1">Agency</option>
-                      </select>
-                    </div>
-
-                    <div id="agencyLabelWrap" class="hidden">
-                      <label class="block text-xs font-semibold text-slate-600">Agency label</label>
-                      <input name="agency_label" id="f_agency_label" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm" placeholder="Agency">
-                    </div>
-
-                    <div class="sm:col-span-2">
-                      <label class="block text-xs font-semibold text-slate-600">Reset PIN (optional)</label>
-                      <input name="pin" id="f_pin" inputmode="numeric" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm" placeholder="Leave blank to keep existing">
-                      <div class="mt-1 text-xs text-slate-500">PIN must be 4–10 digits and unique.</div>
-                    </div>
-
-                    <div class="sm:col-span-2 flex items-center justify-between pt-1">
-                      <label class="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
-                        <input type="checkbox" id="f_is_active" name="is_active" value="1" class="rounded border-slate-300">
-                        Active
-                      </label>
-
-                      <div class="flex gap-2">
-                        <button type="button" id="btnNew" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">New</button>
-                        <button type="submit" id="btnSave" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60">Save</button>
-                      </div>
-                    </div>
-                  </div>
-                </form>
-
-                <div class="mt-4 border-t border-slate-200 pt-3">
-                  <div class="text-xs font-semibold text-slate-600">Contract</div>
-                  <?php if (admin_can($user, 'edit_contract')): ?>
-                    <a id="contractLink" href="#" class="mt-2 inline-flex rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">Open contract</a>
-                  <?php else: ?>
-                    <div class="mt-2 text-sm text-slate-500">Super admin only.</div>
-                  <?php endif; ?>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600">PIN</label>
+                  <input name="pin" inputmode="numeric" pattern="\d{4,10}"
+                         class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm"
+                         placeholder="4–10 digits">
                 </div>
-              </div>
-            </aside>
-          </div>
-        </main>
+
+                <div class="pt-2 flex gap-2">
+                  <button class="rounded-2xl px-4 py-2 text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700">
+                    Create
+                  </button>
+                  <button type="button" id="btnCancelAdd" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          <?php endif; ?>
+        </div>
+      </aside>
+    </div>
+  </main>
 </div>
 
 <script>
-(function(){
-  const tbody = document.getElementById('empTbody');
-  const panelTitle = document.getElementById('panelTitle');
-  const panelState = document.getElementById('panelState');
-  const panelError = document.getElementById('panelError');
-  const form = document.getElementById('empForm');
-  const btnSave = document.getElementById('btnSave');
-  const btnNew = document.getElementById('btnNew');
-  const btnAddStaff = document.getElementById('btnAddStaff');
-  const btnAddAgency = document.getElementById('btnAddAgency');
-  const contractLink = document.getElementById('contractLink');
+  (function () {
+    const btnAdd = document.getElementById('btnAdd');
+    const addPanel = document.getElementById('addPanel');
+    const btnCancel = document.getElementById('btnCancelAdd');
 
-
-  // Auto-apply filters (no Apply button)
-  const filters = document.getElementById('filters');
-  if (filters) {
-    filters.querySelectorAll('select').forEach(sel => {
-      sel.addEventListener('change', () => {
-        // If the edit form is dirty, warn to prevent accidental loss.
-        const dirty = form && form.dataset && form.dataset.dirty === '1';
-        if (dirty && !confirm('You have unsaved changes. Apply filter and lose them?')) return;
-        filters.submit();
-      });
-    });
-  }
-  const f_id = document.getElementById('f_id');
-  const f_nickname = document.getElementById('f_nickname');
-  const f_hr_staff_id = document.getElementById('f_hr_staff_id');
-  const staffLink = document.getElementById('staffLink');
-  const f_employee_code = document.getElementById('f_employee_code');
-  const f_department_id = document.getElementById('f_department_id');
-  const f_is_agency = document.getElementById('f_is_agency');
-  const agencyLabelWrap = document.getElementById('agencyLabelWrap');
-  const f_agency_label = document.getElementById('f_agency_label');
-  const f_pin = document.getElementById('f_pin');
-  const f_is_active = document.getElementById('f_is_active');
-
-  let selectedId = 0;
-
-  function showError(msg){
-    if (!msg) { panelError.classList.add('hidden'); panelError.textContent=''; return; }
-    panelError.textContent = msg;
-    panelError.classList.remove('hidden');
-  }
-
-  function setLoading(on, label){
-    panelState.textContent = on ? (label || 'Loading…') : '—';
-    btnSave.disabled = on;
-  }
-
-  function toggleAgency(){
-    const isAgency = String(f_is_agency.value) === '1';
-    agencyLabelWrap.classList.toggle('hidden', !isAgency);
-    if (isAgency && !f_agency_label.value.trim()) f_agency_label.value = 'Agency';
-  }
-
-  function updateStaffLink(){
-    if (!staffLink || !f_hr_staff_id) return;
-    const v = parseInt(String(f_hr_staff_id.value || '0'), 10) || 0;
-    if (v > 0) {
-      staffLink.href = '<?= h(admin_url('hr-staff-view.php')) ?>?id=' + encodeURIComponent(String(v));
-      staffLink.classList.remove('hidden');
-    } else {
-      staffLink.href = '#';
-      staffLink.classList.add('hidden');
+    if (btnAdd && addPanel) {
+      btnAdd.addEventListener('click', () => addPanel.classList.toggle('hidden'));
     }
-  }
-
-  async function loadEmployee(id, agencyPreset){
-    showError('');
-    setLoading(true, 'Loading…');
-    const url = new URL('<?= h(admin_url('ajax/employee.php')) ?>', window.location.origin);
-    url.searchParams.set('id', String(id));
-    if (agencyPreset) url.searchParams.set('agency','1');
-
-    const res = await fetch(url.toString(), {headers:{'Accept':'application/json'}});
-    const data = await res.json().catch(()=>({ok:false,error:'Invalid response'}));
-    if (!res.ok || !data.ok) {
-      showError(data.error || ('Failed to load (HTTP ' + res.status + ')'));
-      setLoading(false);
-      return;
+    if (btnCancel && addPanel) {
+      btnCancel.addEventListener('click', () => addPanel.classList.add('hidden'));
     }
-
-    const e = data.employee || {};
-    selectedId = parseInt(e.id || 0, 10) || 0;
-
-    f_id.value = String(selectedId);
-    f_nickname.value = e.nickname || '';
-    if (f_hr_staff_id) f_hr_staff_id.value = String(e.hr_staff_id || 0);
-    f_employee_code.value = e.employee_code || '';
-    f_department_id.value = String(e.department_id || 0);
-    f_is_agency.value = String(e.is_agency || 0);
-    f_agency_label.value = e.agency_label || '';
-    f_pin.value = '';
-    f_is_active.checked = String(e.is_active || 0) === '1' || e.is_active === 1;
-
-    toggleAgency();
-    updateStaffLink();
-
-    panelTitle.textContent = selectedId > 0 ? ('#' + selectedId + ' · ' + (e.nickname || e.agency_label || 'Employee')) : (agencyPreset ? 'New agency' : 'New employee');
-
-    if (contractLink) {
-      if (selectedId > 0) {
-        contractLink.href = '<?= h(admin_url('employee-contract.php')) ?>?id=' + encodeURIComponent(String(selectedId));
-        contractLink.classList.remove('opacity-50','pointer-events-none');
-      } else {
-        contractLink.href = '#';
-        contractLink.classList.add('opacity-50','pointer-events-none');
-      }
-    }
-
-    // highlight row
-    document.querySelectorAll('tr[data-emp-id]').forEach(tr=>{
-      tr.classList.toggle('bg-slate-50', tr.getAttribute('data-emp-id') === String(selectedId));
-    });
-
-    setLoading(false);
-  }
-
-  function updateRowFromSaved(emp){
-    if (!emp || !emp.id) return;
-
-    const tr = document.querySelector('tr[data-emp-id="'+ emp.id +'"]');
-    const isAgency = String(emp.is_agency) === '1' || emp.is_agency === 1;
-    const name = isAgency ? (emp.agency_label || 'Agency') : (emp.nickname || '(no nickname)');
-    const type = isAgency ? 'Agency' : 'Staff';
-    const dept = emp.department_name || '—';
-    const code = emp.employee_code || '';
-    const isActive = String(emp.is_active) === '1' || emp.is_active === 1;
-
-    if (tr) {
-      tr.querySelector('.emp-name').textContent = name;
-      tr.querySelector('.emp-code').textContent = code;
-      tr.querySelector('.emp-type').textContent = type;
-      tr.querySelector('.emp-dept').textContent = dept;
-      tr.querySelector('.emp-status').innerHTML = isActive
-        ? '<span class="inline-flex items-center rounded-full bg-emerald-500/10 text-emerald-700 px-2 py-0.5 text-xs font-semibold border border-emerald-500/20">Active</span>'
-        : '<span class="inline-flex items-center rounded-full bg-slate-500/10 text-slate-700 px-2 py-0.5 text-xs font-semibold border border-slate-500/20">Inactive</span>';
-      tr.classList.add('bg-slate-50');
-    } else {
-      // new row: insert at top
-      const tbody = document.getElementById('empTbody');
-      const row = document.createElement('tr');
-      row.setAttribute('data-emp-id', emp.id);
-      row.className = 'hover:bg-slate-50 cursor-pointer bg-slate-50';
-      row.innerHTML = `
-        <td class="px-3 py-2 font-semibold text-slate-900 emp-name"></td>
-        <td class="px-3 py-2 text-slate-700 emp-code"></td>
-        <td class="px-3 py-2 text-slate-700 emp-type"></td>
-        <td class="px-3 py-2 text-slate-700 emp-dept"></td>
-        <td class="px-3 py-2 text-slate-700 emp-status"></td>
-        <td class="px-3 py-2 text-right">
-          <button type="button" class="rounded-xl px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 btn-edit" data-emp-id="${emp.id}">Edit</button>
-        </td>
-      `;
-      tbody.prepend(row);
-      updateRowFromSaved(emp);
-    }
-  }
-
-  tbody && tbody.addEventListener('click', (e)=>{
-    const btn = e.target.closest('.btn-edit');
-    const tr = e.target.closest('tr[data-emp-id]');
-    const id = btn ? btn.getAttribute('data-emp-id') : (tr ? tr.getAttribute('data-emp-id') : null);
-    if (!id) return;
-    loadEmployee(parseInt(id,10)||0, false);
-  });
-
-  btnNew && btnNew.addEventListener('click', ()=> loadEmployee(0,false));
-  btnAddStaff && btnAddStaff.addEventListener('click', ()=> loadEmployee(0,false));
-  btnAddAgency && btnAddAgency.addEventListener('click', ()=> loadEmployee(0,true));
-
-  f_is_agency && f_is_agency.addEventListener('change', toggleAgency);
-
-  // If called with ?select=ID, auto-load that employee.
-  const preselect = <?= (int)$preselect ?>;
-  if (preselect > 0) {
-    loadEmployee(preselect, false);
-  }
-  f_hr_staff_id && f_hr_staff_id.addEventListener('change', updateStaffLink);
-
-  form && form.addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    showError('');
-    setLoading(true,'Saving…');
-
-    const url = '<?= h(admin_url('ajax/employee.php')) ?>';
-    const fd = new FormData(form);
-    // checkbox handling
-    if (f_is_active.checked) fd.set('is_active','1'); else fd.set('is_active','0');
-
-    const res = await fetch(url, {method:'POST', body: fd, headers:{'Accept':'application/json'}});
-    const data = await res.json().catch(()=>({ok:false,error:'Invalid response'}));
-    if (!res.ok || !data.ok) {
-      showError(data.error || ('Failed to save (HTTP ' + res.status + ')'));
-      setLoading(false);
-      return;
-    }
-    const emp = data.employee || {};
-    // If new: load selected id
-    if (emp && emp.id) {
-      await loadEmployee(parseInt(emp.id,10)||0, false);
-      updateRowFromSaved(emp);
-    }
-    panelState.textContent = 'Saved';
-    setTimeout(()=>{ panelState.textContent = '—'; }, 1200);
-    setLoading(false);
-  });
-
-  // Auto-load selected kiosk ID if provided, else select first row.
-  const preselect = <?= (int)$preselect ?>;
-  if (preselect > 0) {
-    loadEmployee(preselect, false);
-  } else {
-    const first = document.querySelector('tr[data-emp-id]');
-    if (first) {
-      loadEmployee(parseInt(first.getAttribute('data-emp-id'),10)||0, false);
-    } else {
-      loadEmployee(0,false);
-    }
-  }
-})();
+  })();
 </script>
-
 
 <?php admin_page_end(); ?>

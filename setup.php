@@ -735,6 +735,15 @@ function create_tables(PDO $pdo): void {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   ");
 
+  // Staff code (LOCKED): numeric, starts from 1, read-only.
+  // For now we set staff_code = id (stored as string) to keep it stable for audits/exports.
+  // Backfill on install/upgrade (safe; unique by definition).
+  try {
+    $pdo->exec("UPDATE hr_staff SET staff_code = CAST(id AS CHAR) WHERE staff_code IS NULL OR staff_code = ''");
+  } catch (Throwable $e) {
+    // ignore
+  }
+
   // HR STAFF CONTRACTS (linked to hr_staff, supports effective dating/history)
   // LOCKED: HR-owned tables use hr_ prefix.
   $pdo->exec("
@@ -804,7 +813,7 @@ function create_tables(PDO $pdo): void {
       KEY idx_active (is_active),
       KEY idx_department (department_id),
       KEY idx_team (team_id),
-      UNIQUE KEY uq_pin_fp (pin_fingerprint),
+      KEY idx_pin_fp (pin_fingerprint),
       KEY idx_agency (is_agency)
     ) ENGINE=InnoDB;
   ");
@@ -814,7 +823,10 @@ function create_tables(PDO $pdo): void {
   // LOCKED LINK: Kiosk identity → HR staff
   add_column_if_missing($pdo, 'kiosk_employees', 'hr_staff_id', 'BIGINT UNSIGNED NULL');
   try { $pdo->exec("ALTER TABLE kiosk_employees ADD KEY idx_hr_staff (hr_staff_id)"); } catch (Throwable $e) { /* ignore */ }
-  try { $pdo->exec("ALTER TABLE kiosk_employees ADD UNIQUE KEY uq_pin_fp (pin_fingerprint)"); } catch (Throwable $e) { /* ignore */ }
+  // pin_fingerprint is a lookup helper (SHA-256 of entered PIN). It must NOT be unique because
+  // multiple staff may share the same PIN in some deployments.
+  try { $pdo->exec("ALTER TABLE kiosk_employees DROP INDEX uq_pin_fp"); } catch (Throwable $e) { /* ignore */ }
+  try { $pdo->exec("ALTER TABLE kiosk_employees ADD INDEX idx_pin_fp (pin_fingerprint)"); } catch (Throwable $e) { /* ignore */ }
 
   add_column_if_missing($pdo, 'kiosk_employees', 'is_agency', "TINYINT(1) NOT NULL DEFAULT 0");
   add_column_if_missing($pdo, 'kiosk_employees', 'agency_label', 'VARCHAR(100) NULL');

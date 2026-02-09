@@ -171,8 +171,12 @@ Future modules (Rota, Payroll, reporting) require kiosk identities to be linked 
 - The only page that may write this link is **`/dashboard/kiosk-ids.php`**
 - HR staff pages display the linked kiosk identity and provide a **Manage kiosk identity** button only.
 
-### Staff code (planned)
+### Staff code (implemented)
 
-Staff will have a human‑friendly code (e.g. `SW0001`) generated from a configurable prefix + the staff numeric id.
-This will be stored on `hr_staff.staff_code` (unique, read‑only) and displayed in exports and the dashboard.
+Staff has a stable numeric **staff code** generated at conversion time.
+
+- Stored on `hr_staff.staff_code` (unique, read‑only)
+- Numeric only (no prefix)
+- Starts from `1` and increments with staff creation
+- Current implementation sets `staff_code = id` (stored as a string)
 

@@ -141,6 +141,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       ]);
       $newStaffId = (int)$pdo->lastInsertId();
 
+      // Staff code (LOCKED): numeric and starts from 1. For now we set it to the DB id.
+      // Stored as a string in hr_staff.staff_code for audit-friendly display.
+      try {
+        $sc = $pdo->prepare('UPDATE hr_staff SET staff_code = ? WHERE id = ? AND (staff_code IS NULL OR staff_code = "") LIMIT 1');
+        $sc->execute([(string)$newStaffId, $newStaffId]);
+      } catch (Throwable $e) {
+        // ignore if column/index not present on older installs
+      }
+
       $link = $pdo->prepare("UPDATE hr_applications SET hr_staff_id = ? WHERE id = ? AND hr_staff_id IS NULL LIMIT 1");
       $link->execute([$newStaffId, $id]);
 

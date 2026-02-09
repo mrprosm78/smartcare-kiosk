@@ -159,14 +159,15 @@ There must be **only one authoritative UI** for linking kiosk identities to staf
 ### 4.1 Staff Profiles (`hr_staff`)
 
 
-### Staff code / reference (planned, locked intent)
+### Staff code / reference (implemented, locked intent)
 
-For audits and exports, staff will have a human‑friendly **staff code** generated at conversion time, e.g. `SW0001`.
+For audits and exports, staff has a stable **staff code** generated at conversion time.
 
 - Stored on `hr_staff.staff_code` (unique, read‑only)
-- Prefix is configurable in settings (e.g. `SW`)
-- Numeric portion is derived from the staff `id` (e.g. `PREFIX + LPAD(id, 4, '0')`)
-- Staff code is displayed across dashboard and exports; it must not be editable.
+- **Numeric only** (no prefix)
+- Starts from `1` and increments with staff creation
+- Current implementation sets `staff_code = id` (stored as a string)
+- Displayed across dashboard and exports; it must not be editable
 
 
 The **single source of truth** for employees.
