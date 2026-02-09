@@ -10,6 +10,27 @@ $active = admin_url('hr-applications.php');
 
 function h2(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); }
 
+/** Render scalar/array values consistently for audit-friendly display. */
+function sc_render_value(mixed $v): string {
+  if ($v === null) return '<span class="text-slate-500">—</span>';
+  if (is_bool($v)) return $v ? 'Yes' : 'No';
+  if (is_array($v)) {
+    // Pretty-print arrays/objects (e.g., work history, references) so they are readable.
+    $json = json_encode(
+      $v,
+      JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT
+    );
+    if ($json === false) $json = '[]';
+    $safe = htmlspecialchars($json, ENT_QUOTES, 'UTF-8');
+    return '<pre class="whitespace-pre-wrap break-words rounded-xl border border-slate-200 bg-white p-2 text-xs font-mono text-slate-800">' . $safe . '</pre>';
+  }
+
+  // Scalar / string
+  $s = trim((string)$v);
+  if ($s === '') return '<span class="text-slate-500">—</span>';
+  return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+}
+
 $id = (int)($_GET['id'] ?? 0);
 if ($id <= 0) {
   http_response_code(400);
@@ -256,7 +277,7 @@ admin_page_start($pdo, 'HR Application');
                   <div class="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2">
                     <div class="text-[11px] uppercase tracking-widest text-slate-500"><?= h((string)$k) ?></div>
                     <div class="mt-1 font-medium text-slate-900">
-                      <?= h(is_array($v) ? json_encode($v) : (string)$v) ?>
+                      <?= sc_render_value($v) ?>
                     </div>
                   </div>
                 <?php endforeach; ?>
