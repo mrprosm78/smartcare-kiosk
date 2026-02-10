@@ -136,6 +136,31 @@ if (empty(trim($personal['phone'] ?? ''))) {
     $warnings[] = ['type'=>'missing', 'label'=>'Personal details: mobile number is missing', 'step'=>1];
 }
 
+// Format checks (email / phone / postcode / DOB)
+$emailVal = trim((string)($personal['email'] ?? ''));
+if ($emailVal !== '' && function_exists('sc_is_valid_email') && !sc_is_valid_email($emailVal)) {
+    $warnings[] = ['type'=>'format', 'label'=>'Personal details: email format looks invalid', 'step'=>1];
+}
+
+$mobileVal = trim((string)($personal['phone'] ?? ''));
+if ($mobileVal !== '' && function_exists('sc_is_uk_mobile') && !sc_is_uk_mobile($mobileVal)) {
+    $warnings[] = ['type'=>'format', 'label'=>'Personal details: mobile should be UK format 07XXXXXXXXX', 'step'=>1];
+}
+
+$pcVal = trim((string)($personal['address_postcode'] ?? ''));
+if ($pcVal !== '' && function_exists('sc_is_uk_postcode') && !sc_is_uk_postcode($pcVal)) {
+    $warnings[] = ['type'=>'format', 'label'=>'Personal details: postcode format looks invalid (UK postcode)', 'step'=>1];
+}
+
+$dobVal = trim((string)($personal['dob'] ?? ''));
+if ($dobVal !== '' && function_exists('sc_validate_dob')) {
+    $dobRes = sc_validate_dob($dobVal, 16);
+    if (!$dobRes['ok']) {
+        $warnings[] = ['type'=>'format', 'label'=>'Personal details: date of birth needs checking', 'step'=>1];
+    }
+}
+
+
 // Role
 if (empty(trim($role['position_applied_for'] ?? ''))) {
     $warnings[] = ['type'=>'missing', 'label'=>'Role: position applied for is missing', 'step'=>1];
@@ -180,6 +205,13 @@ if (empty(trim($checks['has_current_dbs'] ?? ''))) {
 ?>
 
 <div class="space-y-5 text-[11px]">
+
+    <?php if (!empty($_SESSION['careers_submit_blocked'])): $blocked = $_SESSION['careers_submit_blocked']; unset($_SESSION['careers_submit_blocked']); ?>
+      <div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-4">
+        <p class="text-xs font-semibold text-slate-900"><?= scv($blocked['message'] ?? 'Please fix the issues before submitting.'); ?></p>
+        <p class="text-[10px] text-slate-600 mt-1">These are server-side validation errors. Use the “Fix” links below.</p>
+      </div>
+    <?php endif; ?>
 
     <p class="text-sc-text-muted">
         Please review your application before submitting. If anything is incorrect, use the edit button for that section.

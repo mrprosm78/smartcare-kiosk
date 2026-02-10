@@ -670,3 +670,302 @@ if (!function_exists('sc_csrf_verify')) {
     }
   }
 }
+
+// -------------------------------------------------
+// Careers application validation (client + server parity)
+// -------------------------------------------------
+if (!function_exists('sc_trim')) {
+  function sc_trim($v): string {
+    return trim(is_string($v) ? $v : (string)$v);
+  }
+}
+
+if (!function_exists('sc_normalize_spaces')) {
+  function sc_normalize_spaces(string $s): string {
+    return preg_replace('/\s+/', ' ', trim($s)) ?? trim($s);
+  }
+}
+
+if (!function_exists('sc_normalize_postcode')) {
+  function sc_normalize_postcode(string $pc): string {
+    $pc = strtoupper(trim($pc));
+    $pc = preg_replace('/\s+/', '', $pc) ?? $pc;
+    // Add a space before the last 3 chars if plausible
+    if (strlen($pc) > 3) {
+      $pc = substr($pc, 0, -3) . ' ' . substr($pc, -3);
+    }
+    return trim($pc);
+  }
+}
+
+if (!function_exists('sc_is_uk_postcode')) {
+  function sc_is_uk_postcode(string $postcode): bool {
+    $pc = sc_normalize_postcode($postcode);
+    // UK postcode (includes GIR 0AA)
+    return (bool)preg_match('/^(GIR 0AA|(?:[A-Z]{1,2}\d{1,2}[A-Z]?)\s*\d[A-Z]{2})$/i', $pc);
+  }
+}
+
+if (!function_exists('sc_normalize_phone')) {
+  function sc_normalize_phone(string $phone): string {
+    // Keep digits only (we deliberately do NOT add +44)
+    return preg_replace('/[^0-9]/', '', $phone) ?? '';
+  }
+}
+
+if (!function_exists('sc_is_uk_mobile')) {
+  function sc_is_uk_mobile(string $phone): bool {
+    $p = sc_normalize_phone($phone);
+    return (bool)preg_match('/^07\d{9}$/', $p);
+  }
+}
+
+if (!function_exists('sc_is_uk_phone')) {
+  function sc_is_uk_phone(string $phone): bool {
+    $p = sc_normalize_phone($phone);
+    // General UK numbers (mobile or landline) without +44
+    return (bool)preg_match('/^0\d{9,10}$/', $p);
+  }
+}
+
+if (!function_exists('sc_is_valid_email')) {
+  function sc_is_valid_email(string $email): bool {
+    $email = trim($email);
+    if ($email === '' || strlen($email) > 254) return false;
+    return (bool)filter_var($email, FILTER_VALIDATE_EMAIL);
+  }
+}
+
+if (!function_exists('sc_validate_dob')) {
+  /**
+   * @return array{ok:bool, message:string, age:int|null}
+   */
+  function sc_validate_dob(string $dob, int $minAge = 16): array {
+    $dob = trim($dob);
+    if ($dob === '') return ['ok'=>false, 'message'=>'Date of birth is required.', 'age'=>null];
+
+    $dt = DateTimeImmutable::createFromFormat('Y-m-d', $dob);
+    $errs = DateTimeImmutable::getLastErrors();
+    if (!$dt || ($errs['warning_count'] ?? 0) > 0 || ($errs['error_count'] ?? 0) > 0) {
+      return ['ok'=>false, 'message'=>'Please enter a valid date of birth.', 'age'=>null];
+    }
+
+    $today = new DateTimeImmutable('today');
+    if ($dt > $today) {
+      return ['ok'=>false, 'message'=>'Date of birth cannot be in the future.', 'age'=>null];
+    }
+
+    $age = (int)$today->diff($dt)->y;
+    if ($age < $minAge) {
+      return ['ok'=>false, 'message'=>'You must be at least ' . $minAge . ' years old to apply.', 'age'=>$age];
+    }
+
+    // sanity lower bound
+    if ((int)$dt->format('Y') < 1900) {
+      return ['ok'=>false, 'message'=>'Please double-check your date of birth.', 'age'=>$age];
+    }
+
+    return ['ok'=>true, 'message'=>'', 'age'=>$age];
+  }
+}
+
+if (!function_exists('sc_careers_set_errors')) {
+  function sc_careers_set_errors(int $step, array $errors): void {
+    if (session_status() === PHP_SESSION_NONE) session_start();
+    if (!isset($_SESSION['careers_errors']) || !is_array($_SESSION['careers_errors'])) {
+      $_SESSION['careers_errors'] = [];
+    }
+    $_SESSION['careers_errors'][(string)$step] = $errors;
+  }
+}
+
+if (!function_exists('sc_careers_get_errors')) {
+  function sc_careers_get_errors(int $step): array {
+    if (session_status() === PHP_SESSION_NONE) session_start();
+    $all = $_SESSION['careers_errors'] ?? [];
+    $errs = is_array($all) ? ($all[(string)$step] ?? []) : [];
+    return is_array($errs) ? $errs : [];
+  }
+}
+
+if (!function_exists('sc_careers_clear_errors')) {
+  function sc_careers_clear_errors(int $step): void {
+    if (session_status() === PHP_SESSION_NONE) session_start();
+    if (isset($_SESSION['careers_errors'][(string)$step])) {
+      unset($_SESSION['careers_errors'][(string)$step]);
+    }
+  }
+}
+
+if (!function_exists('sc_careers_validate_step')) {
+  /**
+   * Validates + normalizes the application data for a given step.
+   * Returns: [fieldKey => message]
+   */
+  function sc_careers_validate_step(int $step, array &$app): array {
+    $errors = [];
+
+    $personal = $app['personal'] ?? [];
+    $role     = $app['role'] ?? [];
+    $checks   = $app['checks'] ?? [];
+    $work     = $app['work_history'] ?? [];
+    $edu      = $app['education'] ?? [];
+    $refs     = $app['references'] ?? [];
+    $decl     = $app['declaration'] ?? [];
+
+    if ($step === 1) {
+      // Required: name/email/dob/mobile + address + role + right-to-work + DBS
+      if (sc_trim($personal['first_name'] ?? '') === '') $errors['first_name'] = 'First name is required.';
+      if (sc_trim($personal['last_name'] ?? '') === '') $errors['last_name'] = 'Last name is required.';
+
+      $dobRes = sc_validate_dob((string)($personal['dob'] ?? ''), 16);
+      if (!$dobRes['ok']) $errors['dob'] = $dobRes['message'];
+
+      $email = sc_trim($personal['email'] ?? '');
+      if ($email === '') {
+        $errors['email'] = 'Email address is required.';
+      } elseif (!sc_is_valid_email($email)) {
+        $errors['email'] = 'Please enter a valid email address.';
+      } else {
+        $app['personal']['email'] = strtolower($email);
+      }
+
+      $mobile = sc_trim($personal['phone'] ?? '');
+      if ($mobile === '') {
+        $errors['phone'] = 'Mobile number is required.';
+      } elseif (!sc_is_uk_mobile($mobile)) {
+        $errors['phone'] = 'Please enter a UK mobile number in the format 07XXXXXXXXX.';
+      } else {
+        $app['personal']['phone'] = sc_normalize_phone($mobile);
+      }
+
+      $home = sc_trim($personal['phone_home'] ?? '');
+      if ($home !== '' && !sc_is_uk_phone($home)) {
+        $errors['phone_home'] = 'Please enter a valid UK phone number (starting with 0).' ;
+      } elseif ($home !== '') {
+        $app['personal']['phone_home'] = sc_normalize_phone($home);
+      }
+
+      if (sc_trim($personal['address_line1'] ?? '') === '') $errors['address_line1'] = 'Address line 1 is required.';
+      if (sc_trim($personal['address_town'] ?? '') === '') $errors['address_town'] = 'Town/City is required.';
+
+      $pc = sc_trim($personal['address_postcode'] ?? '');
+      if ($pc === '') {
+        $errors['address_postcode'] = 'Postcode is required.';
+      } elseif (!sc_is_uk_postcode($pc)) {
+        $errors['address_postcode'] = 'Please enter a valid UK postcode.';
+      } else {
+        $app['personal']['address_postcode'] = sc_normalize_postcode($pc);
+      }
+
+      if (sc_trim($role['position_applied_for'] ?? '') === '') $errors['position_applied_for'] = 'Please select the position you are applying for.';
+      if (sc_trim($role['work_type'] ?? '') === '') $errors['work_type'] = 'Please select a work type.';
+
+      if (sc_trim($checks['has_right_to_work'] ?? '') === '') $errors['has_right_to_work'] = 'Please tell us your right to work status.';
+      if (sc_trim($checks['has_current_dbs'] ?? '') === '') $errors['has_current_dbs'] = 'Please tell us your DBS status.';
+
+      // If requires sponsorship is yes, visa type becomes required
+      if (sc_trim($checks['requires_sponsorship'] ?? '') === 'yes' && sc_trim($checks['visa_type'] ?? '') === '') {
+        $errors['visa_type'] = 'Please provide your visa type.';
+      }
+    }
+
+    if ($step === 2) {
+      $jobs = is_array($work['jobs'] ?? null) ? $work['jobs'] : [];
+      // Require at least 1 job with basics
+      $firstNonEmpty = null;
+      foreach ($jobs as $j) {
+        if (!is_array($j)) continue;
+        if (sc_trim($j['employer_name'] ?? '') !== '' || sc_trim($j['job_title'] ?? '') !== '') {
+          $firstNonEmpty = $j;
+          break;
+        }
+      }
+      if ($firstNonEmpty === null) {
+        $errors['jobs'] = 'Please add at least one job in your work history.';
+      } else {
+        if (sc_trim($firstNonEmpty['employer_name'] ?? '') === '') $errors['jobs_employer_name'] = 'Please enter an employer name for your first job.';
+        if (sc_trim($firstNonEmpty['job_title'] ?? '') === '') $errors['jobs_job_title'] = 'Please enter a job title for your first job.';
+        if (empty($firstNonEmpty['start_month']) || empty($firstNonEmpty['start_year'])) $errors['jobs_start'] = 'Please enter a start month and year for your first job.';
+      }
+    }
+
+    if ($step === 3) {
+      if (sc_trim($edu['highest_education_level'] ?? '') === '') {
+        $errors['highest_education_level'] = 'Please select your highest education level.';
+      }
+    }
+
+    if ($step === 4) {
+      $list = is_array($refs['references'] ?? null) ? $refs['references'] : [];
+      $nonEmpty = [];
+      foreach ($list as $r) {
+        if (!is_array($r)) continue;
+        if (sc_trim($r['name'] ?? '') !== '' || sc_trim($r['email'] ?? '') !== '' || sc_trim($r['phone'] ?? '') !== '') {
+          $nonEmpty[] = $r;
+        }
+      }
+      if (count($nonEmpty) < 2) {
+        $errors['references'] = 'Please add at least 2 references.';
+      } else {
+        // Validate first two refs
+        for ($i=0; $i<2; $i++) {
+          $r = $nonEmpty[$i];
+          if (sc_trim($r['name'] ?? '') === '') $errors['ref_' . ($i+1) . '_name'] = 'Reference ' . ($i+1) . ': name is required.';
+          $re = sc_trim($r['email'] ?? '');
+          $rp = sc_trim($r['phone'] ?? '');
+          if ($re === '' && $rp === '') {
+            $errors['ref_' . ($i+1) . '_contact'] = 'Reference ' . ($i+1) . ': please provide an email or phone number.';
+          }
+          if ($re !== '' && !sc_is_valid_email($re)) {
+            $errors['ref_' . ($i+1) . '_email'] = 'Reference ' . ($i+1) . ': please enter a valid email.';
+          }
+          if ($rp !== '' && !sc_is_uk_phone($rp)) {
+            $errors['ref_' . ($i+1) . '_phone'] = 'Reference ' . ($i+1) . ': please enter a valid UK phone number (starting with 0).';
+          }
+        }
+      }
+    }
+
+    if ($step === 6) {
+      // Declarations must all be ticked
+      $requiredChecks = ['confirm_true_information','aware_of_false_info_consequences','consent_to_processing'];
+      foreach ($requiredChecks as $k) {
+        if (empty($decl[$k])) {
+          $errors[$k] = 'Please tick this declaration to continue.';
+        }
+      }
+      if (sc_trim($decl['typed_signature'] ?? '') === '') {
+        $errors['typed_signature'] = 'Please type your full name as your signature.';
+      }
+      $sd = sc_trim($decl['signature_date'] ?? '');
+      if ($sd === '') {
+        $errors['signature_date'] = 'Please provide the signature date.';
+      } else {
+        $dt = DateTimeImmutable::createFromFormat('Y-m-d', $sd);
+        $errs = DateTimeImmutable::getLastErrors();
+        if (!$dt || ($errs['warning_count'] ?? 0) > 0 || ($errs['error_count'] ?? 0) > 0) {
+          $errors['signature_date'] = 'Please provide a valid signature date.';
+        } else {
+          $today = new DateTimeImmutable('today');
+          if ($dt > $today) $errors['signature_date'] = 'Signature date cannot be in the future.';
+        }
+      }
+    }
+
+    return $errors;
+  }
+}
+
+if (!function_exists('sc_careers_validate_all')) {
+  function sc_careers_validate_all(array &$app): array {
+    $all = [];
+    foreach ([1,2,3,4,6] as $step) {
+      $errs = sc_careers_validate_step($step, $app);
+      if (!empty($errs)) {
+        $all[(string)$step] = $errs;
+      }
+    }
+    return $all;
+  }
+}

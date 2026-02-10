@@ -12,7 +12,7 @@ function sc_old_decl(array $src, string $key): string {
 
 $today = date('Y-m-d');
 ?>
-<form method="post" action="<?= h($formAction) ?>" class="space-y-5 text-[11px]">
+<form id="declaration-form" method="post" action="<?= h($formAction) ?>" class="space-y-5 text-[11px]">
   <input type="hidden" name="token" value="<?= h($token) ?>">
   <input type="hidden" name="job" value="<?= h($jobSlug) ?>">
   <input type="hidden" name="step" value="<?= (int)$step ?>">
@@ -88,7 +88,7 @@ $today = date('Y-m-d');
                 </label>
                 <input
                     type="text"
-                    name="typed_signature"
+                    name="typed_signature" required
                     value="<?= sc_old_decl($decl, 'typed_signature'); ?>"
                     class="w-full rounded-md border border-sc-border bg-white px-3 py-2 text-xs"
                     placeholder="Your full name"
@@ -104,7 +104,7 @@ $today = date('Y-m-d');
                 </label>
                 <input
                     type="date"
-                    name="signature_date"
+                    name="signature_date" required
                     value="<?= sc_old_decl($decl, 'signature_date') ?: $today; ?>"
                     class="w-full rounded-md border border-sc-border bg-white px-3 py-2 text-xs"
                 >
@@ -153,7 +153,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const mustCheck = ['confirm_true_information', 'aware_of_false_info_consequences', 'consent_to_processing'];
         const allChecked = mustCheck.every(name => form.querySelector(`input[name="${name}"]`)?.checked);
 
-        const signature = form.querySelector('input[name="typed_signature"]')?.value.trim();
+        const signature = form.querySelector('input[name="typed_signature" required]')?.value.trim();
 
         if (!allChecked || !signature) {
             e.preventDefault();

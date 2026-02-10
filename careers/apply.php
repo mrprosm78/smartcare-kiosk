@@ -200,7 +200,16 @@ sc_csrf_verify($_POST['csrf'] ?? null);
       $_SESSION['application'][$currentKey][$k] = $v;
     }
   }
-// Persist to DB every step (draft save)
+// Validate current step (server-side)
+  $appData = &$_SESSION['application'];
+  $stepErrors = function_exists('sc_careers_validate_step') ? sc_careers_validate_step((int)$step, $appData) : [];
+  if (!empty($stepErrors)) {
+    sc_careers_set_errors((int)$step, $stepErrors);
+  } else {
+    if (function_exists('sc_careers_clear_errors')) sc_careers_clear_errors((int)$step);
+  }
+
+  // Persist to DB every step (draft save)
   try {
     $appData = $_SESSION['application'];
 
@@ -222,20 +231,45 @@ sc_csrf_verify($_POST['csrf'] ?? null);
       WHERE id = ?
       LIMIT 1");
     $stmt->execute([$jobSlug, $applicantName, $email, $phone, json_encode($appData, JSON_UNESCAPED_SLASHES), $appId]);
+// Final submit on step 6
+if ($step === 6) {
+  // Validate the full application before submitting (server-side)
+  $fullErrors = function_exists('sc_careers_validate_all') ? sc_careers_validate_all($appData) : [];
+  if (!empty($fullErrors)) {
+    // Store full error map so Review can show a clear message
+    $_SESSION['careers_submit_blocked'] = [
+      'message' => 'Please fix the highlighted issues before submitting.',
+      'errors'  => $fullErrors,
+    ];
+    // Also set a step-level banner for declaration step
+    sc_careers_set_errors(6, ['form' => 'Please fix the issues before submitting.']);
+    $qs = ['token'=>$token, 'step'=>'5'];
+    if ($jobSlug !== '') $qs['job'] = $jobSlug;
+    header('Location: apply.php?' . http_build_query($qs));
+    exit;
+  }
 
-    // Final submit on step 6
-    if ($step === 6) {
-      $pdo->prepare("UPDATE hr_applications SET status = 'submitted', submitted_at = NOW(), updated_at = NOW() WHERE id = ? LIMIT 1")
-          ->execute([$appId]);
-      header('Location: apply.php?' . http_build_query(['token'=>$token, 'job'=>$jobSlug, 'submitted'=>'1']));
-      exit;
-    }
+  $pdo->prepare("UPDATE hr_applications SET status = 'submitted', submitted_at = NOW(), updated_at = NOW() WHERE id = ? LIMIT 1")
+      ->execute([$appId]);
+  header('Location: apply.php?' . http_build_query(['token'=>$token, 'job'=>$jobSlug, 'submitted'=>'1']));
+  exit;
+}
+
   } catch (Throwable $e) {
     error_log('HR save failed: ' . $e->getMessage());
   }
 
+  // If validation failed, stay on the same step and show errors
+  if (!empty($stepErrors)) {
+    $qs = ['token'=>$token, 'step'=>(string)$step];
+    if ($jobSlug !== '') $qs['job'] = $jobSlug;
+    header('Location: apply.php?' . http_build_query($qs));
+    exit;
+  }
+
   // Go next step
   $next = min($totalSteps, $step + 1);
+
   $qs = ['token'=>$token, 'step'=>(string)$next];
   if ($jobSlug !== '') $qs['job'] = $jobSlug;
   header('Location: apply.php?' . http_build_query($qs));

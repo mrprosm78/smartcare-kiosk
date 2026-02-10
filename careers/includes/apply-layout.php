@@ -77,6 +77,7 @@ $pageMetaRightHtml = '
   <link rel="icon" type="image/png" sizes="32x32" href="<?= sc_asset_url('careers/icon.png'); ?>">
   <link rel="icon" type="image/png" sizes="16x16" href="<?= sc_asset_url('careers/icon.png'); ?>">
   <link rel="apple-touch-icon" href="<?= sc_asset_url('careers/icon.png'); ?>">
+  <script defer src="<?= sc_asset_url('careers/js/app.js'); ?>"></script>
 </head>
 <body class="min-h-screen bg-sc-bg text-sc-text antialiased">
 
@@ -107,6 +108,21 @@ $pageMetaRightHtml = '
             </p>
           </div>
         </header>
+<?php
+  $stepErrors = function_exists('sc_careers_get_errors') ? sc_careers_get_errors((int)$step) : [];
+  if (!empty($stepErrors) && is_array($stepErrors)):
+?>
+  <div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+    <p class="text-xs font-semibold text-slate-900">Please fix the following</p>
+    <ul class="mt-2 list-disc pl-5 space-y-1 text-[11px] text-slate-700">
+      <?php foreach ($stepErrors as $msg): ?>
+        <li><?= sc_e((string)$msg); ?></li>
+      <?php endforeach; ?>
+    </ul>
+  </div>
+<?php endif; ?>
+
+
 
         <?php if ($submitted && (int)$step === (int)$totalSteps): ?>
           <section class="mt-2 text-xs space-y-2">
