@@ -117,10 +117,13 @@ $bankHolidays = [];
 foreach ($bhRows as $d) $bankHolidays[(string)$d] = true;
 
 // Employee contract source of truth: HR Staff contracts (via kiosk_employees.hr_staff_id).
-$weeklyThresholdMinutes = 0;
+$defaultWeeklyThresholdMinutes = 0;
+$defaultContractHoursPerWeek = 0.0;
 if ($employeeId > 0) {
   $p0 = payroll_employee_profile($pdo, $employeeId, $monthStartLocal->format('Y-m-d'));
-  $weeklyThresholdMinutes = max(0, (int)($p0['contract_hours_per_week'] ?? 0) * 60);
+  $defaultContractHoursPerWeek = (float)($p0['contract_hours_per_week'] ?? 0);
+  // If contracted hours is NULL/0, this staff member is NOT paid overtime.
+  $defaultWeeklyThresholdMinutes = ($defaultContractHoursPerWeek > 0) ? (int)round($defaultContractHoursPerWeek * 60) : 0;
 }
 
 // Fetch shifts anchored to clock_in_at within month (your rule)
@@ -229,7 +232,10 @@ foreach ($shifts as $s) {
 // Compute OT per week (weekly paid - threshold)
 foreach ($weeks as $wk => &$w) {
   $paid = (int)$w['totals']['paid'];
-  $ot = ($weeklyThresholdMinutes > 0) ? max(0, $paid - $weeklyThresholdMinutes) : 0;
+  $pWeek = payroll_employee_profile($pdo, $employeeId, $wk);
+  $contractH = (float)($pWeek['contract_hours_per_week'] ?? 0);
+  $threshold = ($contractH > 0) ? (int)round($contractH * 60) : 0;
+  $ot = ($threshold > 0) ? max(0, $paid - $threshold) : 0;
   $w['totals']['ot'] = $ot;
   $monthTotals['ot'] += $ot;
 }
@@ -406,7 +412,7 @@ admin_page_start($pdo, 'Payroll Monthly Report');
                     </div>
                     <div class="text-sm text-slate-600">
                       Weekly OT threshold:
-                      <span class="font-semibold"><?= $weeklyThresholdMinutes > 0 ? h(fmt_hm($weeklyThresholdMinutes)) : '—' ?></span>
+                      <span class="font-semibold"><?= $defaultWeeklyThresholdMinutes > 0 ? h(fmt_hm($defaultWeeklyThresholdMinutes)) : '—' ?></span>
                     </div>
                   </div>
                 </div>

@@ -178,5 +178,5 @@ Staff has a stable numeric **staff code** generated at conversion time.
 - Stored on `hr_staff.staff_code` (unique, read‑only)
 - Numeric only (no prefix)
 - Starts from `1` and increments with staff creation
-- Current implementation sets `staff_code = id` (stored as a string)
+- Current implementation sets `staff_code = SC0001` style (`SC` + LPAD(id,4,'0'))
 

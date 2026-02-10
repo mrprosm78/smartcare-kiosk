@@ -428,9 +428,11 @@ function create_tables(PDO $pdo): void {
     }
   } catch (Throwable $e) { /* ignore */ }
 
-  // Backfill numeric staff_code = id (string)
+  // Backfill staff_code (LOCKED): SC prefix + 4-digit ID.
+  // Format: SC0001 (SC + LPAD(id,4,'0')).
+  // Upgrade older DBs that previously stored plain numeric IDs.
   try {
-    $pdo->exec("UPDATE hr_staff SET staff_code = CAST(id AS CHAR) WHERE staff_code IS NULL OR staff_code = ''");
+    $pdo->exec("UPDATE hr_staff SET staff_code = CONCAT('SC', LPAD(id, 4, '0')) WHERE staff_code IS NULL OR staff_code = '' OR staff_code REGEXP '^[0-9]+$'");
   } catch (Throwable $e) { /* ignore */ }
 
   // HR STAFF CONTRACTS

@@ -166,7 +166,7 @@ For audits and exports, staff has a stable **staff code** generated at conversio
 - Stored on `hr_staff.staff_code` (unique, read‑only)
 - **Numeric only** (no prefix)
 - Starts from `1` and increments with staff creation
-- Current implementation sets `staff_code = id` (stored as a string)
+- Current implementation sets `staff_code = SC0001` style (`SC` + LPAD(id,4,'0'))
 - Displayed across dashboard and exports; it must not be editable
 
 

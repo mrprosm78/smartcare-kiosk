@@ -132,10 +132,6 @@ try {
         ':active' => $is_active,
       ]);
       $id = (int)$pdo->lastInsertId();
-
-      // Ensure pay profile row exists
-      $pdo->prepare('INSERT IGNORE INTO kiosk_employee_pay_profiles (employee_id, created_at, updated_at) VALUES (?, UTC_TIMESTAMP, UTC_TIMESTAMP)')
-        ->execute([$id]);
     } else {
       $sql = 'UPDATE kiosk_employees SET employee_code=:code, first_name=:first, last_name=:last, nickname=:nick, hr_staff_id=:hr_staff_id, department_id=:cat, team_id=:team, is_agency=:ag, agency_label=:al, is_active=:active, updated_at=UTC_TIMESTAMP';
       $params = [

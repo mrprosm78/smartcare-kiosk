@@ -197,8 +197,11 @@ foreach ($entriesByEmpWeek as $k => $arr) {
   [$empIdStr, $wk] = explode('|', $k, 2);
   $empId = (int)$empIdStr;
 
-  $weekProfile = payroll_employee_profile($pdo, $empId, $weekStartYmd);
-  $thresholdMinutes = max(0, (int)($weekProfile['contract_hours_per_week'] ?? 0)) * 60;
+  // Overtime threshold is based on contracted weekly hours from the HR Staff contract.
+// If contracted hours is NULL/0, this staff member is NOT paid overtime.
+$weekProfile = payroll_employee_profile($pdo, $empId, $wk);
+$contractH = (float)($weekProfile['contract_hours_per_week'] ?? 0);
+$thresholdMinutes = ($contractH > 0) ? (int)round($contractH * 60) : 0;
   $weekPaid = 0;
   foreach ($arr as $pair) { $weekPaid += (int)$pair[0]['paid']; }
   $otRemain = ($thresholdMinutes > 0) ? max(0, $weekPaid - $thresholdMinutes) : 0;

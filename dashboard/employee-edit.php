@@ -129,10 +129,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       ]);
       $id = (int)$pdo->lastInsertId();
       $isNew = false;
-
-      // Ensure a pay profile row exists (editable by Admin; viewable by Payroll)
-      $pdo->prepare('INSERT IGNORE INTO kiosk_employee_pay_profiles (employee_id, created_at, updated_at) VALUES (?, UTC_TIMESTAMP, UTC_TIMESTAMP)')
-        ->execute([$id]);
     } else {
       $sql = 'UPDATE kiosk_employees SET employee_code=:code, first_name=:first, last_name=:last, nickname=:nick, department_id=:cat, team_id=:team, is_agency=:ag, agency_label=:al, is_active=:active, updated_at=UTC_TIMESTAMP';
       $params = [
@@ -278,15 +274,21 @@ admin_page_start($pdo, $isNew ? 'Add Employee' : 'Edit Employee');
                 </div>
               </div>
             </section>
-
             <section class="rounded-3xl border border-slate-200 bg-white p-5">
-              <h2 class="text-lg font-semibold">Contract & Pay</h2>
-              <p class="mt-2 text-sm text-slate-600">Hidden from Managers. Use the Contract page to view/edit contract rules.</p>
+              <h2 class="text-lg font-semibold">Pay Contract</h2>
+              <p class="mt-2 text-sm text-slate-600">
+                Contracts are managed on the <span class="font-semibold">HR Staff</span> record (not on kiosk IDs).
+              </p>
               <div class="mt-4">
-                <?php if (!$isNew && admin_can($user, 'view_contract')): ?>
-                  <a href="<?= h(admin_url('employee-contract.php')) ?>?id=<?= (int)$id ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white text-slate-900 hover:bg-white/90">Open Contract</a>
+                <?php if (!$isNew && ($linkedStaffId ?? 0) > 0): ?>
+                  <div class="flex flex-wrap gap-2">
+                    <a href="<?= h(admin_url('hr-staff-view.php')) ?>?id=<?= (int)$linkedStaffId ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white text-slate-900 hover:bg-white/90">View HR Staff</a>
+                    <a href="<?= h(admin_url('hr-staff-contract.php')) ?>?staff_id=<?= (int)$linkedStaffId ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white text-slate-900 hover:bg-white/90">View Pay Contract</a>
+                  </div>
                 <?php else: ?>
-                  <div class="text-sm text-slate-500">Save employee first to manage contract details.</div>
+                  <div class="text-sm text-slate-500">
+                    Link this kiosk ID to an HR staff record to manage contracts.
+                  </div>
                 <?php endif; ?>
               </div>
             </section>
