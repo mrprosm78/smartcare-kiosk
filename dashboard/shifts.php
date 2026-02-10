@@ -100,17 +100,25 @@ if ($q !== '') {
 }
 
 $sqlEmp = "SELECT e.id, e.first_name, e.last_name, e.nickname, e.employee_code, e.is_active, e.is_agency,
-                 e.department_id, d.name AS department_name,
-                 p.contract_hours_per_week, p.break_is_paid
+                 e.department_id, d.name AS department_name
           FROM kiosk_employees e
-          LEFT JOIN kiosk_employee_departments d ON d.id = e.department_id
-          LEFT JOIN kiosk_employee_pay_profiles p ON p.employee_id = e.id";
+          LEFT JOIN kiosk_employee_departments d ON d.id = e.department_id";
 if ($where) $sqlEmp .= ' WHERE ' . implode(' AND ', $where);
 $sqlEmp .= ' ORDER BY e.is_active DESC, e.is_agency ASC, e.first_name ASC, e.last_name ASC LIMIT 500';
 
 $stEmp = $pdo->prepare($sqlEmp);
 $stEmp->execute($params);
 $employees = $stEmp->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+// Attach contract flags from HR Staff contract (source of truth) for display.
+foreach ($employees as &$e) {
+  $eid = (int)($e['id'] ?? 0);
+  if ($eid <= 0) continue;
+  $p = payroll_employee_profile($pdo, $eid);
+  $e['contract_hours_per_week'] = (float)($p['contract_hours_per_week'] ?? 0);
+  $e['break_is_paid'] = (bool)($p['break_is_paid'] ?? false);
+}
+unset($e);
 
 // Sort employees by Department (dept sort_order/name) then display name
 $deptOrder = [];

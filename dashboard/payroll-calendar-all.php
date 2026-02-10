@@ -90,16 +90,8 @@ for ($i = 0; $i < 18; $i++) {
   $monthOptions[$k] = $m->format('M Y');
 }
 
-// Load profiles for paid break flags + weekly contract hours (for OT threshold)
-$profileRows = $pdo->query("SELECT employee_id, break_is_paid, contract_hours_per_week FROM kiosk_employee_pay_profiles")->fetchAll(PDO::FETCH_ASSOC) ?: [];
-$breakPaidByEmp = [];
-$contractHoursByEmp = [];
-foreach ($profileRows as $r) {
-  $eid = (int)($r['employee_id'] ?? 0);
-  if ($eid <= 0) continue;
-  $breakPaidByEmp[$eid] = ((int)($r['break_is_paid'] ?? 0)===1);
-  $contractHoursByEmp[$eid] = (int)($r['contract_hours_per_week'] ?? 0);
-}
+// Employee contract source of truth: HR Staff contracts (via kiosk_employees.hr_staff_id).
+// We resolve per-shift and per-week using payroll_employee_profile().
 
 // Fetch shifts whose CLOCK-IN is within the month (UTC boundary based on payroll TZ)
 $where = [];
@@ -155,7 +147,8 @@ foreach ($shifts as $s) {
   if ($worked < 0) $worked = 0;
 
   $breakMinutes = ($worked > 0) ? payroll_break_minutes_for_worked($pdo, $worked) : 0;
-  $breakIsPaid = ($breakPaidByEmp[(int)$s['employee_id']] ?? false);
+  $profile = payroll_employee_profile($pdo, (int)$s['employee_id'], $dayKey);
+  $breakIsPaid = (bool)($profile['break_is_paid'] ?? false);
 
   $unpaidBreak = $breakIsPaid ? 0 : $breakMinutes;
   $paid = max(0, $worked - $unpaidBreak);
@@ -204,7 +197,8 @@ foreach ($entriesByEmpWeek as $k => $arr) {
   [$empIdStr, $wk] = explode('|', $k, 2);
   $empId = (int)$empIdStr;
 
-  $thresholdMinutes = max(0, (int)($contractHoursByEmp[$empId] ?? 0)) * 60;
+  $weekProfile = payroll_employee_profile($pdo, $empId, $weekStartYmd);
+  $thresholdMinutes = max(0, (int)($weekProfile['contract_hours_per_week'] ?? 0)) * 60;
   $weekPaid = 0;
   foreach ($arr as $pair) { $weekPaid += (int)$pair[0]['paid']; }
   $otRemain = ($thresholdMinutes > 0) ? max(0, $weekPaid - $thresholdMinutes) : 0;

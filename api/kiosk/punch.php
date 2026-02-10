@@ -102,12 +102,12 @@ function column_exists(PDO $pdo, string $table, string $column): bool {
     }
 }
 
-function employee_break_is_paid(PDO $pdo, int $employeeId): bool {
+function employee_break_is_paid(PDO $pdo, int $employeeId, ?string $onYmd = null): bool {
+    // Source of truth: HR Staff contract (hr_staff_contracts) via kiosk_employees.hr_staff_id.
+    // Legacy kiosk_employee_pay_profiles is intentionally not used.
     try {
-        $st = $pdo->prepare("SELECT break_is_paid FROM kiosk_employee_pay_profiles WHERE employee_id=? LIMIT 1");
-        $st->execute([$employeeId]);
-        $v = $st->fetchColumn();
-        return (int)$v === 1;
+        $profile = payroll_employee_profile($pdo, $employeeId, $onYmd);
+        return (bool)($profile['break_is_paid'] ?? false);
     } catch (Throwable $e) {
         return false;
     }
@@ -365,7 +365,16 @@ function autoclose_stale_open_shifts(
         $closeAt = (string)$closeAtStmt->fetchColumn();
 
         $breakMins = break_minutes_for_worked($pdo, $maxShiftMinutes);
-        $breakPaid = employee_break_is_paid($pdo, $employeeId);
+        $onYmd = null;
+        try {
+            $tz = payroll_timezone($pdo);
+            $onYmd = (new DateTimeImmutable($clockIn, new DateTimeZone('UTC')))
+                ->setTimezone(new DateTimeZone($tz))
+                ->format('Y-m-d');
+        } catch (Throwable $e) {
+            $onYmd = null;
+        }
+        $breakPaid = employee_break_is_paid($pdo, $employeeId, $onYmd);
         $paidMins  = $breakPaid ? $maxShiftMinutes : max(0, $maxShiftMinutes - $breakMins);
 
         $upd = $pdo->prepare("
@@ -840,7 +849,16 @@ try {
         $mins = (int)$minsStmt->fetchColumn();
 
         $breakMins = break_minutes_for_worked($pdo, $mins);
-        $breakPaid = employee_break_is_paid($pdo, $employeeId);
+        $onYmd = null;
+        try {
+            $tz = payroll_timezone($pdo);
+            $onYmd = (new DateTimeImmutable((string)$s['clock_in_at'], new DateTimeZone('UTC')))
+                ->setTimezone(new DateTimeZone($tz))
+                ->format('Y-m-d');
+        } catch (Throwable $e) {
+            $onYmd = null;
+        }
+        $breakPaid = employee_break_is_paid($pdo, $employeeId, $onYmd);
         $paidMins  = $breakPaid ? $mins : max(0, $mins - $breakMins);
 
         if ($mins < 0) {

@@ -61,6 +61,66 @@ try {
 $errors = [];
 $notice = '';
 
+// ===== Update HR Staff department =====
+// We currently reuse kiosk_employee_departments as the lookup table.
+// HR Staff owns the department_id field (kiosk identity should link to staff, not own HR data).
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_department') {
+  admin_csrf_verify();
+
+  $deptId = (int)($_POST['department_id'] ?? 0);
+  if ($deptId <= 0) {
+    $deptId = null; // allow clearing
+  }
+
+  if ($deptId !== null) {
+    $chk = $pdo->prepare('SELECT id FROM kiosk_employee_departments WHERE id = ? LIMIT 1');
+    $chk->execute([$deptId]);
+    if (!$chk->fetchColumn()) {
+      $errors[] = 'Please choose a valid department.';
+    }
+  }
+
+  if (!$errors) {
+    $upd = $pdo->prepare('UPDATE hr_staff SET department_id = ?, updated_by_admin_id = ? WHERE id = ? LIMIT 1');
+    $upd->execute([$deptId, (int)($user['id'] ?? 0), $staffId]);
+    header('Location: ' . admin_url('hr-staff-view.php?id=' . $staffId));
+    exit;
+  }
+}
+
+// Load departments for dropdown
+$departments = [];
+try {
+  $departments = $pdo->query('SELECT id, name FROM kiosk_employee_departments ORDER BY name ASC')->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+  $departments = [];
+}
+
+// Load active contract summary (by today)
+$contract = null;
+try {
+  $today = gmdate('Y-m-d');
+  $c = $pdo->prepare(
+    "SELECT id, effective_from, effective_to, contract_json
+     FROM hr_staff_contracts
+     WHERE staff_id = ?
+       AND effective_from <= ?
+       AND (effective_to IS NULL OR effective_to >= ?)
+     ORDER BY effective_from DESC, id DESC
+     LIMIT 1"
+  );
+  $c->execute([$staffId, $today, $today]);
+  $contract = $c->fetch(PDO::FETCH_ASSOC) ?: null;
+} catch (Throwable $e) {
+  $contract = null;
+}
+
+$contractData = [];
+if ($contract && !empty($contract['contract_json'])) {
+  $decoded = json_decode((string)$contract['contract_json'], true);
+  if (is_array($decoded)) $contractData = $decoded;
+}
+
 // Decode profile JSON (safe)
 $profile = [];
 if (!empty($s['profile_json'])) {
@@ -285,7 +345,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'enabl
 
   <main class="flex-1 px-4 sm:px-6 pt-6 pb-8">
 
-        <main class="flex-1 min-w-0">
           <header class="rounded-3xl border border-slate-200 bg-white p-4">
             <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
               <div class="min-w-0 flex items-start gap-4">
@@ -533,8 +592,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'enabl
               </div>
             </section>
 
-            <aside class="rounded-3xl border border-slate-200 bg-white p-4">
-              <h2 class="text-lg font-semibold">Kiosk access</h2>
+            <aside class="rounded-3xl border border-slate-200 bg-white p-4 space-y-4">
+              <div>
+                <h2 class="text-lg font-semibold">Department</h2>
+                <p class="mt-1 text-xs text-slate-600">Staff department is stored on the HR Staff record.</p>
+
+                <form class="mt-2" method="post">
+                  <?php admin_csrf_field(); ?>
+                  <input type="hidden" name="action" value="update_department">
+
+                  <label class="block text-xs font-semibold text-slate-700">Select department</label>
+                  <select name="department_id" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                    <option value="0">— None —</option>
+                    <?php foreach ($departments as $d): ?>
+                      <option value="<?php echo (int)$d['id']; ?>" <?php echo ((int)($s['department_id'] ?? 0) === (int)$d['id']) ? 'selected' : ''; ?>>
+                        <?php echo h2((string)$d['name']); ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+
+                  <button class="mt-2 w-full rounded-2xl px-4 py-2 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800" type="submit">Save department</button>
+                </form>
+              </div>
+
+              <div>
+                <h2 class="text-lg font-semibold">Pay contract</h2>
+                <p class="mt-1 text-xs text-slate-600">Payroll and rota will use the HR Staff contract (effective by date).</p>
+
+                <?php if ($contract): ?>
+                  <?php
+                    $rate = $contractData['hourly_rate'] ?? null;
+                    $hours = $contractData['contract_hours_per_week'] ?? null;
+                    $breakPaid = $contractData['breaks_paid'] ?? null;
+                  ?>
+                  <div class="mt-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                    <div class="text-xs text-slate-600">Active contract</div>
+                    <div class="mt-1 font-semibold text-slate-900">
+                      <?php echo h2((string)($contract['effective_from'] ?? '')); ?>
+                      <?php if (!empty($contract['effective_to'])): ?>
+                        – <?php echo h2((string)$contract['effective_to']); ?>
+                      <?php else: ?>
+                        (ongoing)
+                      <?php endif; ?>
+                    </div>
+                    <div class="mt-2 text-xs text-slate-700 space-y-1">
+                      <div>Hourly rate: <span class="font-semibold text-slate-900"><?php echo $rate !== null && $rate !== '' ? h2('£' . (string)$rate) : '—'; ?></span></div>
+                      <div>Contract hours/wk: <span class="font-semibold text-slate-900"><?php echo $hours !== null && $hours !== '' ? h2((string)$hours) : '—'; ?></span></div>
+                      <div>Breaks paid: <span class="font-semibold text-slate-900"><?php echo $breakPaid === null ? '—' : ($breakPaid ? 'Yes' : 'No'); ?></span></div>
+                    </div>
+                  </div>
+                <?php else: ?>
+                  <div class="mt-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    No active contract found for today.
+                  </div>
+                <?php endif; ?>
+
+                <div class="mt-2">
+                  <a class="inline-flex w-full items-center justify-center rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50" href="<?php echo h(admin_url('hr-staff-contract.php?staff_id=' . $staffId)); ?>">Manage pay contract</a>
+                </div>
+              </div>
+
+              <div>
+                <h2 class="text-lg font-semibold">Kiosk access</h2>
               <?php if ($kiosk): ?>
                 <div class="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm">
                   <div class="font-semibold text-emerald-900">Enabled</div>
@@ -552,9 +671,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'enabl
                   <a class="rounded-2xl px-4 py-2 text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50" href="<?php echo h(admin_url('kiosk-ids.php')); ?>">Go to kiosk IDs</a>
                 </div>
               <?php endif; ?>
+              </div>
             </aside>
           </div>
 
-        </main>
+  </main>
 </div>
 <?php admin_page_end(); ?>

@@ -116,18 +116,12 @@ $bhRows = $pdo->query("SELECT holiday_date FROM payroll_bank_holidays")->fetchAl
 $bankHolidays = [];
 foreach ($bhRows as $d) $bankHolidays[(string)$d] = true;
 
-// Employee pay profile (paid breaks + weekly contract hours)
-$breakIsPaid = false;
-$contractHoursPerWeek = 0;
+// Employee contract source of truth: HR Staff contracts (via kiosk_employees.hr_staff_id).
+$weeklyThresholdMinutes = 0;
 if ($employeeId > 0) {
-  $st = $pdo->prepare("SELECT break_is_paid, contract_hours_per_week FROM kiosk_employee_pay_profiles WHERE employee_id=? LIMIT 1");
-  $st->execute([$employeeId]);
-  if ($row = $st->fetch(PDO::FETCH_ASSOC)) {
-    $breakIsPaid = ((int)($row['break_is_paid'] ?? 0)) === 1;
-    $contractHoursPerWeek = (int)($row['contract_hours_per_week'] ?? 0);
-  }
+  $p0 = payroll_employee_profile($pdo, $employeeId, $monthStartLocal->format('Y-m-d'));
+  $weeklyThresholdMinutes = max(0, (int)($p0['contract_hours_per_week'] ?? 0) * 60);
 }
-$weeklyThresholdMinutes = max(0, $contractHoursPerWeek * 60);
 
 // Fetch shifts anchored to clock_in_at within month (your rule)
 $shifts = [];
@@ -169,10 +163,12 @@ foreach ($shifts as $s) {
   if ($s['break_minutes'] !== null) $breakMinutes = (int)$s['break_minutes'];
   if ($breakMinutes === null) $breakMinutes = payroll_break_minutes_for_worked($pdo, $worked);
 
+  $dateKey = $inLocal->format('Y-m-d');
+  $p = payroll_employee_profile($pdo, $employeeId, $dateKey);
+  $breakIsPaid = (bool)($p['break_is_paid'] ?? false);
   $unpaidBreak = $breakIsPaid ? 0 : max(0, $breakMinutes);
   $paid = max(0, $worked - $unpaidBreak);
 
-  $dateKey = $inLocal->format('Y-m-d');
   $dow = (int)$inLocal->format('N'); // 6 Sat, 7 Sun
   $isWeekend = ($dow >= 6);
   $isBH = isset($bankHolidays[$dateKey]);

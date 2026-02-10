@@ -229,7 +229,50 @@ function payroll_week_starts_on(PDO $pdo): string {
 }
 
 /** Parse employee contract pay profile. */
-function payroll_employee_profile(PDO $pdo, int $employeeId): array {
+function hr_staff_active_contract_row(PDO $pdo, int $staffId, string $onYmd): ?array {
+  // Select active contract by local date.
+  try {
+    $st = $pdo->prepare(
+      'SELECT id, staff_id, effective_from, effective_to, contract_json '
+      . 'FROM hr_staff_contracts '
+      . 'WHERE staff_id=? AND effective_from <= ? AND (effective_to IS NULL OR effective_to >= ?) '
+      . 'ORDER BY effective_from DESC, id DESC LIMIT 1'
+    );
+    $st->execute([$staffId, $onYmd, $onYmd]);
+    $row = $st->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+  } catch (Throwable $e) {
+    return null;
+  }
+}
+
+function hr_staff_contract_json(PDO $pdo, int $staffId, string $onYmd): array {
+  $row = hr_staff_active_contract_row($pdo, $staffId, $onYmd);
+  if (!$row || empty($row['contract_json'])) return [];
+  $decoded = json_decode((string)$row['contract_json'], true);
+  return is_array($decoded) ? $decoded : [];
+}
+
+function hr_staff_id_for_kiosk_employee(PDO $pdo, int $kioskEmployeeId): ?int {
+  try {
+    $st = $pdo->prepare('SELECT hr_staff_id FROM kiosk_employees WHERE id=? LIMIT 1');
+    $st->execute([$kioskEmployeeId]);
+    $v = $st->fetchColumn();
+    if ($v === false || $v === null) return null;
+    $id = (int)$v;
+    return $id > 0 ? $id : null;
+  } catch (Throwable $e) {
+    return null;
+  }
+}
+
+/**
+ * Parse employee contract pay profile.
+ * Source of truth is HR Staff contract (hr_staff_contracts) via kiosk_employees.hr_staff_id.
+ *
+ * NOTE: Legacy kiosk_employee_pay_profiles is no longer used for calculations.
+ */
+function payroll_employee_profile(PDO $pdo, int $employeeId, ?string $onYmd = null): array {
   $out = [
     'contract_hours_per_week' => 0.0,
     'break_is_paid' => false,
@@ -242,35 +285,50 @@ function payroll_employee_profile(PDO $pdo, int $employeeId): array {
     ],
   ];
 
-  try {
-    $st = $pdo->prepare('SELECT contract_hours_per_week, break_is_paid, rules_json FROM kiosk_employee_pay_profiles WHERE employee_id=? LIMIT 1');
-    $st->execute([$employeeId]);
-    $row = $st->fetch(PDO::FETCH_ASSOC);
-    if (!$row) return $out;
-
-    $out['contract_hours_per_week'] = (float)($row['contract_hours_per_week'] ?? 0);
-    $out['break_is_paid'] = ((int)($row['break_is_paid'] ?? 0) === 1);
-
-    $decoded = null;
-    if (!empty($row['rules_json'])) {
-      $decoded = json_decode((string)$row['rules_json'], true);
+  // Default date: "today" in payroll timezone.
+  if ($onYmd === null) {
+    try {
+      $tz = payroll_timezone($pdo);
+      $onYmd = (new DateTimeImmutable('now', new DateTimeZone($tz)))->format('Y-m-d');
+    } catch (Throwable $e) {
+      $onYmd = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d');
     }
-    if (is_array($decoded)) {
-      foreach (array_keys($out['rules']) as $k) {
-        $mk = $k.'_multiplier';
-        $pk = $k.'_premium_per_hour';
-        if (array_key_exists($mk, $decoded)) {
-          $v = $decoded[$mk];
-          $out['rules'][$k]['multiplier'] = (is_numeric($v) ? (float)$v : null);
-        }
-        if (array_key_exists($pk, $decoded)) {
-          $v = $decoded[$pk];
-          $out['rules'][$k]['premium_per_hour'] = (is_numeric($v) ? (float)$v : null);
-        }
-      }
+  }
+
+  $staffId = hr_staff_id_for_kiosk_employee($pdo, $employeeId);
+  if (!$staffId) return $out;
+
+  $c = hr_staff_contract_json($pdo, $staffId, $onYmd);
+  if (!$c) return $out;
+
+  // Accept both "new" nested schema and legacy flat schema to ease migration.
+  $out['contract_hours_per_week'] = (float)($c['contract_hours_per_week'] ?? ($c['contract_hours'] ?? 0));
+  $out['break_is_paid'] = (bool)($c['break_is_paid'] ?? ($c['breaks_paid'] ?? false));
+
+  // Rules can be provided as flat keys: weekend_multiplier, weekend_premium_per_hour, etc.
+  // Or nested: uplifts.weekend.{type,value}
+  foreach (array_keys($out['rules']) as $k) {
+    $mk = $k.'_multiplier';
+    $pk = $k.'_premium_per_hour';
+    if (array_key_exists($mk, $c) && is_numeric($c[$mk])) {
+      $out['rules'][$k]['multiplier'] = (float)$c[$mk];
     }
-  } catch (Throwable $e) {
-    // ignore
+    if (array_key_exists($pk, $c) && is_numeric($c[$pk])) {
+      $out['rules'][$k]['premium_per_hour'] = (float)$c[$pk];
+    }
+  }
+
+  $uplifts = $c['uplifts'] ?? null;
+  if (is_array($uplifts)) {
+    foreach (array_keys($out['rules']) as $k) {
+      if (!isset($uplifts[$k]) || !is_array($uplifts[$k])) continue;
+      $u = $uplifts[$k];
+      $type = (string)($u['type'] ?? '');
+      $val = $u['value'] ?? null;
+      if (!is_numeric($val)) continue;
+      if ($type === 'multiplier') $out['rules'][$k]['multiplier'] = (float)$val;
+      if ($type === 'premium') $out['rules'][$k]['premium_per_hour'] = (float)$val;
+    }
   }
 
   return $out;
