@@ -185,7 +185,7 @@ if (!function_exists('sc_old')) {
 
   <p class="mt-2 text-[10px] text-sc-text-muted">
     In the full SmartCare Solutions system, previous addresses for the last 5 years will also be collected here
-    to support DBS checks. For this prototype we are focusing on layout and flow.
+    to support DBS checks, where required.
   </p>
 
   <hr class="border-slate-200">

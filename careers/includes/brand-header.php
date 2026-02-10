@@ -31,7 +31,7 @@ if ($logoText === '') {
     $logoText = $src !== '' ? strtoupper(substr($src, 0, 1)) : 'S';
 }
 
-$brandSubtitle = $brandSubtitle ?? ($brand['org']['portal_name'] ?? 'Prototype');
+$brandSubtitle = $brandSubtitle ?? ($brand['org']['portal_name'] ?? 'Recruitment Portal');
 $brandRightHtml = $brandRightHtml ?? '';
 
 $mainName = $orgName ?: $productName;

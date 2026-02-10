@@ -171,7 +171,7 @@ if (!function_exists('sc_get_teams') && function_exists('sc_teams')) {
 }
 
 // ------------------------------
-// Session + Login + Role + Permissions (UI prototype)
+// Session + Login + Role + Permissions (UI initial)
 // ------------------------------
 if (!function_exists('sc_boot_session')) {
     function sc_boot_session(): void {
@@ -183,7 +183,7 @@ if (!function_exists('sc_boot_session')) {
 
 if (!function_exists('sc_is_logged_in')) {
     /**
-     * Prototype login state.
+     * Portal login state.
      * Later: Laravel auth()->check()
      */
     function sc_is_logged_in(): bool {
@@ -333,7 +333,7 @@ if (!function_exists('sc_e')) {
 }
 
 // ------------------------------
-// Staff lifecycle helpers (prototype)
+// Staff lifecycle helpers (initial)
 // ------------------------------
 if (!function_exists('sc_staff_status_normalize')) {
     function sc_staff_status_normalize($status): string {
@@ -385,7 +385,7 @@ if (!function_exists('sc_staff_status_badge')) {
     }
 }
 // ------------------------------
-// Employment terms helpers (prototype, Laravel-ready)
+// Employment terms helpers (initial, Laravel-ready)
 // ------------------------------
 if (!function_exists('sc_employment_terms_defaults')) {
     /** Default structure for employment terms. */

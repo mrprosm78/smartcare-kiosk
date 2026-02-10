@@ -74,7 +74,7 @@ function jobToEndDate(array $j): ?DateTimeImmutable {
     return $start->modify('last day of this month');
 }
 function detectGaps(array $jobs, int $gapDays = 31): array {
-    // Very simple prototype: sort by start date desc, then check gaps between end of newer job and start of older job
+    // Very simple initial: sort by start date desc, then check gaps between end of newer job and start of older job
     $items = [];
     foreach ($jobs as $j) {
         $s = jobToStartDate($j);
@@ -121,7 +121,7 @@ function detectGaps(array $jobs, int $gapDays = 31): array {
 }
 
 /** -------------------------
- * Warnings / validation summary (prototype)
+ * Warnings / validation summary (initial)
  * ------------------------ */
 $warnings = [];
 
@@ -244,7 +244,7 @@ if (empty(trim($checks['has_current_dbs'] ?? ''))) {
 
             <?php if (!empty($gaps)): ?>
                 <div class="mt-3 rounded-xl border border-amber-200 bg-white px-3 py-2">
-                    <p class="text-[10px] font-semibold text-slate-900">Detected gaps (prototype)</p>
+                    <p class="text-[10px] font-semibold text-slate-900">Detected gaps (initial)</p>
                     <ul class="mt-1 space-y-1 text-[10px] text-slate-700">
                         <?php foreach ($gaps as $g): ?>
                             <li>

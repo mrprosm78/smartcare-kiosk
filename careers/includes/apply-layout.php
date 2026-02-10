@@ -48,10 +48,7 @@ $brandRightHtml = '
   <div class="flex items-center gap-2">
     <a href="' . sc_e(sc_careers_url()) . '" class="text-[11px] text-sc-primary hover:text-sc-primary">← All jobs</a>
     <span class="text-slate-300">·</span>
-    <a href="' . sc_e(sc_app_url('admin/')) . '" class="inline-flex items-center rounded-md border border-sc-border bg-white px-2.5 py-1.5 text-[11px] font-medium hover:bg-slate-50">
-      Manager sign in
-    </a>
-  </div>
+    </div>
 ';
 
 // Progress %
@@ -130,16 +127,14 @@ $pageMetaRightHtml = '
               Thank you – your application has been submitted.
             </p>
             <p class="text-sc-text-muted">
-              Your application has been saved securely and sent to the care home manager/HR for review.
+              We have received your application and our recruitment team will review it. If you are shortlisted, we will contact you using the details you provided.
             </p>
 
             <div class="pt-2 flex flex-wrap gap-2">
               <a href="<?= sc_careers_url(); ?>" class="inline-flex items-center rounded-md border border-sc-border bg-white px-3 py-2 text-[11px] font-medium text-sc-text-muted hover:bg-slate-50">
                 Back to jobs
               </a>
-              <a href="<?= sc_app_url('admin/'); ?>" class="inline-flex items-center rounded-md bg-sc-primary px-3 py-2 text-[11px] font-medium text-white hover:bg-sc-primary-hover">
-                Manager sign in
-              </a>
+             
             </div>
           </section>
         <?php else: ?>

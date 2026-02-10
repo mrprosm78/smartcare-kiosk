@@ -71,54 +71,63 @@ $css = admin_asset_css($pdo);
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#f3f4f6" />
-  <title>Admin Login</title>
-  <link rel="stylesheet" href="<?= h($css) ?>" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin login</title>
+  <?php
+  // Base path detection (supports installs in subfolders like /smartcare-kiosk)
+  $scriptName = (string)($_SERVER['SCRIPT_NAME'] ?? '');
+  $detectedBase = rtrim(str_replace('\\\\', '/', dirname($scriptName)), '/');
+  if ($detectedBase === '/') $detectedBase = '';
+  $configuredBase = defined('APP_BASE_PATH') ? rtrim((string)APP_BASE_PATH, '/') : '';
+  if ($configuredBase === '/') $configuredBase = '';
+  $basePath = ($configuredBase !== '') ? $configuredBase : $detectedBase;
+  $cssV = defined('APP_CSS_VERSION') ? (string)APP_CSS_VERSION : (string)time();
+?>
+  <link rel="stylesheet" href="<?= htmlspecialchars($basePath, ENT_QUOTES) ?>/assets/app.css?v=<?= htmlspecialchars($cssV, ENT_QUOTES) ?>">
 </head>
-<body class="bg-slate-100 text-slate-900 min-h-dvh">
-  <div class="min-h-dvh flex flex-col">
-    <header class="px-4 sm:px-6 pt-6 pb-4">
-      <div class="max-w-xl mx-auto">
-        <div class="flex items-center justify-between">
-          <div>
-            <div class="text-xs uppercase tracking-widest text-slate-500">SmartCare</div>
-            <h1 class="text-2xl font-semibold">Admin login</h1>
-          </div>
-          <a href="<?= h(kiosk_url()) ?>" class="text-sm text-slate-600 hover:text-slate-900">Kiosk</a>
-        </div>
-        <p class="mt-2 text-sm text-slate-600">Sign in to continue.</p>
-      </div>
-    </header>
+<body class="min-h-screen bg-sc-bg text-sc-text antialiased">
+  <div class="min-h-screen flex flex-col">
+    <?php
+      // Use the public header so branding/contact details stay consistent.
+      $brandRightHtml = '';
+      require __DIR__ . '/../careers/includes/brand-header.php';
+    ?>
 
-    <main class="flex-1 px-4 sm:px-6 pb-10">
-      <div class="max-w-xl mx-auto">
-        <?php if ($error !== ''): ?>
-          <div class="mb-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-slate-900">
-            <?= h($error) ?>
-          </div>
-        <?php endif; ?>
+    <main class="flex-1">
+      <div class="mx-auto max-w-md px-4 py-10 h-full">
+        <div class="flex h-full items-center">
+          <div class="w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h1 class="text-lg font-semibold text-slate-900">Admin login</h1>
+          <p class="mt-1 text-sm text-slate-600">For authorised staff only.</p>
 
-        <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <form method="post" class="space-y-4">
-            <div>
-              <label class="block text-sm font-medium text-slate-700">Username</label>
-              <input name="username" value="<?= h($username) ?>" autocomplete="username" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-3 text-base outline-none focus:border-slate-200" placeholder="Enter username" />
+          <?php if ($error !== ''): ?>
+            <div class="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <?= h($error); ?>
             </div>
+          <?php endif; ?>
 
+          <form method="post" class="mt-5 space-y-3">
             <div>
-              <label class="block text-sm font-medium text-slate-700">Password</label>
-              <input type="password" name="password" autocomplete="current-password" class="mt-2 w-full rounded-2xl bg-white border border-slate-200 px-4 py-3 text-base outline-none focus:border-slate-200" placeholder="Enter password" />
+              <label class="block text-xs font-semibold text-slate-700">Username</label>
+              <input name="username" value="<?= h($username); ?>" autocomplete="username"
+                     class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sc-primary" />
             </div>
-
-            <button type="submit" class="w-full rounded-2xl bg-white text-slate-900 font-semibold py-3 hover:bg-white/90">Sign in</button>
-
-            <div class="text-xs text-slate-500">No registration is available. Ask Superadmin to create users.</div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700">Password</label>
+              <input type="password" name="password" autocomplete="current-password"
+                     class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sc-primary" />
+            </div>
+            <button class="w-full rounded-md bg-sc-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+              Sign in
+            </button>
           </form>
+          </div>
         </div>
       </div>
     </main>
+
+    <?php require __DIR__ . '/../careers/includes/footer-public.php'; ?>
   </div>
 </body>
 </html>
