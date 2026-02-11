@@ -324,9 +324,9 @@ function sc_render_kv_table(array $data, array $labelMap = [], array $hideKeys =
 function sc_render_kv_grid(array $map): string {
   $out = '<div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">';
   foreach ($map as $label => $valHtml) {
-    $out .= '<div class="rounded-2xl border border-slate-200 bg-slate-50 p-3">';
-    $out .= '<div class="text-xs text-slate-600">' . h2((string)$label) . '</div>';
-    $out .= '<div class="mt-0.5 font-semibold text-slate-900">' . $valHtml . '</div>';
+    $out .= '<div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 flex items-start justify-between gap-3">';
+    $out .= '<div class="text-xs font-semibold text-slate-600 whitespace-nowrap pt-0.5">' . h2((string)$label) . ':</div>';
+    $out .= '<div class="font-semibold text-slate-900 text-right break-words">' . $valHtml . '</div>';
     $out .= '</div>';
   }
   $out .= '</div>';
@@ -900,11 +900,11 @@ admin_page_start($pdo, 'Staff Profile');
                       data-toggle="<?= h2($secId) ?>">
                       <div class="font-semibold text-slate-900"><?= h2($label) ?></div>
                       <div class="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                        <span data-icon="<?= h2($secId) ?>" class="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-slate-50">+</span>
+                        <span data-icon="<?= h2($secId) ?>" class="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-slate-50">−</span>
                       </div>
                     </button>
 
-                    <div id="<?= h2($secId) ?>" class="hidden px-4 pb-4">
+                    <div id="<?= h2($secId) ?>" class="px-4 pb-4">
                       <?php if ($key === 'work_history'): ?>
                         <?= sc_render_work_history($data) ?>
                       <?php elseif ($key === 'references'): ?>
@@ -965,9 +965,9 @@ admin_page_start($pdo, 'Staff Profile');
                       <div class="font-semibold text-slate-900"><?= h2($title) ?></div>
                       <div class="mt-0.5 text-xs text-slate-500"><?= h2($desc) ?></div>
                     </div>
-                    <span data-icon="<?= h2($mid) ?>" class="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700">+</span>
+                    <span data-icon="<?= h2($mid) ?>" class="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700">−</span>
                   </button>
-                  <div id="<?= h2($mid) ?>" class="hidden px-4 pb-4">
+                  <div id="<?= h2($mid) ?>" class="px-4 pb-4">
                     <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
                       Coming soon. This block is intentionally a placeholder.
                     </div>
@@ -1132,15 +1132,16 @@ admin_page_start($pdo, 'Staff Profile');
     const icon = document.querySelector(`[data-icon="${CSS.escape(targetId)}"]`);
     if (!body || !icon) return;
 
-    // default: collapsed
-    icon.textContent = '+';
+    // default: match current state
+    icon.textContent = body.classList.contains('hidden') ? '+' : '−';
 
     btn.addEventListener('click', () => {
       const isHidden = body.classList.contains('hidden');
       body.classList.toggle('hidden', !isHidden);
       icon.textContent = isHidden ? '−' : '+';
+      btn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
     });
-  });
+});
 })();
 </script>
 
