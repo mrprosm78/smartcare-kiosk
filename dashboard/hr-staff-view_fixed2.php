@@ -9,39 +9,6 @@ $active = admin_url('hr-staff.php');
 
 function h2(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); }
 
-
-if (!function_exists('sc_to_array')) {
-  function sc_to_array(mixed $v): mixed {
-    // Convert stdClass to array recursively (best-effort). Leave scalars unchanged.
-    if (is_object($v)) $v = (array)$v;
-    if (!is_array($v)) return $v;
-    foreach ($v as $k => $vv) {
-      if (is_object($vv)) $v[$k] = (array)$vv;
-    }
-    return $v;
-  }
-}
-
-if (!function_exists('sc_yesno')) {
-  function sc_yesno(mixed $v): string {
-    if ($v === null) return '—';
-    $s = strtolower(trim((string)$v));
-    if ($s === '') return '—';
-    if (in_array($s, ['1','true','yes','y','on'], true)) return 'Yes';
-    if (in_array($s, ['0','false','no','n','off'], true)) return 'No';
-    return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
-  }
-}
-
-if (!function_exists('sc_cell')) {
-  function sc_cell(string $s): string {
-    $t = trim($s);
-    if ($t === '') return '<span class="text-slate-500">—</span>';
-    return htmlspecialchars($t, ENT_QUOTES, 'UTF-8');
-  }
-}
-
-
 function sc_extract_list(mixed $root, array $path): array {
   $cur = $root;
 

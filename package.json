@@ -5,9 +5,9 @@
   "main": "index.js",
   "scripts": {
     "build:css": "npm run build:kiosk && npm run build:app",
-    "watch:css": "tailwindcss -i ./src/kiosk.css -o ./assets/kiosk.css --watch",
-    "dev": "tailwindcss -i ./src/kiosk.css -o ./assets/kiosk.css --watch",
-    "build": "tailwindcss -i ./src/kiosk.css -o ./assets/kiosk.css --minify",
+    "watch:css": "concurrently \"npm:watch:app\" \"npm:watch:kiosk\"",
+    "dev": "concurrently \"npm:watch:app\" \"npm:watch:kiosk\"",
+    "build": "npm run build:css",
     "build:kiosk": "tailwindcss -i ./src/kiosk.css -o ./assets/kiosk.css --minify",
     "build:app": "tailwindcss -i ./src/app.css -o ./assets/app.css --minify",
     "watch:app": "tailwindcss -i ./src/app.css -o ./assets/app.css --watch",
@@ -27,7 +27,8 @@
   "devDependencies": {
     "autoprefixer": "^10.4.23",
     "postcss": "^8.5.6",
-    "tailwindcss": "^3.4.17"
+    "tailwindcss": "^3.4.17",
+    "concurrently": "^9.0.0"
   },
   "type": "commonjs"
 }

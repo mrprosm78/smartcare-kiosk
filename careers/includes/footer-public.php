@@ -61,6 +61,7 @@ $adminUrl   = $basePath . rtrim($adminPath, '/') . '/login.php';
     <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <div>© <?= date('Y'); ?> <?= sc_e($orgName); ?></div>
       <div class="flex flex-wrap items-center gap-3">
+        <a class="hover:text-sc-primary" href="<?= sc_e(sc_app_url()); ?>">← Portal</a>
         <a class="hover:text-sc-primary" href="<?= sc_e($careersUrl); ?>">Careers</a>
         <a class="hover:text-sc-primary" href="<?= sc_e($adminUrl); ?>">Admin login</a>
         <span class="text-slate-300">·</span>

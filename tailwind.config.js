@@ -3,7 +3,7 @@ module.exports = {
   content: [
     './index.php',
     './**/*.php',
-    './js/**/*.js',
+    './assets/**/*.js',
   ],
 
   theme: {

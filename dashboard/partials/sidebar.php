@@ -75,19 +75,13 @@ function admin_nav_item(string $href, string $label, string $active, string $ico
     ? '<span class="' . ($isSub ? 'text-slate-400' : 'text-slate-500') . ' group-hover:text-slate-800 ' . ($is ? 'text-indigo-700' : '') . '">' . $icon . '</span>'
     : '';
 
-  // Left marker dot so active is instantly obvious.
-  $dot = '<span class="h-2 w-2 rounded-full ' . ($is ? 'bg-slate-900' : 'bg-transparent') . '"></span>';
-
-  // Dark triangle indicator for the active item.
-  $tri = $is ? '<span class="ml-auto w-0 h-0 border-y-[6px] border-y-transparent border-l-[8px] border-l-slate-900"></span>' : '';
-
   if ($is) {
     return '<a href="' . h($href) . '" class="group flex items-center gap-3 px-3 ' . $padY . ' ' . $textSize . ' font-semibold border-l-4 border-indigo-600 bg-indigo-50 text-slate-900 transition-colors">'
-      . $dot . $iconHtml . '<span class="flex-1">' . h($label) . '</span>' . $tri . '</a>';
+      . $iconHtml . '<span class="flex-1">' . h($label) . '</span></a>';
   }
 
   return '<a href="' . h($href) . '" class="group flex items-center gap-3 px-3 ' . $padY . ' ' . $textSize . ' ' . ($isSub ? 'font-medium' : 'font-medium') . ' border-l-4 border-transparent text-slate-700 hover:bg-indigo-50/40 hover:text-slate-900 hover:border-slate-300 transition-colors">'
-    . $dot . $iconHtml . '<span class="flex-1">' . h($label) . '</span></a>';
+    . $iconHtml . '<span class="flex-1">' . h($label) . '</span></a>';
 }
 
 
@@ -97,11 +91,9 @@ function admin_nav_item_soon(string $href, string $label, string $active, string
     ? '<span class="text-slate-400 ' . ($is ? 'text-indigo-700' : '') . '">' . $icon . '</span>'
     : '';
 
-  $tri = $is ? '<span class="ml-auto w-0 h-0 border-y-[6px] border-y-transparent border-l-[8px] border-l-slate-900"></span>' : '';
-
   if ($is) {
     return '<a href="' . h($href) . '" class="group flex items-center gap-3 px-3 py-2 text-sm font-semibold border-l-2 border-indigo-600 bg-indigo-50 text-slate-900 transition-colors">'
-      . $iconHtml . '<span class="flex-1">' . h($label) . '</span><span class="text-[11px] font-semibold text-slate-500 px-2 py-0.5">Coming soon</span>' . $tri . '</a>';
+      . $iconHtml . '<span class="flex-1">' . h($label) . '</span><span class="text-[11px] font-semibold text-slate-500 px-2 py-0.5">Coming soon</span></a>';
   }
 
   return '<a href="' . h($href) . '" class="group flex items-center gap-3 px-3 py-2 text-sm font-medium border-l-2 border-transparent text-slate-500 hover:bg-indigo-50/30 hover:text-slate-700 hover:border-slate-200 transition-colors">'
@@ -117,16 +109,12 @@ function admin_nav_group_summary(string $label, bool $isActive, string $icon = '
   } else {
     $classes .= ' text-slate-900 hover:bg-indigo-50/40 border-l-2 border-transparent';
   }
-
-  $tri = $isActive ? '<span class="ml-auto w-0 h-0 border-y-[6px] border-y-transparent border-l-[8px] border-l-slate-900"></span>' : '';
-
   return '<summary class="' . $classes . '">' 
     . $iconHtml
     . '<span class="flex-1">' . h($label) . '</span>'
     . '<span class="nav-toggle text-slate-500 text-lg leading-none select-none">'
     . '<span class="nav-plus">+</span><span class="nav-minus">−</span>'
     . '</span>'
-    . $tri
     . '</summary>';
 }
 

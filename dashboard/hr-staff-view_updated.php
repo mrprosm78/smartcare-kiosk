@@ -9,75 +9,26 @@ $active = admin_url('hr-staff.php');
 
 function h2(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); }
 
-
-if (!function_exists('sc_to_array')) {
-  function sc_to_array(mixed $v): mixed {
-    // Convert stdClass to array recursively (best-effort). Leave scalars unchanged.
-    if (is_object($v)) $v = (array)$v;
-    if (!is_array($v)) return $v;
-    foreach ($v as $k => $vv) {
-      if (is_object($vv)) $v[$k] = (array)$vv;
-    }
-    return $v;
-  }
-}
-
-if (!function_exists('sc_yesno')) {
-  function sc_yesno(mixed $v): string {
-    if ($v === null) return '—';
-    $s = strtolower(trim((string)$v));
-    if ($s === '') return '—';
-    if (in_array($s, ['1','true','yes','y','on'], true)) return 'Yes';
-    if (in_array($s, ['0','false','no','n','off'], true)) return 'No';
-    return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
-  }
-}
-
-if (!function_exists('sc_cell')) {
-  function sc_cell(string $s): string {
-    $t = trim($s);
-    if ($t === '') return '<span class="text-slate-500">—</span>';
-    return htmlspecialchars($t, ENT_QUOTES, 'UTF-8');
-  }
-}
-
-
 function sc_extract_list(mixed $root, array $path): array {
   $cur = $root;
-
-  // Allow stdClass/object payloads by coercing to arrays at each step.
-  $cur = sc_to_array($cur);
-
   foreach ($path as $k) {
     if (is_string($cur) && $cur !== '') {
       $decoded = json_decode($cur, true);
       if (json_last_error() === JSON_ERROR_NONE) $cur = $decoded;
     }
-    $cur = sc_to_array($cur);
     if (!is_array($cur) || !array_key_exists($k, $cur)) return [];
     $cur = $cur[$k];
   }
-
   if (is_string($cur) && $cur !== '') {
     $decoded = json_decode($cur, true);
     if (json_last_error() === JSON_ERROR_NONE) $cur = $decoded;
   }
-  $cur = sc_to_array($cur);
   if (!is_array($cur)) return [];
-
-  // Keep only array/object rows, coercing objects to arrays.
-  $out = [];
-  foreach ($cur as $r) {
-    $r = sc_to_array($r);
-    if (is_array($r)) $out[] = $r;
-  }
-  return array_values($out);
+  return array_values(array_filter($cur, fn($r) => is_array($r)));
 }
-function sc_row_has_data(mixed $row): bool {
-  if (is_object($row)) $row = (array)$row;
-  if (!is_array($row)) return false;
+function sc_row_has_data(array $row): bool {
   foreach ($row as $v) {
-    if (is_array($v) || is_object($v)) continue;
+    if (is_array($v)) continue;
     if (trim((string)$v) !== '') return true;
   }
   return false;
@@ -107,7 +58,7 @@ function sc_render_work_history(mixed $workHistory): string {
   $rows = sc_extract_list($workHistory, ['jobs']);
   // If older records stored the list at the top level, fall back.
   if (!$rows && is_array($workHistory)) {
-    $rows = array_values(array_filter($workHistory, fn($r) => is_array($r) || is_object($r)));
+    $rows = array_values(array_filter($workHistory, fn($r) => is_array($r)));
   }
   // Remove completely blank rows (common when user leaves default empty row).
   $rows = array_values(array_filter($rows, 'sc_row_has_data'));
@@ -128,8 +79,6 @@ function sc_render_work_history(mixed $workHistory): string {
   echo '</thead><tbody class="divide-y divide-slate-100">';
 
   foreach ($rows as $r) {
-    $r = sc_to_array($r);
-    if (!is_array($r)) continue;
     echo '<tr class="bg-white align-top">';
     echo '<td class="p-2">' . sc_cell((string)($r['employer_name'] ?? '')) . '</td>';
     echo '<td class="p-2">' . sc_cell((string)($r['job_title'] ?? '')) . '</td>';
@@ -163,7 +112,7 @@ function sc_render_references(mixed $refs): string {
   $rows = sc_extract_list($refs, ['references']);
   // If older records stored the list at the top level, fall back.
   if (!$rows && is_array($refs)) {
-    $rows = array_values(array_filter($refs, fn($r) => is_array($r) || is_object($r)));
+    $rows = array_values(array_filter($refs, fn($r) => is_array($r)));
   }
   $rows = array_values(array_filter($rows, 'sc_row_has_data'));
   if (!$rows) return '<p class="mt-2 text-sm text-slate-500">No references provided.</p>';
@@ -172,8 +121,6 @@ function sc_render_references(mixed $refs): string {
   echo '<div class="mt-3 grid gap-3">';
   $i = 1;
   foreach ($rows as $r) {
-    $r = sc_to_array($r);
-    if (!is_array($r)) continue;
     $name = trim((string)($r['referee_name'] ?? ($r['name'] ?? '')));
     $org = trim((string)($r['referee_organisation'] ?? ($r['organisation'] ?? ($r['company'] ?? ''))));
     $role = trim((string)($r['referee_job_title'] ?? ($r['job_title'] ?? ($r['position'] ?? ''))));
