@@ -131,11 +131,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                 <h1 class="text-2xl font-semibold">Staff</h1>
                 <p class="mt-1 text-sm text-slate-600">HR staff profiles (the authoritative staff record). Kiosk access is enabled separately.</p>
               </div>
-              <?php if (admin_can($user, 'manage_staff')): ?>
-                <div class="flex flex-wrap gap-2">
-                  <a href="<?php echo h(admin_url('hr-staff.php')); ?>" class="rounded-2xl px-4 py-2 text-sm font-semibold bg-emerald-500/15 border border-emerald-500/30 text-slate-900 hover:bg-emerald-500/20">Add staff</a>
-                </div>
-              <?php endif; ?>
+
             </div>
 
             <form class="mt-4 flex flex-col lg:flex-row gap-3" method="get" action="">
