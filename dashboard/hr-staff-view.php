@@ -4,7 +4,6 @@ declare(strict_types=1);
 require_once __DIR__ . '/layout.php';
 admin_require_perm($user, 'manage_staff');
 
-admin_page_start($pdo, 'Staff Profile');
 $active = admin_url('hr-staff.php');
 
 function h2(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); }
@@ -414,8 +413,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
   if (!$errors) {
     $upd = $pdo->prepare('UPDATE hr_staff SET department_id = ?, updated_by_admin_id = ? WHERE id = ? LIMIT 1');
     $upd->execute([$deptId, (int)($user['id'] ?? 0), $staffId]);
-    header('Location: ' . admin_url('hr-staff-view.php?id=' . $staffId));
-    exit;
+    header('Location: ' . admin_url('hr-staff-view.php?id=' . $staffId . '&pv=' . time()));
+            exit;
   }
 }
 
@@ -742,6 +741,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'enabl
   exit('Kiosk linking is managed from the Kiosk IDs page.');
 }
 
+
+
+// Cache-bust staff photo after uploads
+$photoV = 0;
+if (isset($_GET['pv']) && ctype_digit((string)$_GET['pv'])) $photoV = (int)$_GET['pv'];
+if ($photoV <= 0) {
+  $ts = (string)($s['updated_at'] ?? '');
+  $t = $ts ? strtotime($ts) : false;
+  if ($t) $photoV = (int)$t;
+}
+if ($photoV <= 0) $photoV = time();
+
+// Start page output (must happen after POST handlers so redirects work)
+admin_page_start($pdo, 'Staff Profile');
+
 ?>
 <div class="min-h-dvh flex flex-col lg:flex-row">
   <?php require __DIR__ . '/partials/sidebar.php'; ?>
@@ -755,7 +769,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'enabl
           <div class="flex items-start gap-4">
             <div class="h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
               <?php if (!empty($s['photo_path'])): ?>
-                <img src="<?= h2(admin_url('hr-staff-photo.php?id=' . (int)$staffId)) ?>" alt="Staff photo" class="h-full w-full object-cover">
+                <img src="<?= h2(admin_url('hr-staff-photo.php?id=' . (int)$staffId . '&v=' . $photoV)) ?>" alt="Staff photo" class="h-full w-full object-cover">
               <?php else: ?>
                 <div class="flex h-full w-full items-center justify-center text-xs font-semibold text-slate-500">No photo</div>
               <?php endif; ?>
@@ -1022,14 +1036,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'enabl
             <div class="flex items-center justify-between">
               <h3 class="text-sm font-semibold text-slate-900">Staff photo</h3>
             </div>
-            <div class="mt-3">
-              <?php if (!empty($s['photo_path'])): ?>
-                <div class="mb-3 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                  <img src="<?= h2(admin_url('hr-staff-photo.php?id=' . (int)$staffId)) ?>" alt="Staff photo" class="w-full object-cover">
-                </div>
-              <?php endif; ?>
-
-              <form method="post" enctype="multipart/form-data" class="space-y-2">
+            <div class="mt-3"><form method="post" enctype="multipart/form-data" class="space-y-2">
                 <?php admin_csrf_field(); ?>
                 <input type="hidden" name="action" value="upload_photo">
                 <input type="file" name="staff_photo" accept="image/jpeg,image/png,image/webp" class="block w-full text-sm" required>

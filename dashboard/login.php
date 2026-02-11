@@ -77,7 +77,8 @@ $css = admin_asset_css($pdo);
   <?php
   // Base path detection (supports installs in subfolders like /smartcare-kiosk)
   $scriptName = (string)($_SERVER['SCRIPT_NAME'] ?? '');
-  $detectedBase = rtrim(str_replace('\\\\', '/', dirname($scriptName)), '/');
+  $detectedBase = rtrim(str_replace('\\\\', '/', dirname(dirname($scriptName))), '/');
+
   if ($detectedBase === '/') $detectedBase = '';
   $configuredBase = defined('APP_BASE_PATH') ? rtrim((string)APP_BASE_PATH, '/') : '';
   if ($configuredBase === '/') $configuredBase = '';

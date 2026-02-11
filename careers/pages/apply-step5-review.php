@@ -210,6 +210,43 @@ if (empty(trim($checks['has_current_dbs'] ?? ''))) {
       <div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-4">
         <p class="text-xs font-semibold text-slate-900"><?= scv($blocked['message'] ?? 'Please fix the issues before submitting.'); ?></p>
         <p class="text-[10px] text-slate-600 mt-1">These are server-side validation errors. Use the “Fix” links below.</p>
+
+        <?php
+          $stepLabels = [
+            1 => 'Personal details',
+            2 => 'Work history',
+            3 => 'Education & training',
+            4 => 'References',
+            6 => 'Declaration',
+          ];
+
+          $blockedErrors = $blocked['errors'] ?? [];
+        ?>
+
+        <?php if (is_array($blockedErrors) && !empty($blockedErrors)): ?>
+          <div class="mt-3 rounded-xl border border-red-200 bg-white/70 px-3 py-2">
+            <ul class="space-y-2 text-[11px] text-slate-800">
+              <?php foreach ($blockedErrors as $stepNo => $errs):
+                $stepInt = (int)$stepNo;
+                if (!is_array($errs) || $stepInt <= 0) continue;
+                $label = $stepLabels[$stepInt] ?? ('Step ' . $stepInt);
+                $fixUrl = sc_apply_step_url($qsBase, $stepInt);
+              ?>
+                <li class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="font-semibold text-slate-900"><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8'); ?></div>
+                    <ul class="mt-1 list-disc pl-4 text-[11px] text-slate-700 space-y-1">
+                      <?php foreach ($errs as $msg): ?>
+                        <li><?= scv($msg); ?></li>
+                      <?php endforeach; ?>
+                    </ul>
+                  </div>
+                  <a href="<?= htmlspecialchars($fixUrl, ENT_QUOTES, 'UTF-8'); ?>" class="shrink-0 rounded-md border border-red-200 bg-white px-2 py-1 text-[10px] font-semibold text-red-700 hover:bg-red-50">Fix</a>
+                </li>
+              <?php endforeach; ?>
+            </ul>
+          </div>
+        <?php endif; ?>
       </div>
     <?php endif; ?>
 
