@@ -63,19 +63,58 @@ function uplift_val(array $uplifts, string $key, string $field, string $default 
   return (string)($u[$field] ?? $default);
 }
 
-$weekendType = uplift_val($uplifts, 'weekend', 'type', 'premium');
+/**
+ * Normalise uplift type.
+ * We support: none | premium | multiplier.
+ * If value is empty/0, treat as none to avoid "premium 0" confusion.
+ */
+function normalize_uplift_type(string $type, string $value): string {
+  $type = strtolower(trim($type));
+  if ($type !== 'premium' && $type !== 'multiplier' && $type !== 'none') {
+    $type = 'none';
+  }
+
+  $v = trim($value);
+  if ($type !== 'none') {
+    // If empty or numeric zero, treat as none.
+    if ($v === '') return 'none';
+    if (preg_match('/^-?\d+(?:\.\d+)?$/', $v)) {
+      if ((float)$v == 0.0) return 'none';
+    }
+  }
+
+  return $type;
+}
+
+
+$weekendType = normalize_uplift_type(
+  uplift_val($uplifts, 'weekend', 'type', 'none'),
+  uplift_val($uplifts, 'weekend', 'value', '')
+);
 $weekendValue = uplift_val($uplifts, 'weekend', 'value', '');
 
-$bhType = uplift_val($uplifts, 'bank_holiday', 'type', 'multiplier');
+$bhType = normalize_uplift_type(
+  uplift_val($uplifts, 'bank_holiday', 'type', 'none'),
+  uplift_val($uplifts, 'bank_holiday', 'value', '')
+);
 $bhValue = uplift_val($uplifts, 'bank_holiday', 'value', '');
 
-$nightType = uplift_val($uplifts, 'night', 'type', 'multiplier');
+$nightType = normalize_uplift_type(
+  uplift_val($uplifts, 'night', 'type', 'none'),
+  uplift_val($uplifts, 'night', 'value', '')
+);
 $nightValue = uplift_val($uplifts, 'night', 'value', '');
 
-$otType = uplift_val($uplifts, 'overtime', 'type', 'multiplier');
+$otType = normalize_uplift_type(
+  uplift_val($uplifts, 'overtime', 'type', 'none'),
+  uplift_val($uplifts, 'overtime', 'value', '')
+);
 $otValue = uplift_val($uplifts, 'overtime', 'value', '');
 
-$calloutType = uplift_val($uplifts, 'callout', 'type', 'premium');
+$calloutType = normalize_uplift_type(
+  uplift_val($uplifts, 'callout', 'type', 'none'),
+  uplift_val($uplifts, 'callout', 'value', '')
+);
 $calloutValue = uplift_val($uplifts, 'callout', 'value', '');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -97,26 +136,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
   // uplifts
-  $weekendType = trim((string)($_POST['weekend_type'] ?? 'premium'));
+  $weekendType = trim((string)($_POST['weekend_type'] ?? 'none'));
   $weekendValue = trim((string)($_POST['weekend_value'] ?? ''));
-  $bhType = trim((string)($_POST['bh_type'] ?? 'multiplier'));
+  $bhType = trim((string)($_POST['bh_type'] ?? 'none'));
   $bhValue = trim((string)($_POST['bh_value'] ?? ''));
-  $nightType = trim((string)($_POST['night_type'] ?? 'multiplier'));
+  $nightType = trim((string)($_POST['night_type'] ?? 'none'));
   $nightValue = trim((string)($_POST['night_value'] ?? ''));
-  $otType = trim((string)($_POST['ot_type'] ?? 'multiplier'));
+  $otType = trim((string)($_POST['ot_type'] ?? 'none'));
   $otValue = trim((string)($_POST['ot_value'] ?? ''));
-  $calloutType = trim((string)($_POST['callout_type'] ?? 'premium'));
+  $calloutType = trim((string)($_POST['callout_type'] ?? 'none'));
   $calloutValue = trim((string)($_POST['callout_value'] ?? ''));
 
-  $validTypes = ['premium','multiplier'];
-  if (!in_array($weekendType, $validTypes, true)) $weekendType = 'premium';
-  if (!in_array($bhType, $validTypes, true)) $bhType = 'multiplier';
-  if (!in_array($nightType, $validTypes, true)) $nightType = 'multiplier';
-  if (!in_array($otType, $validTypes, true)) $otType = 'multiplier';
-  if (!in_array($calloutType, $validTypes, true)) $calloutType = 'premium';
+  $validTypes = ['none','premium','multiplier'];
+  if (!in_array($weekendType, $validTypes, true)) $weekendType = 'none';
+  if (!in_array($bhType, $validTypes, true)) $bhType = 'none';
+  if (!in_array($nightType, $validTypes, true)) $nightType = 'none';
+  if (!in_array($otType, $validTypes, true)) $otType = 'none';
+  if (!in_array($calloutType, $validTypes, true)) $calloutType = 'none';
 
-  foreach ([['Weekend',$weekendValue],['Bank holiday',$bhValue],['Night',$nightValue],['Overtime',$otValue],['Callout',$calloutValue]] as [$label,$val]) {
-    if ($val === '') continue;
+  // Normalise "0" / empty values to none (avoid confusion)
+  $weekendType = normalize_uplift_type($weekendType, $weekendValue);
+  $bhType = normalize_uplift_type($bhType, $bhValue);
+  $nightType = normalize_uplift_type($nightType, $nightValue);
+  $otType = normalize_uplift_type($otType, $otValue);
+  $calloutType = normalize_uplift_type($calloutType, $calloutValue);
+
+  // If not none, require a value.
+  foreach (
+    [
+      ['Weekend', $weekendType, $weekendValue],
+      ['Bank holiday', $bhType, $bhValue],
+      ['Night', $nightType, $nightValue],
+      ['Overtime', $otType, $otValue],
+      ['Callout', $calloutType, $calloutValue],
+    ] as [$label, $t, $val]
+  ) {
+    if ($t !== 'none' && trim((string)$val) === '') {
+      $errors[] = $label . ' value is required when type is ' . $t . '.';
+      break;
+    }
+  }
+
+  foreach (
+    [
+      ['Weekend', $weekendType, $weekendValue],
+      ['Bank holiday', $bhType, $bhValue],
+      ['Night', $nightType, $nightValue],
+      ['Overtime', $otType, $otValue],
+      ['Callout', $calloutType, $calloutValue],
+    ] as [$label, $t, $val]
+  ) {
+    if ($t === 'none') continue;
     if (!preg_match('/^\d+(?:\.\d{1,2})?$/', (string)$val)) {
       $errors[] = $label . ' value must be numeric.';
       break;
@@ -129,11 +199,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       'contract_hours_per_week' => $hoursPerWeek === '' ? null : (float)$hoursPerWeek,
       'breaks_paid' => $breaksPaid,
       'uplifts' => [
-        'weekend' => ['type' => $weekendType, 'value' => $weekendValue === '' ? null : (float)$weekendValue],
-        'bank_holiday' => ['type' => $bhType, 'value' => $bhValue === '' ? null : (float)$bhValue],
-        'night' => ['type' => $nightType, 'value' => $nightValue === '' ? null : (float)$nightValue],
-        'overtime' => ['type' => $otType, 'value' => $otValue === '' ? null : (float)$otValue],
-        'callout' => ['type' => $calloutType, 'value' => $calloutValue === '' ? null : (float)$calloutValue],
+        'weekend' => ['type' => $weekendType, 'value' => ($weekendType === 'none' ? 0 : (float)$weekendValue)],
+        'bank_holiday' => ['type' => $bhType, 'value' => ($bhType === 'none' ? 0 : (float)$bhValue)],
+        'night' => ['type' => $nightType, 'value' => ($nightType === 'none' ? 0 : (float)$nightValue)],
+        'overtime' => ['type' => $otType, 'value' => ($otType === 'none' ? 0 : (float)$otValue)],
+        'callout' => ['type' => $calloutType, 'value' => ($calloutType === 'none' ? 0 : (float)$calloutValue)],
       ],
     ];
 
@@ -266,33 +336,36 @@ $active = admin_url('hr-staff.php');
           <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3">
             <div class="text-sm font-semibold text-slate-900">Weekend</div>
             <div class="mt-2 flex gap-2">
-              <select name="weekend_type" class="w-32 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
+              <select id="weekend_type" name="weekend_type" class="w-32 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                <option value="none" <?php echo $weekendType==='none'?'selected':''; ?>>None</option>
                 <option value="premium" <?php echo $weekendType==='premium'?'selected':''; ?>>Premium</option>
                 <option value="multiplier" <?php echo $weekendType==='multiplier'?'selected':''; ?>>Multiplier</option>
               </select>
-              <input name="weekend_value" value="<?php echo h2($weekendValue); ?>" class="flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" placeholder="e.g. 0.20 or 1.5">
+              <input id="weekend_value" name="weekend_value" value="<?php echo h2($weekendValue); ?>" class="flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" placeholder="e.g. 0.20 or 1.5">
             </div>
           </div>
 
           <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3">
             <div class="text-sm font-semibold text-slate-900">Bank holiday</div>
             <div class="mt-2 flex gap-2">
-              <select name="bh_type" class="w-32 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
+              <select id="bh_type" name="bh_type" class="w-32 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                <option value="none" <?php echo $bhType==='none'?'selected':''; ?>>None</option>
                 <option value="premium" <?php echo $bhType==='premium'?'selected':''; ?>>Premium</option>
                 <option value="multiplier" <?php echo $bhType==='multiplier'?'selected':''; ?>>Multiplier</option>
               </select>
-              <input name="bh_value" value="<?php echo h2($bhValue); ?>" class="flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" placeholder="e.g. 1.5">
+              <input id="bh_value" name="bh_value" value="<?php echo h2($bhValue); ?>" class="flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" placeholder="e.g. 1.5">
             </div>
           </div>
 
           <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3">
             <div class="text-sm font-semibold text-slate-900">Night</div>
             <div class="mt-2 flex gap-2">
-              <select name="night_type" class="w-32 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
+              <select id="night_type" name="night_type" class="w-32 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                <option value="none" <?php echo $nightType==='none'?'selected':''; ?>>None</option>
                 <option value="premium" <?php echo $nightType==='premium'?'selected':''; ?>>Premium</option>
                 <option value="multiplier" <?php echo $nightType==='multiplier'?'selected':''; ?>>Multiplier</option>
               </select>
-              <input name="night_value" value="<?php echo h2($nightValue); ?>" class="flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" placeholder="e.g. 0.20 or 1.25">
+              <input id="night_value" name="night_value" value="<?php echo h2($nightValue); ?>" class="flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" placeholder="e.g. 0.20 or 1.25">
             </div>
             <div class="mt-1 text-xs text-slate-600">Night time window comes from care home settings.</div>
           </div>
@@ -300,11 +373,12 @@ $active = admin_url('hr-staff.php');
           <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3">
             <div class="text-sm font-semibold text-slate-900">Overtime</div>
             <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <select name="ot_type" class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
+              <select id="ot_type" name="ot_type" class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                <option value="none" <?php echo $otType==='none'?'selected':''; ?>>None</option>
                 <option value="premium" <?php echo $otType==='premium'?'selected':''; ?>>Premium</option>
                 <option value="multiplier" <?php echo $otType==='multiplier'?'selected':''; ?>>Multiplier</option>
               </select>
-              <input name="ot_value" value="<?php echo h2($otValue); ?>" class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" placeholder="e.g. 1.5">
+              <input id="ot_value" name="ot_value" value="<?php echo h2($otValue); ?>" class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" placeholder="e.g. 1.5">
             </div>
             <div class="mt-1 text-xs text-slate-600">Overtime is calculated weekly based on this staff member’s contracted hours per week. If contracted hours is blank or 0, overtime will not apply.</div>
           </div>
@@ -312,11 +386,12 @@ $active = admin_url('hr-staff.php');
           <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3">
             <div class="text-sm font-semibold text-slate-900">Callout</div>
             <div class="mt-2 flex gap-2">
-              <select name="callout_type" class="w-32 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
+              <select id="callout_type" name="callout_type" class="w-32 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                <option value="none" <?php echo $calloutType==='none'?'selected':''; ?>>None</option>
                 <option value="premium" <?php echo $calloutType==='premium'?'selected':''; ?>>Premium</option>
                 <option value="multiplier" <?php echo $calloutType==='multiplier'?'selected':''; ?>>Multiplier</option>
               </select>
-              <input name="callout_value" value="<?php echo h2($calloutValue); ?>" class="flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" placeholder="e.g. 2.00">
+              <input id="callout_value" name="callout_value" value="<?php echo h2($calloutValue); ?>" class="flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" placeholder="e.g. 2.00">
             </div>
           </div>
         </div>
@@ -328,6 +403,30 @@ $active = admin_url('hr-staff.php');
     </form>
   </main>
 </div>
+
+
+<script>
+  function scToggleUplift(selectId, inputId) {
+    const sel = document.getElementById(selectId);
+    const inp = document.getElementById(inputId);
+    if (!sel || !inp) return;
+    const onChange = () => {
+      const isNone = sel.value === 'none';
+      inp.disabled = isNone;
+      inp.classList.toggle('opacity-50', isNone);
+      inp.classList.toggle('cursor-not-allowed', isNone);
+      if (isNone) inp.value = '';
+    };
+    sel.addEventListener('change', onChange);
+    onChange();
+  }
+
+  scToggleUplift('weekend_type', 'weekend_value');
+  scToggleUplift('bh_type', 'bh_value');
+  scToggleUplift('night_type', 'night_value');
+  scToggleUplift('ot_type', 'ot_value');
+  scToggleUplift('callout_type', 'callout_value');
+</script>
 
 
 <?php admin_page_end(); ?>
