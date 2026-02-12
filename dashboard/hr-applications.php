@@ -278,21 +278,5 @@ function sc_status_badge(string $status): array {
   })();
 </script>
 
-<?
-<script>
-(function(){
-  const form = document.querySelector('form[data-filters="hr-applications"]') || document.querySelector('form.mt-4.w-full');
-  if (!form) return;
-  form.querySelectorAll('select[data-auto-submit="1"]').forEach(sel=>{
-    sel.addEventListener('change', ()=> form.submit());
-  });
-  // Enter submits search
-  const q = form.querySelector('input[name="q"]');
-  if (q) {
-    q.addEventListener('keydown', (e)=>{
-      if (e.key === 'Enter') { form.submit(); }
-    });
-  }
-})();
-</script>
-php admin_page_end(); ?>
+<?php
+admin_page_end(); ?>

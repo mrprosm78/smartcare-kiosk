@@ -443,8 +443,8 @@ function staff_short_label(array $st): string {
 
       <!-- Right panel -->
       <aside class="xl:col-span-5">
-        <div class="rounded-3xl border border-slate-200 bg-white p-4 sticky top-5 space-y-5">
-          <div>
+        <div class="sticky top-5 space-y-4">
+          <div class="rounded-3xl border border-slate-200 bg-white p-4">
             <div class="text-xs font-semibold text-slate-600">Manage</div>
             <div class="text-lg font-semibold text-slate-900">
               <?= $selected ? 'Kiosk ID: ' . h((string)($selected['employee_code'] ?? '')) : 'Select a kiosk ID' ?>
@@ -452,6 +452,9 @@ function staff_short_label(array $st): string {
           </div>
 
           <?php if ($selected):
+            ?>
+            <div class="rounded-3xl border border-slate-200 bg-white p-4 space-y-4">
+            <?php
             $linkedStaffId = (int)($selected['hr_staff_id'] ?? 0);
             $isAgencySel = ((int)($selected['is_agency'] ?? 0) === 1) || $linkedStaffId === 0;
             $staffCodeSel = trim((string)($selected['staff_code'] ?? ''));
@@ -518,11 +521,13 @@ function staff_short_label(array $st): string {
               </form>
             <?php else: ?>
               <div class="text-sm text-slate-600">You don’t have permission to edit kiosk IDs.</div>
-            <?php endif; ?>
+            <?php endif; ?>            </div>
+
+
           <?php endif; ?>
 
           <?php if ($canManage): ?>
-            <div class="border-t border-slate-200 pt-5">
+            <div class="rounded-3xl border border-slate-200 bg-white p-4">
               <div class="flex items-center justify-between">
                 <div>
                   <div class="text-xs font-semibold text-slate-600">Staff missing kiosk ID</div>

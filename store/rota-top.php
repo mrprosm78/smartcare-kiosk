@@ -159,10 +159,10 @@ admin_page_start($pdo, 'Rota');
 
         <!-- Shift templates ON TOP of weekly rota section (full width) -->
         <div class="p-4 border-b border-slate-200 bg-white">
-          <div class="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
-            <div class="flex flex-wrap items-center gap-2 justify-start" id="shiftPaletteRow"></div>
+          <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
+            <div class="flex flex-wrap items-center gap-2 w-full" id="shiftPaletteRow"></div>
 
-            <div class="flex flex-wrap items-center gap-2 justify-start xl:justify-end">
+            <div class="flex flex-wrap items-center gap-2">
               <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
                 Selected: <span id="selectedShiftLabel" class="font-semibold">None</span>
               </div>
@@ -318,25 +318,24 @@ admin_page_start($pdo, 'Rota');
         <div class="flex items-start justify-between gap-3">
           <div>
             <div class="text-sm font-semibold text-slate-900">Department totals</div>
-            <div class="mt-1 text-xs text-slate-600">Department hours by day (UI-only; based on assigned shifts).</div>
+            <div class="mt-1 text-xs text-slate-600">Assigned hours vs target (targets are UI-only for now).</div>
           </div>
           <div class="text-xs text-slate-600">Week: <span class="font-semibold"><?= h($weekStartLocal->format('Y-m-d')) ?></span></div>
         </div>
 
         <div class="mt-4 overflow-auto">
-          <table class="min-w-[980px] w-full text-sm">
+          <table class="min-w-[700px] w-full text-sm">
             <thead>
               <tr class="border-b border-slate-200">
                 <th class="text-left px-3 py-2 text-xs font-semibold text-slate-600">Department</th>
-                <?php foreach ($days as $d): ?>
-                  <th class="text-left px-3 py-2 text-xs font-semibold text-slate-600"><?= h($d['dow']) ?><div class="text-[11px] font-normal text-slate-500"><?= h($d['label']) ?></div></th>
-                <?php endforeach; ?>
-                <th class="text-left px-3 py-2 text-xs font-semibold text-slate-600">Total</th>
+                <th class="text-left px-3 py-2 text-xs font-semibold text-slate-600">Assigned</th>
+                <th class="text-left px-3 py-2 text-xs font-semibold text-slate-600">Target</th>
+                <th class="text-left px-3 py-2 text-xs font-semibold text-slate-600">Diff</th>
               </tr>
             </thead>
             <tbody id="deptSummary">
               <tr>
-                <td class="px-3 py-4 text-sm text-slate-600" colspan="9">Assign shifts to see department hours.</td>
+                <td class="px-3 py-4 text-sm text-slate-600" colspan="4">Assign shifts to see summary.</td>
               </tr>
             </tbody>
           </table>
@@ -358,10 +357,6 @@ admin_page_start($pdo, 'Rota');
     { id: 'S07_15', type: 'day',   start: '07:00', end: '15:00', hours: 8.0 },
     { id: 'L13_21', type: 'day',   start: '13:00', end: '21:00', hours: 8.0 },
   ];
-
-  // Week dates (YYYY-MM-DD) for day-wise totals
-  const weekDates = <?= json_encode(array_map(fn($d) => $d['ymd'], $days), JSON_UNESCAPED_SLASHES) ?>;
-
 
   let selected = null;
 
@@ -510,24 +505,20 @@ admin_page_start($pdo, 'Rota');
 
   function recalcTotals() {
     const empTotals = new Map();
-    const deptTotals = new Map(); // deptId -> { id, name, total, byDate: { ymd: hours } }
+    const deptTotals = new Map(); // deptId -> {name, hours}
 
     assignments.forEach((items, key) => {
       const [empIdStr, ymd] = key.split('|');
       const empId = parseInt(empIdStr, 10);
-
       const cell = document.querySelector(`[data-cell="1"][data-emp="${CSS.escape(empIdStr)}"][data-date="${CSS.escape(ymd)}"]`);
       const row = cell?.closest('tr[data-emp-row]');
       const deptId = row ? parseInt(row.getAttribute('data-dept-id') || '0', 10) : 0;
       const deptName = row ? (row.getAttribute('data-dept-name') || '—') : '—';
 
       items.forEach(it => {
-        const h = Number(it.hours || 0);
-        empTotals.set(empId, (empTotals.get(empId) || 0) + h);
-
-        const curr = deptTotals.get(deptId) || { id: deptId, name: deptName, total: 0, byDate: {} };
-        curr.total += h;
-        curr.byDate[ymd] = (Number(curr.byDate[ymd] || 0) + h);
+        empTotals.set(empId, (empTotals.get(empId) || 0) + Number(it.hours || 0));
+        const curr = deptTotals.get(deptId) || { id: deptId, name: deptName, hours: 0 };
+        curr.hours += Number(it.hours || 0);
         deptTotals.set(deptId, curr);
       });
     });
@@ -540,22 +531,19 @@ admin_page_start($pdo, 'Rota');
 
     renderDeptSummary(Array.from(deptTotals.values()));
 
-    // Week total (sum of all department totals)
+    // Week total
     let weekTotal = 0;
-    deptTotals.forEach(v => { weekTotal += Number(v.total || 0); });
+    deptTotals.forEach(v => { weekTotal += Number(v.hours || 0); });
     const wt = document.getElementById('weekTotalHours');
     if (wt) wt.textContent = String(Math.round(weekTotal * 10) / 10);
   }
-
 
   function renderDeptSummary(rows) {
     const tbody = $('#deptSummary');
     if (!tbody) return;
 
-    const fmt = (n) => (Math.round(Number(n || 0) * 10) / 10).toFixed(1);
-
     if (!rows.length) {
-      tbody.innerHTML = `<tr><td class="px-3 py-4 text-sm text-slate-600" colspan="${1 + (weekDates?.length || 7) + 1}">Assign shifts to see department hours.</td></tr>`;
+      tbody.innerHTML = `<tr><td class="px-3 py-4 text-sm text-slate-600" colspan="4">Assign shifts to see summary.</td></tr>`;
       return;
     }
 
@@ -565,27 +553,38 @@ admin_page_start($pdo, 'Rota');
     rows.forEach(r => {
       const tr = document.createElement('tr');
       tr.className = 'border-t border-slate-100';
-
-      let cells = `
+      tr.innerHTML = `
+        <td class="px-3 py-3"><div class="font-semibold text-slate-900">${String(r.name)}</div></td>
+        <td class="px-3 py-3"><div class="font-semibold text-slate-900" data-assigned="${r.id}">${(Math.round(r.hours*10)/10).toFixed(1)}</div></td>
         <td class="px-3 py-3">
-          <div class="font-semibold text-slate-900">${String(r.name)}</div>
+          <input type="number" min="0" step="0.5" value="0"
+            class="w-28 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+            data-target="${r.id}" />
         </td>
+        <td class="px-3 py-3"><div class="font-semibold text-slate-900" data-diff="${r.id}">0.0</div></td>
       `;
-
-      (weekDates || []).forEach(d => {
-        const h = r.byDate?.[d] || 0;
-        cells += `<td class="px-3 py-3 whitespace-nowrap text-slate-900">${fmt(h)}</td>`;
-      });
-
-      cells += `<td class="px-3 py-3 whitespace-nowrap font-semibold text-slate-900">${fmt(r.total)}</td>`;
-      tr.innerHTML = cells;
       tbody.appendChild(tr);
     });
+
+    $$('input[data-target]').forEach(inp => inp.addEventListener('input', updateDiffs));
+    updateDiffs();
   }
 
+  function updateDiffs() {
+    $$('input[data-target]').forEach(inp => {
+      const id = inp.getAttribute('data-target');
+      const assignedEl = document.querySelector(`[data-assigned="${CSS.escape(id)}"]`);
+      const diffEl = document.querySelector(`[data-diff="${CSS.escape(id)}"]`);
+      if (!assignedEl || !diffEl) return;
 
+      const assigned = parseFloat(assignedEl.textContent || '0') || 0;
+      const target = parseFloat(inp.value || '0') || 0;
+      const diff = assigned - target;
 
-
+      diffEl.textContent = diff.toFixed(1);
+      diffEl.className = 'font-semibold ' + (diff >= 0 ? 'text-emerald-700' : 'text-rose-700');
+    });
+  }
 
   function bindCells() {
     $$('[data-cell="1"]').forEach(cell => {
