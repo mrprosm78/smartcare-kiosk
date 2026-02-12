@@ -134,9 +134,9 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
             </div>
 
-            <form class="mt-4 flex flex-col lg:flex-row gap-3" method="get" action="">
+            <form data-filters="hr-staff" class="mt-4 flex flex-col lg:flex-row gap-3" method="get" action="">
               <div class="flex gap-2 flex-wrap">
-                <select name="status" class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                <select data-auto-submit="1" name="status" class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
                   <?php
                     $opts = ['active' => 'Active', 'inactive' => 'Inactive', 'archived' => 'Archived', 'all' => 'All'];
                     foreach ($opts as $k => $lbl) {
@@ -146,7 +146,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                   ?>
                 </select>
 
-                <select name="department_id" class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                <select data-auto-submit="1" name="department_id" class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
                   <option value="0">All departments</option>
                   <?php foreach ($depts as $d): ?>
                     <option value="<?php echo (int)$d['id']; ?>"<?php echo ($dept === (int)$d['id']) ? ' selected' : ''; ?>>
@@ -157,7 +157,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
               </div>
 
               <div class="flex-1">
-                <input type="text" name="q" value="<?php echo h($q); ?>" placeholder="Search name, email, phone…" class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" />
+                <input type="text" data-submit-on-enter="1" name="q" value="<?php echo h($q); ?>" placeholder="Search name, email, phone…" class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm" />
               </div>
 
               <div class="flex gap-2">
@@ -232,4 +232,18 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
         </main>
 </div>
-<?php admin_page_end(); ?>
+<?
+<script>
+(function(){
+  const form = document.querySelector('form[data-filters="hr-staff"]');
+  if (!form) return;
+  form.querySelectorAll('select[data-auto-submit="1"]').forEach(sel=>{
+    sel.addEventListener('change', ()=> form.submit());
+  });
+  const q = form.querySelector('input[data-submit-on-enter="1"]');
+  if (q) {
+    q.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') form.submit(); });
+  }
+})();
+</script>
+php admin_page_end(); ?>

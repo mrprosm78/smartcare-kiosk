@@ -159,10 +159,10 @@ function sc_status_badge(string $status): array {
               <p class="mt-1 text-sm text-slate-600">View and review job applications.</p>
             </div>          </div>
 
-          <form method="get" class="mt-4 flex flex-nowrap items-end gap-3 overflow-x-auto pb-1">
-            <label class="block shrink-0 w-44">
+          <form method="get" data-filters="hr-applications" class="mt-4 w-full flex items-end gap-3">
+            <label class="block flex-1 min-w-[160px]">
               <span class="text-xs font-semibold text-slate-600">Status</span>
-              <select name="status" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+              <select data-auto-submit="1" name="status" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
                 <option value="">Any</option>
                 <?php foreach (['draft','submitted','reviewing','rejected','hired','archived'] as $s): ?>
                   <option value="<?= h($s) ?>" <?= $status === $s ? 'selected' : '' ?>><?= h(ucfirst($s)) ?></option>
@@ -170,9 +170,9 @@ function sc_status_badge(string $status): array {
               </select>
             </label>
 
-            <label class="block shrink-0 w-56">
+            <label class="block flex-1 min-w-[200px]">
               <span class="text-xs font-semibold text-slate-600">Job</span>
-              <select name="job" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+              <select data-auto-submit="1" name="job" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
                 <option value="">Any</option>
                 <?php foreach ($jobs as $j): ?>
                   <option value="<?= h((string)$j) ?>" <?= $job === (string)$j ? 'selected' : '' ?>><?= h((string)$j) ?></option>
@@ -186,15 +186,15 @@ function sc_status_badge(string $status): array {
                      class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
             </label>
 
-            <label class="block shrink-0 w-44">
+            <label class="block flex-1 min-w-[160px]">
               <span class="text-xs font-semibold text-slate-600">Converted</span>
-              <select name="converted" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+              <select data-auto-submit="1" name="converted" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
                 <option value="" <?= $converted === '' ? 'selected' : '' ?>>Any</option>
                 <option value="yes" <?= $converted === 'yes' ? 'selected' : '' ?>>Yes</option>
                 <option value="no"  <?= $converted === 'no' ? 'selected' : '' ?>>No</option>
               </select>
             </label>
-            <div class="flex shrink-0 items-end gap-2">
+            <div class="flex items-end gap-2">
               <a href="<?= h(admin_url('hr-applications.php')) ?>"
                  class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50">
                 Clear
@@ -278,4 +278,21 @@ function sc_status_badge(string $status): array {
   })();
 </script>
 
-<?php admin_page_end(); ?>
+<?
+<script>
+(function(){
+  const form = document.querySelector('form[data-filters="hr-applications"]') || document.querySelector('form.mt-4.w-full');
+  if (!form) return;
+  form.querySelectorAll('select[data-auto-submit="1"]').forEach(sel=>{
+    sel.addEventListener('change', ()=> form.submit());
+  });
+  // Enter submits search
+  const q = form.querySelector('input[name="q"]');
+  if (q) {
+    q.addEventListener('keydown', (e)=>{
+      if (e.key === 'Enter') { form.submit(); }
+    });
+  }
+})();
+</script>
+php admin_page_end(); ?>
