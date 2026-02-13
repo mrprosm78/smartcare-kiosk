@@ -160,7 +160,7 @@ try {
     // Fetch updated for UI
     $stmt = $pdo->prepare("SELECT e.*, d.name AS department_name
                            FROM kiosk_employees e
-                           LEFT JOIN kiosk_employee_departments d ON d.id=e.department_id
+                           LEFT JOIN hr_staff_departments d ON d.id=e.department_id
                            WHERE e.id=? LIMIT 1");
     $stmt->execute([$id]);
     $e = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;

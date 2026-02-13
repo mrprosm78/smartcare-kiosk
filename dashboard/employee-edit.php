@@ -12,7 +12,7 @@ $err = '';
 
 // load departments
 
-$cats = $pdo->query("SELECT id, name FROM kiosk_employee_departments WHERE is_active=1 ORDER BY sort_order ASC, name ASC")
+$cats = $pdo->query("SELECT id, name FROM hr_staff_departments WHERE is_active=1 ORDER BY sort_order ASC, name ASC")
   ->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 // load teams

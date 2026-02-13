@@ -49,7 +49,7 @@ function sc_sort_link_staff(string $key, string $label, string $currentSort, str
   return '<a class="hover:text-slate-900" href="' . h($href) . '">' . h($label) . '</a><span class="text-[11px] text-slate-500">' . h($arrow) . '</span>';
 }
 
-$depts = $pdo->query("SELECT id, name FROM kiosk_employee_departments ORDER BY sort_order ASC, name ASC")
+$depts = $pdo->query("SELECT id, name FROM hr_staff_departments ORDER BY sort_order ASC, name ASC")
   ->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 $where = [];
@@ -99,7 +99,7 @@ $sql = "SELECT
           (ke.id IS NOT NULL) AS has_kiosk,
           ke.employee_code AS kiosk_employee_code
         FROM hr_staff s
-        LEFT JOIN kiosk_employee_departments d ON d.id = s.department_id
+        LEFT JOIN hr_staff_departments d ON d.id = s.department_id
         LEFT JOIN (
           SELECT hr_staff_id, MAX(id) AS id, MAX(employee_code) AS employee_code
           FROM kiosk_employees

@@ -79,7 +79,7 @@ if (!function_exists('delete_setting_if_exists')) {
  */
 function seed_employee_departments(PDO $pdo): void {
   try {
-    $count = (int)$pdo->query("SELECT COUNT(*) FROM kiosk_employee_departments")->fetchColumn();
+    $count = (int)$pdo->query("SELECT COUNT(*) FROM hr_staff_departments")->fetchColumn();
     if ($count > 0) return;
   } catch (Throwable $e) {
     return;
@@ -97,7 +97,7 @@ function seed_employee_departments(PDO $pdo): void {
     ['Activities', 'activities', 90],
   ];
 
-  $stmt = $pdo->prepare("INSERT INTO kiosk_employee_departments (name, slug, sort_order, is_active) VALUES (?,?,?,1)");
+  $stmt = $pdo->prepare("INSERT INTO hr_staff_departments (name, slug, sort_order, is_active) VALUES (?,?,?,1)");
   foreach ($defaults as $d) {
     $stmt->execute([$d[0], $d[1], $d[2]]);
   }
@@ -329,7 +329,7 @@ function create_tables(PDO $pdo): void {
 
   // EMPLOYEE departments
   $pdo->exec("
-    CREATE TABLE IF NOT EXISTS kiosk_employee_departments (
+    CREATE TABLE IF NOT EXISTS hr_staff_departments (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
       staff_code VARCHAR(20) NULL,
       name VARCHAR(100) NOT NULL,
@@ -880,7 +880,7 @@ function drop_all(PDO $pdo): void {
     'hr_applications',
 
     // Org
-    'kiosk_employee_departments',
+    'hr_staff_departments',
     'kiosk_employee_teams',
 
     // Kiosk identities + settings

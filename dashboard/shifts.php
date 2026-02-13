@@ -81,7 +81,7 @@ $q = qstr('q', '');
 $hideEmpty = !isset($_GET['hide_empty']) || (string)$_GET['hide_empty'] === '1';
 
 
-$cats = $pdo->query("SELECT id, name FROM kiosk_employee_departments ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+$cats = $pdo->query("SELECT id, name FROM hr_staff_departments ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 $where = [];
 $params = [];
@@ -102,7 +102,7 @@ if ($q !== '') {
 $sqlEmp = "SELECT e.id, e.first_name, e.last_name, e.nickname, e.employee_code, e.is_active, e.is_agency,
                  e.department_id, d.name AS department_name
           FROM kiosk_employees e
-          LEFT JOIN kiosk_employee_departments d ON d.id = e.department_id";
+          LEFT JOIN hr_staff_departments d ON d.id = e.department_id";
 if ($where) $sqlEmp .= ' WHERE ' . implode(' AND ', $where);
 $sqlEmp .= ' ORDER BY e.is_active DESC, e.is_agency ASC, e.first_name ASC, e.last_name ASC LIMIT 500';
 

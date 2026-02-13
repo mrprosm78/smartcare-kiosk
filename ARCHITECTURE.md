@@ -51,11 +51,13 @@ These are intentional and must not be violated.
 - `kiosk_employees.hr_staff_id` is the *only* link between kiosk identities and HR staff.
 - We do **not** store the reverse link on `hr_staff` (no duplication).
 
-### 2.4 Users (System Logins)
-- Stored in `users`
+### 2.4 Admin Users (Dashboard Logins)
+- Stored in `admin_users`
+- Session tracking stored in `admin_sessions`
 - Authentication + permissions only
-- Not all staff are users
-- Not all users are staff
+- Not all staff are admin users
+
+> Note: A future **staff portal** may introduce its own user model, but dashboard auth is intentionally isolated.
 
 **Portal rule (LOCKED):**
 - Admin operator roles (**superadmin**, **manager**, **payroll**) use **`/dashboard`** only.

@@ -67,7 +67,7 @@ $employeeId = (int)($_GET['employee_id'] ?? 0);
 $status = (string)($_GET['status'] ?? 'all'); // all|approved|awaiting
 
 // Load departments
-$departments = $pdo->query("SELECT id, name FROM kiosk_employee_departments WHERE is_active=1 ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+$departments = $pdo->query("SELECT id, name FROM hr_staff_departments WHERE is_active=1 ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 // Load employees (filtered by department if selected)
 $sqlEmp = "SELECT id, employee_code, first_name, last_name, nickname, department_id

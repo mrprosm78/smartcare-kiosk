@@ -28,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       if ($slug === '') throw new RuntimeException('Slug is required');
       $sort = (int)($_POST['sort_order'] ?? 0);
 
-      $stmt = $pdo->prepare("INSERT INTO kiosk_employee_departments (name, slug, sort_order, is_active) VALUES (?,?,?,1)");
+      $stmt = $pdo->prepare("INSERT INTO hr_staff_departments (name, slug, sort_order, is_active) VALUES (?,?,?,1)");
       $stmt->execute([$name, $slug, $sort]);
       admin_redirect(admin_url('departments.php'));
     }
@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'toggle') {
       $id = (int)($_POST['id'] ?? 0);
       if ($id <= 0) throw new RuntimeException('Invalid department');
-      $pdo->prepare("UPDATE kiosk_employee_departments SET is_active = IF(is_active=1,0,1) WHERE id=?")->execute([$id]);
+      $pdo->prepare("UPDATE hr_staff_departments SET is_active = IF(is_active=1,0,1) WHERE id=?")->execute([$id]);
       admin_redirect(admin_url('departments.php'));
     }
 
@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $inUse = (int)$stmtC->fetchColumn();
       if ($inUse > 0) throw new RuntimeException('Department is in use by employees. Deactivate instead.');
 
-      $pdo->prepare("DELETE FROM kiosk_employee_departments WHERE id=?")->execute([$id]);
+      $pdo->prepare("DELETE FROM hr_staff_departments WHERE id=?")->execute([$id]);
       admin_redirect(admin_url('departments.php'));
     }
   } catch (Throwable $e) {
@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   }
 }
 
-$stmt = $pdo->query("SELECT * FROM kiosk_employee_departments ORDER BY sort_order ASC, name ASC");
+$stmt = $pdo->query("SELECT * FROM hr_staff_departments ORDER BY sort_order ASC, name ASC");
 $cats = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 admin_page_start($pdo, 'Employee Departments');

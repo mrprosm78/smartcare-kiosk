@@ -173,10 +173,9 @@ Future modules (Rota, Payroll, reporting) require kiosk identities to be linked 
 
 ### Staff code (implemented)
 
-Staff has a stable numeric **staff code** generated at conversion time.
+Staff has a stable, human‑facing **staff code** generated at conversion time.
 
 - Stored on `hr_staff.staff_code` (unique, read‑only)
-- Numeric only (no prefix)
-- Starts from `1` and increments with staff creation
-- Current implementation sets `staff_code = SC0001` style (`SC` + LPAD(id,4,'0'))
+- Format: `SC0001` (`SC` + LPAD(id,4,'0'))
+- This is the only identifier shown in the UI/exports; database numeric IDs are internal only.
 

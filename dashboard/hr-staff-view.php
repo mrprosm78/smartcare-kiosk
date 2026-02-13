@@ -338,7 +338,7 @@ if ($staffId <= 0) { http_response_code(400); exit('Missing staff id'); }
 
 $stmt = $pdo->prepare("SELECT s.*, d.name AS department_name, t.name AS team_name
   FROM hr_staff s
-  LEFT JOIN kiosk_employee_departments d ON d.id = s.department_id
+  LEFT JOIN hr_staff_departments d ON d.id = s.department_id
   LEFT JOIN kiosk_employee_teams t ON t.id = s.team_id
   WHERE s.id = ?
   LIMIT 1");
@@ -392,7 +392,7 @@ $errors = [];
 $notice = '';
 
 // ===== Update HR Staff department =====
-// We currently reuse kiosk_employee_departments as the lookup table.
+// We currently reuse hr_staff_departments as the lookup table.
 // HR Staff owns the department_id field (kiosk identity should link to staff, not own HR data).
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_department') {
   admin_csrf_verify();
@@ -403,7 +403,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
   }
 
   if ($deptId !== null) {
-    $chk = $pdo->prepare('SELECT id FROM kiosk_employee_departments WHERE id = ? LIMIT 1');
+    $chk = $pdo->prepare('SELECT id FROM hr_staff_departments WHERE id = ? LIMIT 1');
     $chk->execute([$deptId]);
     if (!$chk->fetchColumn()) {
       $errors[] = 'Please choose a valid department.';
@@ -421,7 +421,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
 // Load departments for dropdown
 $departments = [];
 try {
-  $departments = $pdo->query('SELECT id, name FROM kiosk_employee_departments ORDER BY name ASC')->fetchAll(PDO::FETCH_ASSOC);
+  $departments = $pdo->query('SELECT id, name FROM hr_staff_departments ORDER BY name ASC')->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
   $departments = [];
 }

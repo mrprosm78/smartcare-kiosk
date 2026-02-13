@@ -73,7 +73,7 @@ try {
       d.name AS department_name
     FROM kiosk_shifts s
     LEFT JOIN kiosk_employees e ON e.id = s.employee_id
-    LEFT JOIN kiosk_employee_departments d ON d.id = e.department_id
+    LEFT JOIN hr_staff_departments d ON d.id = e.department_id
     WHERE s.clock_out_at IS NULL
       AND (s.close_reason IS NULL OR s.close_reason <> 'void')
     ORDER BY s.clock_in_at ASC
@@ -122,7 +122,7 @@ try {
       d.name AS department_name
     FROM kiosk_shifts s
     LEFT JOIN kiosk_employees e ON e.id = s.employee_id
-    LEFT JOIN kiosk_employee_departments d ON d.id = e.department_id
+    LEFT JOIN hr_staff_departments d ON d.id = e.department_id
     WHERE s.clock_in_at >= ? AND s.clock_in_at < ?
       AND s.clock_out_at IS NOT NULL
       AND (s.close_reason IS NULL OR s.close_reason <> 'void')
@@ -173,7 +173,7 @@ try {
 
 // Sort departments by configured sort_order, then name
 try {
-  $cats = $pdo->query("SELECT name FROM kiosk_employee_departments ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+  $cats = $pdo->query("SELECT name FROM hr_staff_departments ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
   $deptOrder = [];
   $i = 0;
   foreach ($cats as $c) { $deptOrder[(string)$c['name']] = $i++; }

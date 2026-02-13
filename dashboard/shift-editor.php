@@ -403,7 +403,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $employees = $pdo->query(
   "SELECT e.id, e.nickname, e.first_name, e.last_name, e.employee_code, e.is_agency, e.agency_label, d.name AS dept
    FROM kiosk_employees e
-   LEFT JOIN kiosk_employee_departments d ON d.id = e.department_id
+   LEFT JOIN hr_staff_departments d ON d.id = e.department_id
    WHERE e.is_active = 1
    ORDER BY
      CASE
@@ -413,7 +413,7 @@ $employees = $pdo->query(
      e.employee_code ASC"
 )->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-$depts = $pdo->query("SELECT id, name FROM kiosk_employee_departments ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+$depts = $pdo->query("SELECT id, name FROM hr_staff_departments ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 $displayName = function(array $e): string {
   if ((int)($e['is_agency'] ?? 0) === 1) {
@@ -481,7 +481,7 @@ $sql = "SELECT s.*, e.nickname, e.first_name, e.last_name, e.employee_code, e.is
                d.name AS department_name
         FROM kiosk_shifts s
         JOIN kiosk_employees e ON e.id=s.employee_id
-        LEFT JOIN kiosk_employee_departments d ON d.id=e.department_id
+        LEFT JOIN hr_staff_departments d ON d.id=e.department_id
         WHERE " . implode(' AND ', $where) . "
         ORDER BY s.clock_in_at DESC
         LIMIT 600";
@@ -924,7 +924,7 @@ if ($addShiftDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $addShiftDate)) {
                   $tSql = "SELECT t.*, e.nickname, e.first_name, e.last_name, e.employee_code, e.is_agency, e.agency_label, d.name AS department_name
                            FROM kiosk_training_entries t
                            JOIN kiosk_employees e ON e.id=t.employee_id
-                           LEFT JOIN kiosk_employee_departments d ON d.id=e.department_id
+                           LEFT JOIN hr_staff_departments d ON d.id=e.department_id
                            WHERE " . implode(" AND ", $tWhere) . "
                            ORDER BY t.training_start_at DESC
                            LIMIT 60";

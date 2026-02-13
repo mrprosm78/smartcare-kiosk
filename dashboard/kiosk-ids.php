@@ -62,7 +62,7 @@ try {
            s.status
     FROM hr_staff s
     LEFT JOIN kiosk_employees e ON e.hr_staff_id = s.id AND e.archived_at IS NULL
-    LEFT JOIN kiosk_employee_departments d ON d.id = s.department_id
+    LEFT JOIN hr_staff_departments d ON d.id = s.department_id
     WHERE s.archived_at IS NULL
       AND e.id IS NULL
     ORDER BY (s.status='active') DESC, s.last_name ASC, s.first_name ASC, s.id ASC
@@ -259,7 +259,7 @@ $rows = $pdo->query("
          s.department_id AS staff_department_id, d.name AS staff_department_name
   FROM kiosk_employees e
   LEFT JOIN hr_staff s ON s.id = e.hr_staff_id
-  LEFT JOIN kiosk_employee_departments d ON d.id = s.department_id
+  LEFT JOIN hr_staff_departments d ON d.id = s.department_id
   WHERE e.archived_at IS NULL
   ORDER BY e.is_active DESC, e.id DESC
   LIMIT 1000
@@ -444,12 +444,7 @@ function staff_short_label(array $st): string {
       <!-- Right panel -->
       <aside class="xl:col-span-5">
         <div class="sticky top-5 space-y-4">
-          <div class="rounded-3xl border border-slate-200 bg-white p-4">
-            <div class="text-xs font-semibold text-slate-600">Manage</div>
-            <div class="text-lg font-semibold text-slate-900">
-              <?= $selected ? 'Kiosk ID: ' . h((string)($selected['employee_code'] ?? '')) : 'Select a kiosk ID' ?>
-            </div>
-          </div>
+          
 
           <?php if ($selected):
             ?>

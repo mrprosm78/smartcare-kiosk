@@ -46,7 +46,7 @@ $dept = (int)($_GET['dept'] ?? 0);
 $q = qstr('q', '');
 
 // Departments
-$depts = $pdo->query("SELECT id, name FROM kiosk_employee_departments WHERE is_active=1 ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+$depts = $pdo->query("SELECT id, name FROM hr_staff_departments WHERE is_active=1 ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 // Staff (hr_staff uses status enum: active/inactive/archived)
 $where = ["s.status = 'active'"];
@@ -71,7 +71,7 @@ $sql = "
     s.status,
     d.name AS department_name
   FROM hr_staff s
-  LEFT JOIN kiosk_employee_departments d ON d.id = s.department_id
+  LEFT JOIN hr_staff_departments d ON d.id = s.department_id
   " . ($where ? ('WHERE ' . implode(' AND ', $where)) : '') . "
   ORDER BY d.sort_order ASC, d.name ASC, s.last_name ASC, s.first_name ASC
   LIMIT 500

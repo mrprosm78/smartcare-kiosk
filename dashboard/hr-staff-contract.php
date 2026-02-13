@@ -9,7 +9,7 @@ if ($staffId <= 0) { http_response_code(400); exit('Missing staff_id'); }
 
 $stmt = $pdo->prepare("SELECT s.id, s.staff_code, s.first_name, s.last_name, d.name AS department_name
   FROM hr_staff s
-  LEFT JOIN kiosk_employee_departments d ON d.id = s.department_id
+  LEFT JOIN hr_staff_departments d ON d.id = s.department_id
   WHERE s.id = ?
   LIMIT 1");
 $stmt->execute([$staffId]);
