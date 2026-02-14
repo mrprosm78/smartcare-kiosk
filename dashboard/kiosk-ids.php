@@ -7,7 +7,10 @@ admin_require_perm($user, 'view_employees');
 $canManage = admin_can($user, 'manage_employees');
 
 $active = admin_url('kiosk-ids.php');
-admin_page_start($pdo, 'Kiosk IDs');
+
+// IMPORTANT: Do not render any output before handling POST.
+// Production servers often disable output buffering, which would break redirects
+// ("headers already sent") and can result in a blank page after POST.
 
 // Flash helpers (session-backed)
 function flash_set(string $key, $value): void {
@@ -49,6 +52,22 @@ $success = (string)($_GET['ok'] ?? '');
 $flashPin = $canManage ? (string)flash_get('show_pin', '') : '';
 
 $selectId = (int)($_GET['select'] ?? 0);
+
+// Unlinked staff kiosk IDs (right-side panel)
+$unlinkedKiosk = [];
+try {
+  $unlinkedKiosk = $pdo->query("
+    SELECT e.id, e.employee_code, e.nickname, e.is_active
+    FROM kiosk_employees e
+    WHERE e.archived_at IS NULL
+      AND (e.hr_staff_id IS NULL OR e.hr_staff_id = 0)
+      AND (e.is_agency = 0 OR e.is_agency IS NULL)
+    ORDER BY e.is_active DESC, e.id DESC
+    LIMIT 500
+  ")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+} catch (Throwable $e) {
+  $unlinkedKiosk = [];
+}
 
 // Staff missing kiosk IDs (right-side panel)
 $missingStaff = [];
@@ -245,6 +264,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       }
     }
   }
+
+  if ($action === 'link_staff') {
+    $kioskId = (int)($_POST['kiosk_id'] ?? 0);
+    $staffId = (int)($_POST['staff_id'] ?? 0);
+
+    if ($kioskId <= 0) $errors[] = 'Missing kiosk ID.';
+    if ($staffId <= 0) $errors[] = 'Missing staff.';
+
+    // Staff must not already be linked
+    if ($staffId > 0) {
+      $stmt = $pdo->prepare("SELECT id FROM kiosk_employees WHERE hr_staff_id = ? AND archived_at IS NULL LIMIT 1");
+      $stmt->execute([$staffId]);
+      if ($stmt->fetchColumn()) {
+        $errors[] = 'That staff record already has a kiosk ID.';
+      }
+    }
+
+    if (!$errors) {
+      try {
+        // Ensure kiosk id is eligible (unlinked + not agency)
+        $stmt = $pdo->prepare("SELECT id, hr_staff_id, is_agency FROM kiosk_employees WHERE id = ? AND archived_at IS NULL LIMIT 1");
+        $stmt->execute([$kioskId]);
+        $cur = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$cur) throw new RuntimeException('Kiosk ID not found.');
+        if ((int)($cur['hr_staff_id'] ?? 0) > 0) throw new RuntimeException('That kiosk ID is already linked.');
+        if ((int)($cur['is_agency'] ?? 0) === 1) throw new RuntimeException('Agency kiosk IDs cannot be linked.');
+
+        $u = $pdo->prepare("UPDATE kiosk_employees SET hr_staff_id = ?, is_agency = 0, agency_label = NULL, updated_at = NOW() WHERE id = ? LIMIT 1");
+        $u->execute([$staffId, $kioskId]);
+
+        header('Location: ' . admin_url('kiosk-ids.php?ok=linked&select=' . $kioskId));
+        exit;
+      } catch (Throwable $e) {
+        $errors[] = $e->getMessage();
+      }
+    }
+  }
 }
 
 /**
@@ -288,6 +344,7 @@ function staff_short_label(array $st): string {
   if ($status !== '') $parts[] = $status;
   return implode(' · ', $parts);
 }
+admin_page_start($pdo, 'Kiosk IDs');
 ?>
 <div class="min-h-dvh flex flex-col lg:flex-row">
   <?php require __DIR__ . '/partials/sidebar.php'; ?>
@@ -445,6 +502,58 @@ function staff_short_label(array $st): string {
       <aside class="xl:col-span-5">
         <div class="sticky top-5 space-y-4">
           
+
+          <?php if ($canManage): ?>
+            <div class="rounded-3xl border border-slate-200 bg-white p-4">
+              <div class="text-xs font-semibold text-slate-600">Match existing kiosk ID to staff</div>
+              <div class="mt-1 text-sm text-slate-600">Link an unassigned kiosk identity to a staff profile.</div>
+
+              <?php if (!$unlinkedKiosk): ?>
+                <div class="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">No unlinked staff kiosk IDs found.</div>
+              <?php elseif (!$missingStaff): ?>
+                <div class="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">All staff already have kiosk IDs.</div>
+              <?php else: ?>
+                <form method="post" class="mt-3 space-y-3">
+                  <?php admin_csrf_field(); ?>
+                  <input type="hidden" name="action" value="link_staff">
+
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-600">Unlinked kiosk ID</label>
+                    <select name="kiosk_id" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm" required>
+                      <option value="">Select kiosk ID…</option>
+                      <?php foreach ($unlinkedKiosk as $k):
+                        $kid = (int)($k['id'] ?? 0);
+                        $code = trim((string)($k['employee_code'] ?? ''));
+                        $nick = trim((string)($k['nickname'] ?? ''));
+                        $label = $code !== '' ? $code : ('#' . $kid);
+                        if ($nick !== '') $label .= ' · ' . $nick;
+                        $label .= ((int)($k['is_active'] ?? 0) === 1) ? ' · active' : ' · inactive';
+                      ?>
+                        <option value="<?= $kid ?>" <?= ($selectedId === $kid ? 'selected' : '') ?>><?= h($label) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-600">Staff</label>
+                    <select name="staff_id" class="mt-1 w-full rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm" required>
+                      <option value="">Select staff…</option>
+                      <?php foreach ($missingStaff as $st):
+                        $sid = (int)($st['id'] ?? 0);
+                        $label = staff_short_label($st);
+                      ?>
+                        <option value="<?= $sid ?>"><?= h($label) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </div>
+
+                  <button class="w-full rounded-2xl px-4 py-2 text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700">Link kiosk ID</button>
+                  <div class="text-xs text-slate-500">This updates <span class="font-mono">kiosk_employees.hr_staff_id</span>. Agency IDs cannot be linked.</div>
+                </form>
+              <?php endif; ?>
+            </div>
+          <?php endif; ?>
+
 
           <?php if ($selected):
             ?>

@@ -432,7 +432,7 @@ try {
   $today = gmdate('Y-m-d');
   $c = $pdo->prepare(
     "SELECT id, effective_from, effective_to, contract_json
-     FROM hr_staff_contracts
+     FROM hr_staff_payroll_contracts
      WHERE staff_id = ?
        AND effective_from <= ?
        AND (effective_to IS NULL OR effective_to >= ?)

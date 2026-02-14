@@ -103,7 +103,7 @@ function column_exists(PDO $pdo, string $table, string $column): bool {
 }
 
 function employee_break_is_paid(PDO $pdo, int $employeeId, ?string $onYmd = null): bool {
-    // Source of truth: HR Staff contract (hr_staff_contracts) via kiosk_employees.hr_staff_id.
+    // Source of truth: HR Staff contract (hr_staff_payroll_contracts) via kiosk_employees.hr_staff_id.
     // Legacy kiosk_employee_pay_profiles is intentionally not used.
     try {
         $profile = payroll_employee_profile($pdo, $employeeId, $onYmd);

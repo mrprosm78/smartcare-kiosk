@@ -392,6 +392,7 @@ function create_tables(PDO $pdo): void {
     CREATE TABLE IF NOT EXISTS hr_staff (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
       staff_code VARCHAR(20) NULL,
+      payroll_id INT NULL,
       first_name VARCHAR(100) NOT NULL DEFAULT '',
       last_name VARCHAR(100) NOT NULL DEFAULT '',
       nickname VARCHAR(100) NULL,
@@ -410,14 +411,26 @@ function create_tables(PDO $pdo): void {
       KEY idx_hr_staff_dept (department_id),
       KEY idx_hr_staff_status (status),
       KEY idx_hr_staff_updated (updated_at),
-      UNIQUE KEY uq_hr_staff_code (staff_code)
+      UNIQUE KEY uq_hr_staff_code (staff_code),
+      UNIQUE KEY uq_hr_staff_payroll_id (payroll_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   ");
 
   /**
    * ✅ CRITICAL GUARDS (prevents "Unknown column s.staff_code" forever)
    * Old DBs may have hr_staff without staff_code / department_id.
-   */
+   * 
+    */
+  // ✅ IMPORTANT: Add guard for payroll_id (for existing tables)
+add_column_if_missing($pdo, 'hr_staff', 'payroll_id', 'INT NULL');
+
+// Ensure unique index exists for payroll_id
+try {
+  if (!index_exists($pdo, 'hr_staff', 'uq_hr_staff_payroll_id')) {
+    $pdo->exec("ALTER TABLE hr_staff ADD UNIQUE KEY uq_hr_staff_payroll_id (payroll_id)");
+  }
+} catch (Throwable $e) { /* ignore - index might already exist */ }
+
   add_column_if_missing($pdo, 'hr_staff', 'staff_code', 'VARCHAR(20) NULL');
   add_column_if_missing($pdo, 'hr_staff', 'department_id', 'INT UNSIGNED NULL');
 
@@ -437,7 +450,7 @@ function create_tables(PDO $pdo): void {
 
   // HR STAFF CONTRACTS
   $pdo->exec("
-    CREATE TABLE IF NOT EXISTS hr_staff_contracts (
+    CREATE TABLE IF NOT EXISTS hr_staff_payroll_contracts (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
       staff_code VARCHAR(20) NULL,
       staff_id INT UNSIGNED NOT NULL,
@@ -446,8 +459,8 @@ function create_tables(PDO $pdo): void {
       contract_json LONGTEXT NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      KEY idx_hr_staff_contracts_staff (staff_id),
-      KEY idx_hr_staff_contracts_effective (effective_from, effective_to)
+      KEY idx_hr_staff_payroll_contracts_staff (staff_id),
+      KEY idx_hr_staff_payroll_contracts_effective (effective_from, effective_to)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   ");
 
@@ -875,7 +888,7 @@ function drop_all(PDO $pdo): void {
 
     // HR (✅ missing previously)
     'hr_staff_documents',
-    'hr_staff_contracts',
+    'hr_staff_payroll_contracts',
     'hr_staff',
     'hr_applications',
 

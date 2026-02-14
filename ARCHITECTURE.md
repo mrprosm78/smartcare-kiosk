@@ -190,7 +190,7 @@ All staff details are visible in **one place**.
 
 ---
 
-### 4.2 Staff Contracts (`hr_staff_contracts`)
+### 4.2 Staff Contracts (`hr_staff_payroll_contracts`)
 
 - Contracts belong to staff, not kiosk IDs
 - Supports effective date history
@@ -502,7 +502,7 @@ All HR‑owned tables **must use the `hr_` prefix** to ensure a clean future mig
 Authoritative HR tables:
 - `hr_applications`
 - `hr_staff`
-- `hr_staff_contracts`
+- `hr_staff_payroll_contracts`
 - `hr_staff_documents`
 
 No new HR tables should be created without this prefix.
@@ -524,13 +524,13 @@ This keeps kiosk punching fast and stable while HR evolves independently.
 Employment contracts are HR‑owned data.
 
 Canonical model:
-- Contracts live in `hr_staff_contracts`
+- Contracts live in `hr_staff_payroll_contracts`
 - Each contract supports effective dates (`effective_from`, `effective_to`)
 
 Payroll and timesheets resolve contracts via:
 1. `kiosk_shifts.employee_id`
 2. `kiosk_employees.hr_staff_id`
-3. Active `hr_staff_contracts` row
+3. Active `hr_staff_payroll_contracts` row
 
 Legacy kiosk‑linked contracts may exist temporarily but are transitional only.
 
@@ -571,7 +571,7 @@ Any legacy tables (e.g. `hr_staff_profiles`) are transitional and must be deprec
 ### Migration roadmap (LOCKED ORDER)
 1. Lock `hr_staff` as the single staff source of truth
 2. Add and backfill `kiosk_employees.hr_staff_id`
-3. Introduce and migrate to `hr_staff_contracts`
+3. Introduce and migrate to `hr_staff_payroll_contracts`
 4. Update payroll/timesheets to read HR contracts
 5. Remove legacy kiosk‑based contract logic
 6. Remove deprecated tables only when fully unused
@@ -624,7 +624,7 @@ Goal: make Applicants/Staff/Kiosk linkage rock‑solid before starting Rota.
 - Punching performance: bcrypt + indexed SHA‑256 fingerprint lookup (`pin_fingerprint`).
 
 ### Phase B — Contracts & Training modules
-- Implement `hr_staff_contracts` screens (effective dates/history).
+- Implement `hr_staff_payroll_contracts` screens (effective dates/history).
 - Implement training records (`hr_staff_training`) and reporting.
 
 ### Phase C — Rota module (next major)

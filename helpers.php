@@ -234,7 +234,7 @@ function hr_staff_active_contract_row(PDO $pdo, int $staffId, string $onYmd): ?a
   try {
     $st = $pdo->prepare(
       'SELECT id, staff_id, effective_from, effective_to, contract_json '
-      . 'FROM hr_staff_contracts '
+      . 'FROM hr_staff_payroll_contracts '
       . 'WHERE staff_id=? AND effective_from <= ? AND (effective_to IS NULL OR effective_to >= ?) '
       . 'ORDER BY effective_from DESC, id DESC LIMIT 1'
     );
@@ -268,7 +268,7 @@ function hr_staff_id_for_kiosk_employee(PDO $pdo, int $kioskEmployeeId): ?int {
 
 /**
  * Parse employee contract pay profile.
- * Source of truth is HR Staff contract (hr_staff_contracts) via kiosk_employees.hr_staff_id.
+ * Source of truth is HR Staff contract (hr_staff_payroll_contracts) via kiosk_employees.hr_staff_id.
  *
  * NOTE: Legacy kiosk_employee_pay_profiles is no longer used for calculations.
  */

@@ -29,7 +29,7 @@ function h2(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'
 $contracts = [];
 try {
   $c = $pdo->prepare("SELECT id, effective_from, effective_to, contract_json, created_at, updated_at
-                      FROM hr_staff_contracts
+                      FROM hr_staff_payroll_contracts
                       WHERE staff_id = ?
                       ORDER BY effective_from DESC, id DESC");
   $c->execute([$staffId]);

@@ -30,7 +30,7 @@ if ($staffCode === '') $staffCode = (string)$staffId;
 // Load contract (if editing)
 $row = null;
 if ($contractId > 0) {
-  $c = $pdo->prepare("SELECT * FROM hr_staff_contracts WHERE id = ? AND staff_id = ? LIMIT 1");
+  $c = $pdo->prepare("SELECT * FROM hr_staff_payroll_contracts WHERE id = ? AND staff_id = ? LIMIT 1");
   $c->execute([$contractId, $staffId]);
   $row = $c->fetch(PDO::FETCH_ASSOC) ?: null;
   if (!$row) { http_response_code(404); exit('Contract not found'); }
@@ -213,7 +213,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($contractId <= 0) {
       try {
         $pdo->beginTransaction();
-        $prev = $pdo->prepare("SELECT id, effective_from, effective_to FROM hr_staff_contracts
+        $prev = $pdo->prepare("SELECT id, effective_from, effective_to FROM hr_staff_payroll_contracts
                               WHERE staff_id = ?
                                 AND effective_from <= ?
                                 AND (effective_to IS NULL OR effective_to >= ?)
@@ -224,11 +224,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($p) {
           $prevId = (int)$p['id'];
           // Set previous contract to end the day before new effective_from
-          $updPrev = $pdo->prepare("UPDATE hr_staff_contracts SET effective_to = DATE_SUB(?, INTERVAL 1 DAY) WHERE id = ? LIMIT 1");
+          $updPrev = $pdo->prepare("UPDATE hr_staff_payroll_contracts SET effective_to = DATE_SUB(?, INTERVAL 1 DAY) WHERE id = ? LIMIT 1");
           $updPrev->execute([$effectiveFrom, $prevId]);
         }
 
-        $ins = $pdo->prepare("INSERT INTO hr_staff_contracts (staff_code, staff_id, effective_from, effective_to, contract_json)
+        $ins = $pdo->prepare("INSERT INTO hr_staff_payroll_contracts (staff_code, staff_id, effective_from, effective_to, contract_json)
                               VALUES (?, ?, ?, ?, ?)");
         $ins->execute([$staffCode, $staffId, $effectiveFrom, ($effectiveTo === '' ? null : $effectiveTo), $json]);
         $pdo->commit();
@@ -238,7 +238,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       }
     } else {
       try {
-        $upd = $pdo->prepare("UPDATE hr_staff_contracts
+        $upd = $pdo->prepare("UPDATE hr_staff_payroll_contracts
                               SET effective_from = ?, effective_to = ?, contract_json = ?, staff_code = ?
                               WHERE id = ? AND staff_id = ?");
         $upd->execute([$effectiveFrom, ($effectiveTo === '' ? null : $effectiveTo), $json, $staffCode, $contractId, $staffId]);
